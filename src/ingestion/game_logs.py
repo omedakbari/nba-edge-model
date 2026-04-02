@@ -57,10 +57,14 @@ def get_active_players(season: str) -> pd.DataFrame:
     )
     df = result.get_data_frames()[0]
 
-    # Filter to players who actually played this season
-    # The 'TO_YEAR' column tells us the last season they played
-    season_start_year = season.split("-")[0]
-    df = df[df["TO_YEAR"] == season_start_year]
+    # Filter to players who were active during this season.
+    # FROM_YEAR/TO_YEAR store the start-year of first/last season (e.g. "2024" for 2024-25).
+    # We keep anyone whose active range spans the target season start year.
+    season_start_year = int(season.split("-")[0])
+    df = df[
+        (df["FROM_YEAR"].astype(int) <= season_start_year) &
+        (df["TO_YEAR"].astype(int) >= season_start_year)
+    ]
 
     return df[["PERSON_ID", "DISPLAY_FIRST_LAST"]].rename(
         columns={"PERSON_ID": "player_id", "DISPLAY_FIRST_LAST": "full_name"}
