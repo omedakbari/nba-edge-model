@@ -28,3 +28,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# local dashboard backups
+dashboard/app.before*.py
+dashboard/app.syntax_fix_backup.py
+dashboard/app_before_claude_fix.py
