@@ -184,14 +184,25 @@ def grade_pick(actual: float | None, line: float, direction: str) -> tuple[str, 
 # ── Main grading flow ──────────────────────────────────────────────────────────
 
 def grade_date(date_str: str, overwrite: bool = False) -> None:
+    from datetime import datetime as _dt
+    try:
+        _dt.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        print(f"  Invalid date format: {date_str!r}. Expected YYYY-MM-DD.")
+        return
+
     picks_path = PICKS_DIR / f"{date_str}.json"
     if not picks_path.exists():
         print(f"  No picks file found: {picks_path}")
         print(f"  Run first: python scripts/generate_todays_picks.py --date {date_str} --save")
         return
 
-    with open(picks_path) as f:
-        payload = json.load(f)
+    try:
+        with open(picks_path) as f:
+            payload = json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"  Invalid JSON in {picks_path}: {e}")
+        return
 
     picks = payload['picks']
     season = payload.get('season', '2025-26')

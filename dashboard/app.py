@@ -138,8 +138,9 @@ def get_db_diagnostics():
         if len(lebron) > 0:
             pid = lebron.iloc[0]["player_id"]
             lebron_games = pd.read_sql(
-                f"SELECT COUNT(*) as n FROM game_logs WHERE player_id={pid} AND season='2024-25'",
+                "SELECT COUNT(*) as n FROM game_logs WHERE player_id=? AND season='2024-25'",
                 conn,
+                params=(int(pid),),
             ).iloc[0]["n"]
             info["lebron_2024_25_games"] = lebron_games
         else:

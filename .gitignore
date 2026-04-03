@@ -33,3 +33,9 @@ Thumbs.db
 dashboard/app.before*.py
 dashboard/app.syntax_fix_backup.py
 dashboard/app_before_claude_fix.py
+
+# Generated picks (contain model predictions — keep private)
+data/picks/
+
+# Runtime logs
+logs/

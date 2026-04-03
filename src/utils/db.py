@@ -50,8 +50,12 @@ def init_db() -> None:
         print(f"✅ Database initialized at {DB_PATH}")
 
 
+_ALLOWED_TABLES = {"game_logs", "players", "ingestion_log", "pipeline_runs", "pick_results", "team_stats"}
+
 def table_row_count(table_name: str) -> int:
     """Quick check: how many rows in a table?"""
+    if table_name not in _ALLOWED_TABLES:
+        raise ValueError(f"table_row_count: unknown table {table_name!r}")
     with get_connection() as conn:
         cursor = conn.execute(f"SELECT COUNT(*) FROM {table_name}")
         return cursor.fetchone()[0]
