@@ -13,6 +13,7 @@ Probability thresholds (against real PP lines, not L10 fake lines):
 """
 
 import argparse
+import json
 import sys
 import time
 import sqlite3
@@ -469,12 +470,18 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
             p_under = 1.0 - p_over
 
             base = {
-                'player_id': row['player_id'],
-                'player':    inj_flag + player_name,
-                'game':      row.get('matchup', 'UNK'),
-                'stat':      stat.upper(),
-                'line':      round(float(line), 1),
-                'pred':      round(float(pred), 1),
+                'player_id':    row['player_id'],
+                'player':       inj_flag + player_name,
+                'player_name':  player_name,              # clean name, no flag
+                'team':         row.get('team_abbr', ''),
+                'opp':          row.get('opp_abbr', ''),
+                'game':         row.get('matchup', 'UNK'),
+                'stat':         stat.upper(),
+                'stat_key':     stat,                     # lowercase for DB lookup
+                'line':         round(float(line), 1),
+                'pred':         round(float(pred), 1),
+                'line_source':  'prizepicks' if using_real_lines else 'l10_avg',
+                'injury_flag':  inj_status,
             }
 
             if p_over >= min_p:
@@ -544,12 +551,57 @@ def print_card(card: list[dict], label: str) -> None:
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
+def save_picks(card1: list[dict], card2: list[dict], date_str: str,
+               season: str, line_source: str) -> Path:
+    """Serialize both cards to data/picks/YYYY-MM-DD.json."""
+    picks_dir = Path(__file__).parent.parent / "data" / "picks"
+    picks_dir.mkdir(parents=True, exist_ok=True)
+    out_path = picks_dir / f"{date_str}.json"
+
+    def _serialize_card(card: list[dict], label: str, n_legs: int) -> list[dict]:
+        out = []
+        for leg in card:
+            out.append({
+                'player_id':   int(leg['player_id']),
+                'player_name': leg['player_name'],
+                'team':        leg['team'],
+                'opp':         leg['opp'],
+                'stat':        leg['stat'],         # uppercase display label
+                'stat_key':    leg['stat_key'],     # lowercase for DB lookup
+                'direction':   leg['direction'],
+                'line':        leg['line'],
+                'model_pred':  leg['pred'],
+                'prob':        round(leg['prob'], 4),
+                'card':        label,
+                'n_legs':      n_legs,
+                'line_source': leg['line_source'],
+                'injury_flag': leg['injury_flag'],
+            })
+        return out
+
+    payload = {
+        'date':         date_str,
+        'season':       season,
+        'generated_at': datetime.utcnow().isoformat() + 'Z',
+        'line_source':  line_source,
+        'picks':        _serialize_card(card1, 'card1', len(card1))
+                      + _serialize_card(card2, 'card2', len(card2)),
+    }
+
+    with open(out_path, 'w') as f:
+        json.dump(payload, f, indent=2)
+
+    return out_path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate daily SAFE Flex picks (live schedule + real PP lines)")
     parser.add_argument('--date', default=date.today().isoformat(),
                         help='Game date YYYY-MM-DD (default: today)')
     parser.add_argument('--season', default=CURRENT_SEASON,
                         help=f'NBA season string (default: {CURRENT_SEASON})')
+    parser.add_argument('--save', action='store_true',
+                        help='Save picks to data/picks/YYYY-MM-DD.json for later grading')
     args = parser.parse_args()
 
     feature_path = PROCESSED_DIR / "features.parquet"
@@ -641,6 +693,13 @@ def main() -> None:
     print(f"  RULES       0 shared legs  |  max 2/game  |  1/player  |  max 2/stat-type")
     print(f"  ⚠️  = Day-To-Day/Doubtful — verify lineup before betting")
     print(f"{'=' * 76}\n")
+
+    if args.save:
+        line_source = 'prizepicks' if pp_lines else 'l10_avg'
+        out_path = save_picks(card1 or [], card2 or [], args.date, args.season, line_source)
+        n_saved = len(card1 or []) + len(card2 or [])
+        print(f"  Saved {n_saved} picks → {out_path}")
+        print(f"  Grade after games: python scripts/log_pick_results.py --date {args.date}\n")
 
 
 if __name__ == "__main__":
