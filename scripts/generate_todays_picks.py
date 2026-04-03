@@ -43,12 +43,17 @@ COMPOSITE_STATS = {
     'reb_ast': ['reb', 'ast'],
 }
 
+# Thresholds for use against REAL PrizePicks lines (not fake L10 baselines).
+# PP lines are set near expected value, so any P > 55% represents real edge.
+# The old 0.70-0.75 thresholds were calibrated on L10-as-line (a much easier bar).
+# Against real market lines, the model rarely exceeds 0.65 — that's expected and fine.
+# Daily cards are built by sorting on prob and picking the top N above these floors.
 STAT_MIN_PROB = {
-    'reb':     0.60,
-    'ast':     0.60,
-    'pra':     0.65,
-    'reb_ast': 0.65,
-    'pts':     0.70,
+    'reb':     0.57,
+    'ast':     0.57,
+    'pra':     0.58,
+    'reb_ast': 0.58,
+    'pts':     0.57,
 }
 
 # PrizePicks stat_type strings → our internal stat keys
@@ -130,6 +135,35 @@ def fetch_prizepicks_lines() -> dict:
         lines[key] = float(attr['line_score'])
 
     return lines
+
+
+# ── Injury report ─────────────────────────────────────────────────────────────
+
+def fetch_injury_report() -> dict:
+    """
+    Fetch NBA injury statuses from ESPN.
+    Returns {normalized_player_name: status_string}
+    e.g. {'anthony edwards': 'Day-To-Day', 'giannis antetokounmpo': 'Out'}
+    """
+    try:
+        r = requests.get(
+            'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries',
+            headers={'User-Agent': 'Mozilla/5.0'}, timeout=8,
+        )
+        if r.status_code != 200:
+            return {}
+        data = r.json()
+    except Exception:
+        return {}
+
+    injured = {}
+    for team_entry in data.get('injuries', []):
+        for inj in team_entry.get('injuries', []):
+            status = inj.get('status', '')
+            name = inj.get('athlete', {}).get('displayName', '')
+            if name and status:
+                injured[normalize_name(name)] = status
+    return injured
 
 
 # ── Schedule / roster fetching ─────────────────────────────────────────────────
@@ -369,14 +403,24 @@ def predict_stat_raw(df: pd.DataFrame, stat: str) -> pd.Series:
 
 # ── Candidate generation ───────────────────────────────────────────────────────
 
-def build_candidates(df: pd.DataFrame, pp_lines: dict) -> pd.DataFrame:
+def build_candidates(df: pd.DataFrame, pp_lines: dict,
+                     injury_report: dict) -> pd.DataFrame:
     """
-    Score every (player, stat) pair.
-    When pp_lines is populated: only includes picks with a real PrizePicks line.
-    Falls back to L10 baseline if pp_lines is empty.
+    Score every (player, stat) pair. Returns OVER and UNDER candidates.
+
+    Filters:
+      - Players listed as 'Out' in injury report are removed entirely.
+      - Players with 'Day-To-Day' or 'Doubtful' are flagged but kept.
+      - When pp_lines is populated: only surfaces picks with a real PP line.
+      - Falls back to L10 baseline if pp_lines is empty.
+
+    Returns a DataFrame with a 'direction' column: 'OVER' or 'UNDER'.
     """
     using_real_lines = bool(pp_lines)
     rows = []
+
+    out_statuses = {'out', 'out (injury)', 'inactive', 'did not play'}
+    warn_statuses = {'day-to-day', 'doubtful', 'questionable'}
 
     for stat in STATS:
         l10_col = f'{stat}_L10'
@@ -393,11 +437,18 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict) -> pd.DataFrame:
                 continue
 
             player_name = row.get('full_name', '')
-            pp_key = (normalize_name(player_name), stat)
+            norm_name = normalize_name(player_name)
 
+            # Injury filter
+            inj_status = injury_report.get(norm_name, '')
+            if any(s in inj_status.lower() for s in out_statuses):
+                continue  # player is out — skip entirely
+            inj_flag = '⚠️ ' if any(s in inj_status.lower() for s in warn_statuses) else ''
+
+            pp_key = (norm_name, stat)
             if using_real_lines:
                 if pp_key not in pp_lines:
-                    continue  # no PP market for this player/stat tonight
+                    continue
                 line = pp_lines[pp_key]
             else:
                 line = row.get(l10_col)
@@ -406,19 +457,24 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict) -> pd.DataFrame:
 
             std_val = row.get(std_col, np.nan)
             std_float = float('nan') if pd.isna(std_val) else float(std_val)
-            p = prob_over(float(pred), float(line), std_float)
-            if p < min_p:
-                continue
+            p_over = prob_over(float(pred), float(line), std_float)
+            p_under = 1.0 - p_over
 
-            rows.append({
+            base = {
                 'player_id': row['player_id'],
-                'player':    player_name,
+                'player':    inj_flag + player_name,
                 'game':      row.get('matchup', 'UNK'),
                 'stat':      stat.upper(),
                 'line':      round(float(line), 1),
                 'pred':      round(float(pred), 1),
-                'prob':      p,
-            })
+            }
+
+            if p_over >= min_p:
+                rows.append({**base, 'direction': 'OVER', 'prob': p_over})
+
+            # UNDER pick: model thinks player will fall well short of the line
+            if p_under >= min_p:
+                rows.append({**base, 'direction': 'UNDER', 'prob': p_under})
 
     if not rows:
         return pd.DataFrame()
@@ -428,20 +484,34 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict) -> pd.DataFrame:
 # ── Card builder ───────────────────────────────────────────────────────────────
 
 def build_card(candidates: pd.DataFrame, n_legs: int, exclude_keys: set) -> list[dict]:
+    """
+    Greedy highest-confidence selection with constraints:
+      - Skip (player_id, stat, direction) keys already in exclude_keys
+      - One prop per player per card
+      - Max 2 legs per game
+      - Max 2 legs of the same stat type per card (diversity)
+    """
     used_players: set = set()
     game_counts: dict = {}
+    stat_counts: dict = {}
     card: list[dict] = []
+
     for _, row in candidates.iterrows():
-        key = (row['player_id'], row['stat'])
+        key = (row['player_id'], row['stat'], row['direction'])
         if key in exclude_keys:
             continue
         if row['player_id'] in used_players:
             continue
         if game_counts.get(row['game'], 0) >= 2:
             continue
+        if stat_counts.get(row['stat'], 0) >= 2:
+            continue
+
         card.append(row.to_dict())
         used_players.add(row['player_id'])
         game_counts[row['game']] = game_counts.get(row['game'], 0) + 1
+        stat_counts[row['stat']] = stat_counts.get(row['stat'], 0) + 1
+
         if len(card) == n_legs:
             break
     return card
@@ -450,18 +520,18 @@ def build_card(candidates: pd.DataFrame, n_legs: int, exclude_keys: set) -> list
 # ── Output ─────────────────────────────────────────────────────────────────────
 
 def print_card(card: list[dict], label: str) -> None:
-    w = 74
+    w = 78
     print(f"\n  {label}")
-    print(f"  {'Player':<26} {'Stat':<9} {'PP Line':>7} {'Model':>7} {'P(over)':>8}  Matchup")
+    print(f"  {'Player':<28} {'Stat':<9} {'Dir':<5} {'PP Line':>7} {'Model':>7} {'P(dir)':>7}  Matchup")
     print(f"  {'-' * w}")
     for leg in card:
-        edge = leg['pred'] - leg['line']
-        edge_str = f"+{edge:.1f}" if edge > 0 else f"{edge:.1f}"
-        print(f"  {leg['player']:<26} {leg['stat']:<9} {leg['line']:>7.1f} "
-              f"{leg['pred']:>7.1f} {leg['prob']:>8.1%}  {leg['game']}")
+        direction = leg.get('direction', 'OVER')
+        arrow = '▲' if direction == 'OVER' else '▼'
+        print(f"  {leg['player']:<28} {leg['stat']:<9} {arrow} {direction:<4} {leg['line']:>7.1f} "
+              f"{leg['pred']:>7.1f} {leg['prob']:>7.1%}  {leg['game']}")
     avg_prob = sum(leg['prob'] for leg in card) / len(card)
     print(f"  {'-' * w}")
-    print(f"  {'Avg confidence':>42}  {avg_prob:>8.1%}")
+    print(f"  {'Avg confidence':>44}  {avg_prob:>7.1%}")
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -482,7 +552,7 @@ def main() -> None:
     print(f"\n  NBA Edge Model — Daily Picks")
     print(f"  Date: {args.date}  |  Season: {args.season}")
 
-    # Fetch PrizePicks lines first
+    # Fetch PrizePicks lines
     print(f"\n  Fetching PrizePicks lines...")
     pp_lines = fetch_prizepicks_lines()
     if pp_lines:
@@ -490,6 +560,13 @@ def main() -> None:
     else:
         print(f"  *** PrizePicks unavailable — falling back to L10 averages as lines ***")
         print(f"  *** Output will NOT be directly actionable on PrizePicks ***")
+
+    # Fetch injury report
+    print(f"  Fetching injury report from ESPN...")
+    injury_report = fetch_injury_report()
+    out_count = sum(1 for s in injury_report.values() if 'out' in s.lower())
+    dtd_count = sum(1 for s in injury_report.values() if 'day' in s.lower() or 'doubt' in s.lower())
+    print(f"  {out_count} players OUT  |  {dtd_count} Day-To-Day/Doubtful")
 
     print(f"\n  Loading features...")
     features_df = pd.read_parquet(feature_path)
@@ -516,7 +593,7 @@ def main() -> None:
 
     print(f"  Players qualifying (min_L10 >= {MIN_MINUTES} min): {len(df_today)}")
 
-    candidates = build_candidates(df_today, pp_lines)
+    candidates = build_candidates(df_today, pp_lines, injury_report)
 
     if candidates.empty:
         if pp_lines:
@@ -528,7 +605,7 @@ def main() -> None:
     print(f"  Qualified legs: {len(candidates)}")
 
     card1 = build_card(candidates, n_legs=3, exclude_keys=set())
-    used = {(leg['player_id'], leg['stat']) for leg in card1}
+    used = {(leg['player_id'], leg['stat'], leg['direction']) for leg in card1}
     card2 = build_card(candidates, n_legs=5, exclude_keys=used)
 
     line_label = "PrizePicks lines" if pp_lines else "L10 avg lines (PP unavailable)"
@@ -548,10 +625,11 @@ def main() -> None:
 
     print(f"\n{'=' * 76}")
     if pp_lines:
-        print(f"  PP Line = tonight's PrizePicks standard line  |  Model = raw model prediction")
-        print(f"  Edge = Model minus PP Line  |  Bet OVER when Model > PP Line")
-    print(f"  THRESHOLDS  REB/AST >= 60%  |  PRA/REB_AST >= 65%  |  PTS >= 70%")
-    print(f"  RULES       0 shared legs  |  max 2 legs/game  |  1 prop/player")
+        print(f"  PP Line = PrizePicks standard line  |  Model = raw model prediction")
+    thresholds_str = "  |  ".join(f"{s.upper()} >= {int(v*100)}%" for s, v in STAT_MIN_PROB.items())
+    print(f"  THRESHOLDS  {thresholds_str}")
+    print(f"  RULES       0 shared legs  |  max 2/game  |  1/player  |  max 2/stat-type")
+    print(f"  ⚠️  = Day-To-Day/Doubtful — verify lineup before betting")
     print(f"{'=' * 76}\n")
 
 

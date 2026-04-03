@@ -67,7 +67,7 @@ def add_trend_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_consistency_features(df: pd.DataFrame) -> pd.DataFrame:
-    stat_cols = ['pts', 'reb', 'ast', 'fg3m', 'pra', 'min']
+    stat_cols = ['pts', 'reb', 'ast', 'fg3m', 'pra', 'reb_ast', 'min']
     df = df.sort_values(['player_id', 'game_date']).copy()
 
     for stat in stat_cols:
