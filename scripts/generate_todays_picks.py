@@ -1,17 +1,15 @@
 """
-Live daily picks generator — v3.
+Live daily picks generator — v8.
 
-Fetches real PrizePicks lines, today's NBA schedule, and current rosters.
-Outputs only picks with an actual PrizePicks market, using real lines instead
-of L10 averages. Falls back to L10 mode with a warning if PP is unreachable.
+Fetches real PrizePicks lines, today's NBA schedule, current rosters, and the
+ESPN injury report. Outputs two SAFE Flex cards: 3-leg and 5-leg. Falls back
+to L10-as-line mode with a warning if PrizePicks is unreachable.
 
 Usage:
-    python scripts/generate_todays_picks.py [--date 2026-04-03] [--season 2025-26]
+    python scripts/generate_todays_picks.py [--date 2026-04-04] [--season 2025-26]
 
-Stat thresholds (minimum P(over line) to qualify):
-    REB / AST      : P >= 60%
-    PRA / REB_AST  : P >= 65%
-    PTS            : P >= 70%
+Probability thresholds (against real PP lines, not L10 fake lines):
+    All stats: P >= 57-58%  — any model signal above 57% is edge on a no-vig platform.
 """
 
 import argparse
@@ -100,7 +98,7 @@ def fetch_prizepicks_lines() -> dict:
     """
     try:
         r = requests.get(
-            'https://api.prizepicks.com/projections?league_id=7&per_page=250',
+            'https://api.prizepicks.com/projections?league_id=7&per_page=500',
             headers=PP_HEADERS, timeout=12,
         )
         if r.status_code != 200:
@@ -374,15 +372,21 @@ def prob_over(pred: float, line: float, std: float) -> float:
     return float(np.clip(1 - scipy_stats.norm.cdf(z), 0.01, 0.99))
 
 
-def predict_stat_raw(df: pd.DataFrame, stat: str) -> pd.Series:
+def predict_stat_raw(df: pd.DataFrame, stat: str,
+                     model_cache: dict | None = None) -> pd.Series:
     """
     Raw model prediction (no L10 blend) — used when comparing to real lines.
-    The L10 blend was designed for comparing against L10 as a fake line;
-    against a real sportsbook line, the raw model signal is more accurate.
+    model_cache: optional pre-loaded {stat: model_data} dict to avoid repeated
+    disk reads when scoring all stats in a single run.
     """
+    def _get(s):
+        if model_cache and s in model_cache:
+            return model_cache[s]
+        return load_model(s)
+
     components = COMPOSITE_STATS.get(stat)
     if components:
-        models = {c: load_model(c) for c in components}
+        models = {c: _get(c) for c in components}
         valid = pd.Series(True, index=df.index)
         for m in models.values():
             cols = [c for c in m['feature_cols'] if c in df.columns]
@@ -393,7 +397,7 @@ def predict_stat_raw(df: pd.DataFrame, stat: str) -> pd.Series:
             preds.loc[valid] += m['model'].predict(df.loc[valid, cols])
         preds[~valid] = np.nan
     else:
-        m = load_model(stat)
+        m = _get(stat)
         cols = [c for c in m['feature_cols'] if c in df.columns]
         valid = df[cols].notna().all(axis=1)
         preds = pd.Series(np.nan, index=df.index)
@@ -419,6 +423,10 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
     using_real_lines = bool(pp_lines)
     rows = []
 
+    # Pre-load all models once — avoids repeated pickle reads (8 files per run)
+    base_stats = list({c for stat in STATS for c in (COMPOSITE_STATS.get(stat) or [stat])})
+    model_cache = {s: load_model(s) for s in base_stats}
+
     out_statuses = {'out', 'out (injury)', 'inactive', 'did not play'}
     warn_statuses = {'day-to-day', 'doubtful', 'questionable'}
 
@@ -429,7 +437,7 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
             continue
 
         min_p = STAT_MIN_PROB[stat]
-        preds = predict_stat_raw(df, stat)
+        preds = predict_stat_raw(df, stat, model_cache=model_cache)
 
         for idx, row in df.iterrows():
             pred = preds.get(idx, np.nan)
@@ -573,9 +581,11 @@ def main() -> None:
     db_latest = pd.to_datetime(features_df['game_date']).max()
     target_dt = pd.to_datetime(args.date)
     staleness = (target_dt - db_latest).days
-    if staleness > 60:
-        print(f"\n  *** DATA WARNING: DB is {staleness} days stale (latest: {db_latest.date()}) ***")
-        print(f"  *** Fix: python scripts/pull_season_data.py --season {CURRENT_SEASON} ***")
+    if staleness > 5:
+        severity = "*** CRITICAL" if staleness > 14 else "*** WARNING"
+        print(f"\n  {severity}: DB is {staleness} days stale (latest game: {db_latest.date()}) ***")
+        print(f"  *** Rolling features are stale — run before trusting picks:")
+        print(f"  *** python scripts/pull_season_data.py --update && python -m src.features.pipeline ***")
 
     print(f"\n  Fetching today's schedule from NBA.com...")
     player_contexts = get_todays_player_contexts(args.date, args.season)
@@ -626,7 +636,7 @@ def main() -> None:
     print(f"\n{'=' * 76}")
     if pp_lines:
         print(f"  PP Line = PrizePicks standard line  |  Model = raw model prediction")
-    thresholds_str = "  |  ".join(f"{s.upper()} >= {int(v*100)}%" for s, v in STAT_MIN_PROB.items())
+    thresholds_str = "  |  ".join(f"{s.upper()} >= {round(v*100)}%" for s, v in STAT_MIN_PROB.items())
     print(f"  THRESHOLDS  {thresholds_str}")
     print(f"  RULES       0 shared legs  |  max 2/game  |  1/player  |  max 2/stat-type")
     print(f"  ⚠️  = Day-To-Day/Doubtful — verify lineup before betting")

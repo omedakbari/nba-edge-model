@@ -29,6 +29,16 @@ TRAIN_SEASONS = ['2019-20', '2020-21', '2021-22', '2022-23', '2023-24']
 VAL_SEASON = '2024-25'
 TEST_SEASON = '2025-26'
 
+# Context features have low individual correlation (r=0.08-0.16) but carry real
+# signal that the rolling-window features can't capture: opponent defensive quality,
+# pace environment, fatigue. The correlation-based top-N selector drops them every
+# time because rolling features dominate at r=0.30+. Force-include them so the
+# HGBR can weight them with its own regularization.
+CONTEXT_FEATURES = [
+    'pts_allowed_L15', 'reb_allowed_L15', 'ast_allowed_L15', 'fg3m_allowed_L15',
+    'days_rest', 'is_b2b', 'is_home', 'game_month', 'own_pace_L15',
+]
+
 FEATURES_TO_EXCLUDE = [
     'pts', 'reb', 'ast', 'stl', 'blk', 'fg3m', 'tov', 'pf',
     'fgm', 'fga', 'fg3a', 'ftm', 'fta', 'oreb', 'dreb',
@@ -57,19 +67,25 @@ def select_features(df_train: pd.DataFrame, target: str,
                      max_features: int = 40,
                      corr_threshold: float = 0.95) -> list[str]:
     """
-    Two-step feature selection:
-      1. Remove features correlated > threshold with each other (keep the one
-         more correlated with target).
-      2. Keep top N features by absolute correlation with target.
+    Feature selection:
+      1. Force-include CONTEXT_FEATURES (matchup quality, rest, home/away).
+         These have low individual correlation but real predictive value — the
+         HGBR regularization will zero them out if they're noise.
+      2. Remove remaining features correlated > threshold with each other
+         (keep the one more correlated with target).
+      3. Fill remaining slots up to max_features with top-N by target correlation.
     """
     X = df_train[feature_cols].copy()
     y = df_train[target]
 
-    # Step 1: compute correlation with target
     target_corr = X.corrwith(y).abs().fillna(0)
 
-    # Step 2: remove highly inter-correlated features
-    corr_matrix = X.corr().abs()
+    # Force-include context features (skip the top-N filter for these)
+    forced = [f for f in CONTEXT_FEATURES if f in feature_cols]
+    remaining_cols = [c for c in feature_cols if c not in forced]
+
+    # De-duplicate among the remaining candidates only
+    corr_matrix = X[remaining_cols].corr().abs()
     drop_set = set()
     cols = list(corr_matrix.columns)
     for i in range(len(cols)):
@@ -79,17 +95,17 @@ def select_features(df_train: pd.DataFrame, target: str,
             if cols[j] in drop_set:
                 continue
             if corr_matrix.iloc[i, j] > corr_threshold:
-                # Drop the one less correlated with target
                 if target_corr[cols[i]] >= target_corr[cols[j]]:
                     drop_set.add(cols[j])
                 else:
                     drop_set.add(cols[i])
 
-    surviving = [c for c in feature_cols if c not in drop_set]
+    surviving = [c for c in remaining_cols if c not in drop_set]
 
-    # Step 3: keep top N by target correlation
-    top = target_corr[surviving].sort_values(ascending=False).head(max_features)
-    selected = list(top.index)
+    # Fill up to max_features with top-N by target correlation
+    slots = max(0, max_features - len(forced))
+    top = target_corr[surviving].sort_values(ascending=False).head(slots)
+    selected = forced + list(top.index)
 
     return selected
 
@@ -100,7 +116,9 @@ def train_model_for_stat(df_train, df_val, df_test, target, all_feature_cols) ->
     # Feature selection on training data only
     selected_features = select_features(df_train, target, all_feature_cols,
                                          max_features=40, corr_threshold=0.92)
-    print(f"  Features: {len(all_feature_cols)} → {len(selected_features)} after selection")
+    ctx_used = [f for f in selected_features if f in CONTEXT_FEATURES]
+    print(f"  Features: {len(all_feature_cols)} → {len(selected_features)} after selection "
+          f"(context: {len(ctx_used)}/{len(CONTEXT_FEATURES)})")
 
     X_train = df_train[selected_features].copy()
     y_train = df_train[target].copy()
