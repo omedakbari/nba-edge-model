@@ -30,6 +30,7 @@ NBA_API_DELAY = 0.6
 
 # Seasons to backfill (most recent first)
 BACKFILL_SEASONS = [
+    "2025-26",
     "2024-25",
     "2023-24",
     "2022-23",
@@ -39,7 +40,7 @@ BACKFILL_SEASONS = [
 ]
 
 # Current season (update this at season start)
-CURRENT_SEASON = "2024-25"
+CURRENT_SEASON = "2025-26"
 
 # === Team Abbreviation Mapping ===
 # nba_api sometimes uses different abbreviations than what we want.

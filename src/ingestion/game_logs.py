@@ -169,7 +169,7 @@ def fetch_player_game_log(player_id: int, season: str, season_type: str = "Regul
 # Core Pipeline Functions
 # ─────────────────────────────────────────────
 
-def ingest_season(season: str, season_type: str = "Regular Season") -> dict:
+def ingest_season(season: str, season_type: str = "Regular Season", force_update: bool = False) -> dict:
     """
     Pull all player game logs for a season and insert into the database.
 
@@ -227,9 +227,8 @@ def ingest_season(season: str, season_type: str = "Regular Season") -> dict:
     for _, player in tqdm(active.iterrows(), total=len(active), desc=f"  {season}"):
         pid = int(player["player_id"])
 
-        # Skip if we already have this player's data
-        # (For daily updates, you'd check last_game_date instead)
-        if pid in existing and existing[pid] > 0:
+        # Skip if we already have this player's data (bypass with force_update=True)
+        if not force_update and pid in existing and existing[pid] > 0:
             summary["skipped"] += 1
             continue
 
@@ -346,11 +345,11 @@ def backfill_all_seasons():
 def update_current_season():
     """
     Quick update for the current season only.
-    Use this for daily updates.
+    Use this for daily updates. Forces re-pull to pick up new games.
     """
     print("\n  Updating current season...")
     init_db()
-    result = ingest_season(CURRENT_SEASON)
+    result = ingest_season(CURRENT_SEASON, force_update=True)
     print(f"\n  Update complete: {result['inserted']} new rows, "
           f"{result['errors']} errors")
 

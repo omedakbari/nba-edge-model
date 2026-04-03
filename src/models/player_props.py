@@ -25,9 +25,9 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 from config.settings import PROCESSED_DIR
 
 TARGET_STATS = ['pts', 'reb', 'ast', 'fg3m', 'pra', 'reb_ast']
-TRAIN_SEASONS = ['2019-20', '2020-21', '2021-22', '2022-23']
-VAL_SEASON = '2023-24'
-TEST_SEASON = '2024-25'
+TRAIN_SEASONS = ['2019-20', '2020-21', '2021-22', '2022-23', '2023-24']
+VAL_SEASON = '2024-25'
+TEST_SEASON = '2025-26'
 
 FEATURES_TO_EXCLUDE = [
     'pts', 'reb', 'ast', 'stl', 'blk', 'fg3m', 'tov', 'pf',
