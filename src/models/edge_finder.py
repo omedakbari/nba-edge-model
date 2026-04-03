@@ -43,7 +43,8 @@ def predicted_prob_over(predicted_value: float, line: float, std: float) -> floa
 def backtest_props(stat: str, line_offset: float = 0.0) -> pd.DataFrame:
     feature_path = PROCESSED_DIR / "features.parquet"
     df = pd.read_parquet(feature_path)
-    df_test = df[df['season'] == '2024-25'].copy()
+    backtest_season = '2025-26' if '2025-26' in df['season'].unique() else '2024-25'
+    df_test = df[df['season'] == backtest_season].copy()
 
     # Drop garbage-time noise — bench/low-min players break FG3M/PTS calibration
     min_col = 'min_L10' if 'min_L10' in df_test.columns else 'min'
@@ -92,7 +93,10 @@ def backtest_props(stat: str, line_offset: float = 0.0) -> pd.DataFrame:
 
 def run_backtest_report():
     print("\n" + "=" * 70)
-    print("  BACKTEST REPORT — 2024-25 Season")
+    import pandas as _pd
+    _df = _pd.read_parquet(PROCESSED_DIR / "features.parquet")
+    _season = '2025-26' if '2025-26' in _df['season'].unique() else '2024-25'
+    print(f"  BACKTEST REPORT — {_season} Season")
     print("=" * 70)
 
     for stat in ['pts', 'reb', 'ast', 'fg3m', 'pra', 'reb_ast']:
