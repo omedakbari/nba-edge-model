@@ -122,6 +122,11 @@ def fetch_actuals_from_api(player_ids: list[int],
     """
     from nba_api.stats.endpoints import playergamelog
     from config.settings import NBA_API_DELAY
+    from datetime import datetime
+
+    # PlayerGameLog without explicit date bounds silently drops the most recent
+    # games from its result set.  Pinning to the exact game date fixes that.
+    api_date = datetime.strptime(game_date, '%Y-%m-%d').strftime('%m/%d/%Y')
 
     result = {}
     for pid in player_ids:
@@ -130,18 +135,13 @@ def fetch_actuals_from_api(player_ids: list[int],
             log = playergamelog.PlayerGameLog(
                 player_id=pid, season=season,
                 season_type_all_star='Regular Season',
+                date_from_nullable=api_date,
+                date_to_nullable=api_date,
             )
             df = log.get_data_frames()[0]
             if df.empty:
                 continue
-            from datetime import datetime
-            df['GAME_DATE'] = df['GAME_DATE'].apply(
-                lambda d: datetime.strptime(d, '%b %d, %Y').strftime('%Y-%m-%d')
-            )
-            row = df[df['GAME_DATE'] == game_date]
-            if row.empty:
-                continue
-            r = row.iloc[0]
+            r = df.iloc[0]
             minutes = float(r.get('MIN', 0) or 0)
             pts  = int(r.get('PTS', 0))
             reb  = int(r.get('REB', 0))
