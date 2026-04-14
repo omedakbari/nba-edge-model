@@ -74,6 +74,19 @@ STAT_MIN_PROB_PLAYOFFS = {
     'pts':     0.60,
 }
 
+# Tier-aware playoff gate — applied on top of STAT_MIN_PROB_PLAYOFFS.
+# Effective floor = max(stat_min, tier_min).
+# Source: policy-gating ablation (4-season backtest, 19,445 player-game rows).
+#   ROTATION at P≥55%: 54.8% HR across all stats — below SAFE Flex breakeven.
+#   ROTATION at P≥65%: 60.1% HR, +5.3pp gain, −723 picks (10.9% volume reduction).
+#   CORE at P≥55%: 61.6% HR — gating to 60% costs 885 picks for +1.0pp, not worth it.
+#   STAR at P≥55%: 57.5% HR — flat below P≥70%, no benefit gating lower.
+TIER_MIN_PROB_PLAYOFFS = {
+    'STAR':     0.55,   # stat-level floor governs; tier gate adds nothing below P≥70%
+    'CORE':     0.55,   # 61.6% at P≥55% is already strong; gating sacrifices good picks
+    'ROTATION': 0.65,   # 54.8%→60.1% improvement; filters low-quality ROTATION picks
+}
+
 # PrizePicks stat_type strings → our internal stat keys
 PP_STAT_MAP = {
     'Points':        'pts',
@@ -584,6 +597,11 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
             p_over = prob_over(float(pred), float(line), std_float)
             p_under = 1.0 - p_over
 
+            # Tier-aware gate (playoffs only): raise min_p for ROTATION picks.
+            # Effective threshold = max(stat-level floor, tier floor).
+            if is_playoffs and tier is not None:
+                min_p = max(min_p, TIER_MIN_PROB_PLAYOFFS.get(tier, 0.55))
+
             base = {
                 'player_id':    row['player_id'],
                 'player':       inj_flag + player_name,
@@ -933,6 +951,9 @@ def main() -> None:
     thresholds = STAT_MIN_PROB_PLAYOFFS if is_playoffs else STAT_MIN_PROB
     thresholds_str = "  |  ".join(f"{s.upper()} >= {round(v*100)}%" for s, v in thresholds.items())
     print(f"  THRESHOLDS  {thresholds_str}")
+    if is_playoffs:
+        tier_str = "  |  ".join(f"{t} >= {round(v*100)}%" for t, v in TIER_MIN_PROB_PLAYOFFS.items())
+        print(f"  TIER GATES  {tier_str}")
     print(f"  RULES       0 shared legs  |  max 2/game  |  1/player  |  max 2/stat-type")
     if is_playoffs:
         print(f"  ADJUSTMENTS per-stat elevation ratios | expanded stdev | suppression active")
