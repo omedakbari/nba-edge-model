@@ -63,27 +63,27 @@ TIER_LABELS = {
 
 PRED_MULT: dict[str, dict[str, float]] = {
     'STAR': {
-        'pts':     0.97,   # data: 37.3% over-L10 rate; median 0.937 vs L10
+        'pts':     0.94,   # was 0.97 — backtest: median actual/L10=0.937, residual +2.10 median
         'reb':     1.00,   # data: 48.7% over-L10 rate; nearly flat
         'ast':     0.92,   # data: 32.0% over-L10 rate; meaningful decline
         'fg3m':    0.94,   # excluded from picks but kept for completeness
-        'pra':     0.97,   # composite (PTS-heavy)
+        'pra':     0.97,   # unchanged — PRA addressed separately after PTS branch
         'reb_ast': 0.96,   # REB flat + AST down
     },
     'CORE': {
-        'pts':     0.97,
+        'pts':     0.93,   # was 0.97 — non-star residual +1.63 pts mean; proportional cut
         'reb':     0.99,
         'ast':     0.93,   # AST underperformance persists
         'fg3m':    0.95,
-        'pra':     0.97,
+        'pra':     0.97,   # unchanged
         'reb_ast': 0.96,
     },
     'ROTATION': {
-        'pts':     0.93,   # DNP risk + minute reduction
+        'pts':     0.89,   # was 0.93 — highest over-prediction exposure; minute reductions amplify pts drop
         'reb':     0.95,
         'ast':     0.91,   # steepest decline (role reduction in tight rotations)
         'fg3m':    0.92,
-        'pra':     0.93,
+        'pra':     0.93,   # unchanged
         'reb_ast': 0.93,
     },
 }
@@ -133,9 +133,9 @@ PLAY_IN_PRED_MULT['FRINGE'] = {s: 0.88 for s in ['pts', 'reb', 'ast', 'fg3m', 'p
 # Correct: EXPAND stdev for all tiers to reflect actual playoff uncertainty.
 
 STD_MULT: dict[str, float] = {
-    'STAR':     1.13,   # was 0.87 — corrected direction
-    'CORE':     1.07,   # was 0.93 — corrected direction
-    'ROTATION': 1.10,   # was 1.18 — adjusted; DNP-risk players suppressed separately
+    'STAR':     1.20,   # was 1.13 — backtest: calibration 33-37% actual HR in 55-60% pred band → stdev too narrow
+    'CORE':     1.07,   # unchanged — CORE calibration less severe
+    'ROTATION': 1.10,   # unchanged — ROTATION picks suppressed anyway
     'FRINGE':   1.20,
 }
 

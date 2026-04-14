@@ -3,7 +3,7 @@ Playoff Backtest Harness — chronological replay of historical playoff games.
 
 Key design decisions (all derived from 2024-25 data analysis):
   - Synthetic line = L10 × PLAYOFF_LINE_RATIO[stat] (approximates real market lines)
-  - Playoff blend = 50% L10 + 50% model (beats 65/35 in playoff accuracy)
+  - Playoff blend = 65% L10 + 35% model (canonical spec)
   - Per-stat elevation ratios (not PTS-only) — separate ratios for PTS/REB/AST/PRA/RA
   - Stdev multipliers EXPAND for all tiers (actual playoff variance > L10 variance)
   - No leakage: rolling windows computed from data strictly before each game
@@ -27,6 +27,7 @@ from scipy import stats as scipy_stats
 warnings.filterwarnings("ignore")
 
 from config.settings import DB_PATH, PROCESSED_DIR
+from src.playoffs.adjustments import PRED_MULT as PRED_MULT_PLAYOFF
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -60,7 +61,7 @@ PLAYOFF_LINE_RATIO = {
 #   ROTATION: PTS=1.197, REB=1.051, AST=1.044  → use 1.10
 # Previous system compressed (STAR 0.87, CORE 0.93) — wrong direction.
 STD_MULT_PLAYOFF = {
-    'STAR':     1.13,
+    'STAR':     1.20,   # raised from 1.13 — PTS branch: fix overconfidence in 55-60% band
     'CORE':     1.07,
     'ROTATION': 1.10,
 }
@@ -347,7 +348,7 @@ def load_model(stat: str) -> Optional[dict]:
 
 def predict_blended(features_row: pd.Series, stat: str, l10_mean: float) -> Optional[float]:
     """
-    50% L10 + 50% model output (optimal for playoff accuracy).
+    65% L10 + 35% model output (canonical playoff spec).
     For composite stats: sum the component model predictions.
     Returns None if model is unavailable or features are missing.
     """
@@ -604,6 +605,10 @@ def run_playoff_backtest(
 
             if pred_blended is None:
                 pred_blended = l10_mean  # fallback to L10 if model unavailable
+
+            # Apply tier-based prediction multiplier (per-stat, from adjustments.py)
+            tier_pred_mult = PRED_MULT_PLAYOFF.get(tier, PRED_MULT_PLAYOFF['CORE']).get(stat, 1.0)
+            pred_blended = pred_blended * tier_pred_mult
 
             # Apply per-stat elevation ratio (if available)
             stat_ratio = player_elev.get(stat, None)
