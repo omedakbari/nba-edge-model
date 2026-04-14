@@ -60,8 +60,11 @@ PLAYOFF_LINE_RATIO = {
 #   CORE:     PTS=1.064, REB=1.100, AST=1.027  → use 1.07
 #   ROTATION: PTS=1.197, REB=1.051, AST=1.044  → use 1.10
 # Previous system compressed (STAR 0.87, CORE 0.93) — wrong direction.
+# STAR raised to 1.35 (STAR PTS ablation): disperses overconfident 65-70% band,
+#   improves STAR PTS P≥65% +3.5pp, overall P≥70% +0.9pp, zero non-PTS spillover.
+# Matches adjustments.py STD_MULT['STAR'].
 STD_MULT_PLAYOFF = {
-    'STAR':     1.20,   # raised from 1.13 — PTS branch: fix overconfidence in 55-60% band
+    'STAR':     1.35,
     'CORE':     1.07,
     'ROTATION': 1.10,
 }
@@ -427,6 +430,8 @@ def run_playoff_backtest(
     seasons: list = None,
     elev_train_seasons: list = None,
     verbose: bool = True,
+    star_pts_elev_cap: float = 1.25,
+    star_std_mult_override: float | None = None,
 ) -> pd.DataFrame:
     """
     Replay all playoff games chronologically for the given seasons.
@@ -437,6 +442,9 @@ def run_playoff_backtest(
                             (default: all seasons except the eval season,
                              using only 2022-23 onward due to data quality)
         verbose: print progress
+        star_pts_elev_cap: max elevation ratio applied to STAR PTS (default 1.25).
+                           Set lower (e.g. 1.05) to suppress over-confident STAR PTS picks.
+        star_std_mult_override: if set, overrides STD_MULT_PLAYOFF['STAR'] for this run.
 
     Returns:
         DataFrame with one row per (player, game, stat), columns:
@@ -596,7 +604,10 @@ def run_playoff_backtest(
                 l10_std_raw = l10_mean * 0.3
 
             # Adjust stdev to reflect actual playoff variance (expand, not compress)
-            adj_std = l10_std_raw * STD_MULT_PLAYOFF.get(tier, 1.10)
+            tier_std_mult = STD_MULT_PLAYOFF.get(tier, 1.10)
+            if tier == 'STAR' and star_std_mult_override is not None:
+                tier_std_mult = star_std_mult_override
+            adj_std = l10_std_raw * tier_std_mult
 
             # Blended prediction: 50/50 L10 + model
             pred_blended = predict_blended(feat_row, stat, l10_mean)
@@ -613,6 +624,9 @@ def run_playoff_backtest(
             # Apply per-stat elevation ratio (if available)
             stat_ratio = player_elev.get(stat, None)
             if stat_ratio is not None:
+                # STAR PTS cap: configurable per-run (ablation parameter)
+                if stat == 'pts' and tier == 'STAR':
+                    stat_ratio = min(stat_ratio, star_pts_elev_cap)
                 pred_blended = pred_blended * stat_ratio
 
             # Synthetic line: L10 × playoff market ratio

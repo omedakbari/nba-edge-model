@@ -133,9 +133,11 @@ PLAY_IN_PRED_MULT['FRINGE'] = {s: 0.88 for s in ['pts', 'reb', 'ast', 'fg3m', 'p
 # Correct: EXPAND stdev for all tiers to reflect actual playoff uncertainty.
 
 STD_MULT: dict[str, float] = {
-    'STAR':     1.20,   # was 1.13 — backtest: calibration 33-37% actual HR in 55-60% pred band → stdev too narrow
-    'CORE':     1.07,   # unchanged — CORE calibration less severe
-    'ROTATION': 1.10,   # unchanged — ROTATION picks suppressed anyway
+    'STAR':     1.35,   # was 1.20 — STAR PTS ablation: raising STD disperses overconfident 65-70% picks,
+                        #             improves STAR PTS P≥65% from 50.9%→54.3% (+3.5pp) and P≥70% overall
+                        #             +0.9pp; zero spillover to non-PTS stats. Config D in ablation_star_pts.py
+    'CORE':     1.07,   # unchanged
+    'ROTATION': 1.10,   # unchanged
     'FRINGE':   1.20,
 }
 

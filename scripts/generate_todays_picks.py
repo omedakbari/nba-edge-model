@@ -87,6 +87,15 @@ TIER_MIN_PROB_PLAYOFFS = {
     'ROTATION': 0.65,   # 54.8%→60.1% improvement; filters low-quality ROTATION picks
 }
 
+# Stat×tier overrides — applied on top of TIER_MIN_PROB_PLAYOFFS.
+# STAR PTS: confidence inversion at [65%,70%) band (39.5% HR) — model non-monotone
+#   in 55-70% range. Only 70%+ picks are reliable (65.7%→69.7% HR with STD fix).
+#   Ablation (ablation_star_pts.py Config D): no single lever restores monotonicity;
+#   policy gate is the correct production protection.
+STAT_TIER_MIN_PROB_PLAYOFFS: dict[tuple[str, str], float] = {
+    ('STAR', 'pts'): 0.70,
+}
+
 # PrizePicks stat_type strings → our internal stat keys
 PP_STAT_MAP = {
     'Points':        'pts',
@@ -598,9 +607,12 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
             p_under = 1.0 - p_over
 
             # Tier-aware gate (playoffs only): raise min_p for ROTATION picks.
-            # Effective threshold = max(stat-level floor, tier floor).
+            # Effective threshold = max(stat-level floor, tier floor, stat×tier override).
             if is_playoffs and tier is not None:
                 min_p = max(min_p, TIER_MIN_PROB_PLAYOFFS.get(tier, 0.55))
+                # Stat×tier override (e.g. STAR PTS requires P≥70%: non-monotone below)
+                stat_tier_key = (tier, stat)
+                min_p = max(min_p, STAT_TIER_MIN_PROB_PLAYOFFS.get(stat_tier_key, 0.0))
 
             base = {
                 'player_id':    row['player_id'],
@@ -954,6 +966,9 @@ def main() -> None:
     if is_playoffs:
         tier_str = "  |  ".join(f"{t} >= {round(v*100)}%" for t, v in TIER_MIN_PROB_PLAYOFFS.items())
         print(f"  TIER GATES  {tier_str}")
+        if STAT_TIER_MIN_PROB_PLAYOFFS:
+            override_str = "  |  ".join(f"{t} {s.upper()} >= {round(v*100)}%" for (t, s), v in STAT_TIER_MIN_PROB_PLAYOFFS.items())
+            print(f"  STAT GATES  {override_str}")
     print(f"  RULES       0 shared legs  |  max 2/game  |  1/player  |  max 2/stat-type")
     if is_playoffs:
         print(f"  ADJUSTMENTS per-stat elevation ratios | expanded stdev | suppression active")
