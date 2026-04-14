@@ -145,16 +145,25 @@ def analyze_game(
     engine: TeamRatingEngine,
     is_playoffs: bool,
     game_date: str,
+    series_g1_winner: str | None = None,
 ) -> dict:
     """
     Analyze a single game dict from ESPN odds. Returns analysis dict.
+    series_g1_winner: if Game 2+, pass the team abbreviation that won G1
+    for a ±1.5 pt series momentum adjustment.
     """
     home = game['home']
     away = game['away']
 
     # Model spread and win probability
-    model_spread = engine.predict_spread(home, away, game_date=game_date, is_playoffs=is_playoffs)
-    model_wp     = engine.win_probability(home, away, game_date=game_date, is_playoffs=is_playoffs)
+    model_spread = engine.predict_spread(
+        home, away, game_date=game_date, is_playoffs=is_playoffs,
+        series_g1_winner=series_g1_winner,
+    )
+    model_wp = engine.win_probability(
+        home, away, game_date=game_date, is_playoffs=is_playoffs,
+        series_g1_winner=series_g1_winner,
+    )
     home_rating  = engine.get_rating(home)
     away_rating  = engine.get_rating(away)
 
@@ -229,6 +238,7 @@ def analyze_game(
         'tier':            tier,
         'odds_provider':   game.get('odds_provider', ''),
         'is_playoffs':     is_playoffs,
+        'series_g1_winner': series_g1_winner,
     }
 
 
@@ -378,6 +388,24 @@ def save_picks(analyses: list[dict], target_date: str) -> Path:
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+def _parse_g1_winners(raw: str | None) -> dict[str, str]:
+    """
+    Parse --g1-winner argument into a {home_abbr: winner_abbr} lookup.
+    Accepts comma-separated pairs: "BOS:BOS,NYK:MIL"
+    Format per entry: HOME:WINNER  (both are team abbreviations)
+    e.g. --g1-winner BOS:BOS means BOS (home) won G1 of their series.
+    """
+    if not raw:
+        return {}
+    result = {}
+    for entry in raw.split(','):
+        entry = entry.strip()
+        if ':' in entry:
+            home, winner = entry.split(':', 1)
+            result[home.strip().upper()] = winner.strip().upper()
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description="Generate daily NBA spread/ML picks")
     parser.add_argument('--date',     default=date.today().isoformat(),
@@ -392,6 +420,20 @@ def main():
                         help='Save picks JSON to data/team_picks/YYYY-MM-DD.json')
     parser.add_argument('--show-all', action='store_true',
                         help='Show all games including no-edge ones')
+    parser.add_argument(
+        '--g1-winner',
+        default=None,
+        metavar='HOME:WINNER[,HOME:WINNER...]',
+        help=(
+            'Series Game 1 winners for momentum adjustment (Game 2+ only). '
+            'Format: HOME_ABBR:WINNER_ABBR — e.g. --g1-winner BOS:BOS,MIL:IND'
+        ),
+    )
+    parser.add_argument(
+        '--refresh-data',
+        action='store_true',
+        help='Refresh team_stats from NBA API before generating picks (adds ~2s)',
+    )
     args = parser.parse_args()
 
     target_date = args.date
@@ -399,6 +441,24 @@ def main():
     is_play_in  = args.play_in
 
     print_header(target_date, args.season, is_playoffs, is_play_in)
+
+    # Optionally refresh team_stats so ratings use today's full-season numbers
+    if args.refresh_data:
+        import subprocess, sys as _sys
+        print(f"  Refreshing team stats for {args.season}...")
+        result = subprocess.run(
+            [_sys.executable, 'src/ingestion/team_stats.py', '--update'],
+            capture_output=True, text=True,
+        )
+        if 'rows written' in result.stdout or 'upserted' in result.stdout.lower():
+            print(f"  Team stats updated.")
+        else:
+            print(f"  Team stats refresh done (or unchanged).")
+
+    # Parse G1 winners for series momentum
+    g1_winners = _parse_g1_winners(args.g1_winner)
+    if g1_winners and is_playoffs:
+        print(f"  Series G1 winners: {g1_winners}")
 
     # Build rating engine
     conn = sqlite3.connect(str(DB_PATH))
@@ -411,6 +471,15 @@ def main():
     ratings_df = engine.all_ratings()
     teams_with_data = len(ratings_df[ratings_df['games'] >= MIN_GAMES_FOR_PICK])
     print(f"  Ratings ready: {teams_with_data} teams with >= {MIN_GAMES_FOR_PICK} games")
+
+    # Warn if data may be stale (no games in last 3 days)
+    last_game_date = engine._games['game_date'].max() if not engine._games.empty else None
+    if last_game_date is not None:
+        from datetime import timedelta
+        days_old = (datetime.strptime(target_date, '%Y-%m-%d') - last_game_date.to_pydatetime().replace(tzinfo=None)).days
+        if days_old > 3:
+            print(f"  ⚠️  Ratings may be stale — last game in DB: {last_game_date.date()} ({days_old}d ago).")
+            print(f"      Run with --refresh-data or update game_logs manually.")
 
     # Fetch odds
     print(f"  Fetching ESPN lines for {target_date}...")
@@ -428,10 +497,13 @@ def main():
 
     print(f"  {len(scheduled)} game(s) to analyze")
 
-    # Analyze each game
+    # Analyze each game (apply series momentum where G1 winner is known)
     analyses = []
     for g in scheduled:
-        a = analyze_game(g, engine, is_playoffs, target_date)
+        home = g['home']
+        away = g['away']
+        g1w = g1_winners.get(home) or g1_winners.get(away)   # check both sides
+        a = analyze_game(g, engine, is_playoffs, target_date, series_g1_winner=g1w)
         analyses.append(a)
 
     conn.close()
