@@ -227,8 +227,10 @@ def ingest_season(season: str, season_type: str = "Regular Season", force_update
     for _, player in tqdm(active.iterrows(), total=len(active), desc=f"  {season}"):
         pid = int(player["player_id"])
 
-        # Skip if we already have this player's data (bypass with force_update=True)
-        if not force_update and pid in existing and existing[pid] > 0:
+        # Skip if we've already processed this player for this season/season_type.
+        # Both "has data" (games_pulled > 0) and "confirmed no data" (games_pulled = 0)
+        # are treated as done, making re-runs and interrupted pulls resumable.
+        if not force_update and pid in existing:
             summary["skipped"] += 1
             continue
 
@@ -236,6 +238,18 @@ def ingest_season(season: str, season_type: str = "Regular Season", force_update
         df = fetch_player_game_log(pid, season, season_type)
 
         if df.empty:
+            # Log as "checked, no data" so future runs skip this player immediately
+            # instead of re-hitting the API.  Critical for playoff backfills where
+            # ~80% of players never appeared in the playoffs.
+            conn.execute(
+                """
+                INSERT INTO ingestion_log (player_id, season, season_type, games_pulled)
+                VALUES (?, ?, ?, 0)
+                ON CONFLICT(player_id, season, season_type) DO NOTHING
+                """,
+                (pid, season, season_type),
+            )
+            conn.commit()
             summary["skipped"] += 1
             continue
 

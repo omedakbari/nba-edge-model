@@ -17,6 +17,7 @@ from config.settings import DB_PATH, PROCESSED_DIR
 from src.features.player_features import build_player_features
 from src.features.context_features import add_context_features
 from src.features.team_features import add_team_features
+from src.features.playoff_features import add_playoff_features
 
 
 def build_feature_dataset(min_minutes: float = 12.0) -> pd.DataFrame:
@@ -44,6 +45,9 @@ def build_feature_dataset(min_minutes: float = 12.0) -> pd.DataFrame:
 
     print("\n--- Team Features ---")
     df = add_team_features(df)
+
+    print("\n--- Playoff Features ---")
+    df = add_playoff_features(df)
 
     initial_rows = len(df)
     df = df.dropna(subset=['pts_L10', 'reb_L10', 'ast_L10'])

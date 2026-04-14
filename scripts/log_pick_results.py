@@ -87,7 +87,8 @@ def init_results_table(conn: sqlite3.Connection) -> None:
 
 def fetch_actuals_from_db(conn: sqlite3.Connection,
                           player_ids: list[int],
-                          game_date: str) -> dict[int, dict]:
+                          game_date: str,
+                          season_type: str = 'Regular Season') -> dict[int, dict]:
     """
     Pull actual box-score stats for a list of players on a given date.
     Returns {player_id: {stat_key: value, 'min': value, 'played': bool}}.
@@ -98,8 +99,8 @@ def fetch_actuals_from_db(conn: sqlite3.Connection,
         FROM game_logs
         WHERE player_id IN ({placeholders})
           AND game_date = ?
-          AND season_type = 'Regular Season'
-    """, player_ids + [game_date]).fetchall()
+          AND season_type = ?
+    """, player_ids + [game_date, season_type]).fetchall()
 
     result = {}
     for row in rows:
@@ -115,7 +116,8 @@ def fetch_actuals_from_db(conn: sqlite3.Connection,
 
 def fetch_actuals_from_api(player_ids: list[int],
                             game_date: str,
-                            season: str) -> dict[int, dict]:
+                            season: str,
+                            season_type: str = 'Regular Season') -> dict[int, dict]:
     """
     Fallback: pull actual stats via NBA API if the DB hasn't been updated yet.
     Slow — one request per player.
@@ -134,7 +136,7 @@ def fetch_actuals_from_api(player_ids: list[int],
         try:
             log = playergamelog.PlayerGameLog(
                 player_id=pid, season=season,
-                season_type_all_star='Regular Season',
+                season_type_all_star=season_type,
                 date_from_nullable=api_date,
                 date_to_nullable=api_date,
             )
@@ -206,6 +208,8 @@ def grade_date(date_str: str, overwrite: bool = False) -> None:
 
     picks = payload['picks']
     season = payload.get('season', '2025-26')
+    is_playoffs = payload.get('is_playoffs', False)
+    season_type = 'Playoffs' if is_playoffs else 'Regular Season'
     if not picks:
         print(f"  No picks in {picks_path}")
         return
@@ -225,14 +229,15 @@ def grade_date(date_str: str, overwrite: bool = False) -> None:
 
     # Look up actuals — try DB first, fall back to API
     player_ids = list({p['player_id'] for p in picks})
-    print(f"  Looking up actuals for {len(player_ids)} players on {date_str}...")
-    actuals = fetch_actuals_from_db(conn, player_ids, date_str)
+    mode_label = 'Playoffs' if is_playoffs else 'Regular Season'
+    print(f"  Looking up actuals for {len(player_ids)} players on {date_str} [{mode_label}]...")
+    actuals = fetch_actuals_from_db(conn, player_ids, date_str, season_type=season_type)
 
     missing = [pid for pid in player_ids if pid not in actuals]
     if missing:
         print(f"  {len(actuals)}/{len(player_ids)} found in DB. "
               f"Fetching {len(missing)} via NBA API (slow)...")
-        api_actuals = fetch_actuals_from_api(missing, date_str, season)
+        api_actuals = fetch_actuals_from_api(missing, date_str, season, season_type=season_type)
         actuals.update(api_actuals)
 
     # Grade and upsert

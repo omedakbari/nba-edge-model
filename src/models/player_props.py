@@ -37,6 +37,8 @@ TEST_SEASON = '2025-26'
 CONTEXT_FEATURES = [
     'pts_allowed_L15', 'reb_allowed_L15', 'ast_allowed_L15', 'fg3m_allowed_L15',
     'days_rest', 'is_b2b', 'is_home', 'game_month', 'own_pace_L15',
+    # Playoff-specific context — force-include so model learns postseason dynamics
+    'is_playoff', 'series_game_num',
 ]
 
 FEATURES_TO_EXCLUDE = [
