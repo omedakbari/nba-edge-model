@@ -81,9 +81,9 @@ PRED_MULT: dict[str, dict[str, float]] = {
     'ROTATION': {
         'pts':     0.89,   # was 0.93 — PTS branch
         'reb':     0.95,
-        'ast':     0.77,   # was 0.91 — AST branch: ROTATION actual/L10=0.556 vs line 0.769; pred must ≈ line to require true edge
+        'ast':     0.77,   # was 0.91 — AST branch: ROTATION actual/L10=0.556 vs line 0.769
         'fg3m':    0.92,
-        'pra':     0.93,   # unchanged
+        'pra':     0.87,   # was 0.93 — PRA branch: actual/L10=0.691 vs line 0.939; 0.87 requires elev_ratio≥1.08 to clear line
         'reb_ast': 0.93,
     },
 }
