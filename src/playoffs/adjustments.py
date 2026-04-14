@@ -71,17 +71,17 @@ PRED_MULT: dict[str, dict[str, float]] = {
         'reb_ast': 0.96,   # REB flat + AST down
     },
     'CORE': {
-        'pts':     0.93,   # was 0.97 — non-star residual +1.63 pts mean; proportional cut
+        'pts':     0.93,   # was 0.97 — PTS branch
         'reb':     0.99,
-        'ast':     0.93,   # AST underperformance persists
+        'ast':     0.82,   # was 0.93 — AST branch: CORE actual/L10=0.769 right at line; need model edge to clear
         'fg3m':    0.95,
         'pra':     0.97,   # unchanged
         'reb_ast': 0.96,
     },
     'ROTATION': {
-        'pts':     0.89,   # was 0.93 — highest over-prediction exposure; minute reductions amplify pts drop
+        'pts':     0.89,   # was 0.93 — PTS branch
         'reb':     0.95,
-        'ast':     0.91,   # steepest decline (role reduction in tight rotations)
+        'ast':     0.77,   # was 0.91 — AST branch: ROTATION actual/L10=0.556 vs line 0.769; pred must ≈ line to require true edge
         'fg3m':    0.92,
         'pra':     0.93,   # unchanged
         'reb_ast': 0.93,
