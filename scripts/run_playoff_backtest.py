@@ -322,9 +322,13 @@ def main():
     parser.add_argument('--seasons', nargs='+', default=['2024-25'],
                         help='Playoff seasons to evaluate')
     parser.add_argument('--save-csv', action='store_true',
-                        help='Save raw results to data/processed/playoff_backtest.csv')
+                        help='Save raw results CSV (see --csv-path for destination)')
     parser.add_argument('--save-report', action='store_true',
-                        help='Save markdown report to PLAYOFF_BACKTEST_REPORT.md')
+                        help='Save markdown report (see --report-path for destination)')
+    parser.add_argument('--csv-path', type=str, default=None,
+                        help='Override CSV output path (default: data/processed/playoff_backtest.csv)')
+    parser.add_argument('--report-path', type=str, default=None,
+                        help='Override report output path (default: PLAYOFF_BACKTEST_REPORT.md)')
     args = parser.parse_args()
 
     print(f"\n{'='*70}")
@@ -374,8 +378,8 @@ def main():
         f"**Total eligible player-games:** {len(df):,}  \n"
         f"**Line proxy:** Synthetic market line (L10 × stat ratio)  \n"
         f"**Prediction:** 65% L10 + 35% model (with per-stat elevation)  \n"
-        f"**Defensive tier:** ⚠️ PROVISIONAL — all games classified as 'mid' because `team_stats` is empty. "
-        f"Def-tier slice analysis will be flat until DRTG data is populated.  \n",
+        f"**Defensive tier:** Live — `team_stats` populated with regular-season DRTG for 2021-22 through 2025-26 "
+        f"(150 rows, 5 seasons × 30 teams). Top-10/bot-10 DRTG classification active.  \n",
         section_hit_rates(df),
         section_calibration(df),
         section_slice_analysis(df),
@@ -385,13 +389,14 @@ def main():
     ]
     report = "\n\n---\n\n".join(report_sections)
 
+    root = Path(__file__).parent.parent
     if args.save_report:
-        out = Path(__file__).parent.parent / "PLAYOFF_BACKTEST_REPORT.md"
+        out = Path(args.report_path) if args.report_path else root / "PLAYOFF_BACKTEST_REPORT.md"
         out.write_text(report)
         print(f"\n  Report saved to {out}")
 
     if args.save_csv:
-        csv_path = Path(__file__).parent.parent / "data" / "processed" / "playoff_backtest.csv"
+        csv_path = Path(args.csv_path) if args.csv_path else root / "data" / "processed" / "playoff_backtest.csv"
         df.to_csv(csv_path, index=False)
         print(f"  Raw results saved to {csv_path}")
 
