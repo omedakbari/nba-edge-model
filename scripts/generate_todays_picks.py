@@ -33,6 +33,14 @@ from scipy import stats as scipy_stats
 warnings.filterwarnings("ignore")
 
 from config.settings import PROCESSED_DIR, DB_PATH, NBA_API_DELAY, CURRENT_SEASON
+from src.playoffs.adjustments import (
+    load_playoff_elevation_ratios,
+    load_playoff_elevation_ratios_per_stat,
+    apply_playoff_adjustments,
+    should_suppress,
+    playoff_context_note,
+    TIER_LABELS,
+)
 
 
 # ── Constants ──────────────────────────────────────────────────────────────────
@@ -50,9 +58,20 @@ COMPOSITE_STATS = {
 STAT_MIN_PROB = {
     'reb':     0.57,
     'ast':     0.57,
-    'pra':     0.58,
-    'reb_ast': 0.58,
+    'pra':     0.57,
+    'reb_ast': 0.57,
     'pts':     0.57,
+}
+
+# Playoff-specific minimums — tighter thresholds derived from backtest.
+# AST top-quintile (P≥0.75 vs synthetic line) hits 68%; REB non-monotonic → 0.60 floor.
+# PTS: model discriminates at P≥0.65 against real PP lines.
+STAT_MIN_PROB_PLAYOFFS = {
+    'reb':     0.60,
+    'ast':     0.62,
+    'pra':     0.60,
+    'reb_ast': 0.60,
+    'pts':     0.60,
 }
 
 # PrizePicks stat_type strings → our internal stat keys
@@ -189,8 +208,12 @@ def get_todays_games(target_date: str) -> list[dict]:
     team_dict = {t['id']: t['abbreviation'] for t in static_teams.get_teams()}
     result = []
     for _, row in games_df.iterrows():
-        home_id = int(row.get('HOME_TEAM_ID', 0))
-        away_id = int(row.get('VISITOR_TEAM_ID', 0))
+        raw_home = row.get('HOME_TEAM_ID')
+        raw_away = row.get('VISITOR_TEAM_ID')
+        if raw_home is None or raw_away is None:
+            continue  # API returns incomplete rows for games far in the future
+        home_id = int(raw_home)
+        away_id = int(raw_away)
         result.append({
             'game_id': str(row['GAME_ID']),
             'home_team_id': home_id,
@@ -299,7 +322,9 @@ def get_team_pace(team_abbr: str, before_date: str, window: int = DEF_WINDOW) ->
 
 def build_todays_features(features_df: pd.DataFrame,
                            player_contexts: list[dict],
-                           target_date: str) -> pd.DataFrame:
+                           target_date: str,
+                           is_playoffs: bool = False,
+                           season: str | None = None) -> pd.DataFrame:
     features_df = features_df.copy()
     features_df['game_date'] = pd.to_datetime(features_df['game_date'])
     target_dt = pd.to_datetime(target_date)
@@ -312,6 +337,19 @@ def build_todays_features(features_df: pd.DataFrame,
         .reset_index()
     )
     recent_map = recent_df.set_index('player_id').to_dict(orient='index')
+
+    # Pre-index playoff game logs for series context lookups (only needed in playoff mode).
+    # Scoped to the current season so prior-year matchups against the same opponent don't
+    # inflate series_game_num (e.g. LeBron vs DEN had 9 cross-season games — without the
+    # season filter his series_game_num for game 1 of 2025-26 playoffs would be 10).
+    if is_playoffs and 'season_type' in features_df.columns and season:
+        playoff_logs = features_df[
+            (features_df['season_type'] == 'Playoffs') &
+            (features_df['season'] == season) &
+            (features_df['game_date'] < target_dt)
+        ].sort_values('game_date')
+    else:
+        playoff_logs = pd.DataFrame()
 
     def_cache: dict = {}
     pace_cache: dict = {}
@@ -348,6 +386,46 @@ def build_todays_features(features_df: pd.DataFrame,
         if team not in pace_cache:
             pace_cache[team] = get_team_pace(team, target_date)
         row.update(pace_cache[team])
+
+        # Playoff series context: compute series_game_num and series_L3 features
+        # from actual prior games in this series, not the stale parquet row values.
+        if is_playoffs and not playoff_logs.empty:
+            series_games = playoff_logs[
+                (playoff_logs['player_id'] == pid) &
+                (playoff_logs['opp_abbr'] == opp)
+            ]
+            row['is_playoff'] = 1
+            row['series_game_num'] = len(series_games) + 1
+            for stat in ['pts', 'reb', 'ast']:
+                col = f'{stat}_series_L3'
+                if not series_games.empty and stat in series_games.columns:
+                    row[col] = series_games[stat].tail(3).mean()
+                else:
+                    row[col] = float('nan')
+            # pra = pts + reb + ast composite
+            if not series_games.empty and all(c in series_games.columns for c in ['pts', 'reb', 'ast']):
+                row['pra_series_L3'] = (
+                    series_games[['pts', 'reb', 'ast']].sum(axis=1).tail(3).mean()
+                )
+            else:
+                row['pra_series_L3'] = float('nan')
+        elif is_playoffs:
+            row['is_playoff'] = 1
+            row['series_game_num'] = 1
+            for col in ['pts_series_L3', 'reb_series_L3', 'ast_series_L3', 'pra_series_L3']:
+                row[col] = float('nan')
+
+        # NaN guard for series_L3 features — model requires them; fill with L10 when no
+        # series context exists (Game 1, non-playoff mode, or first career playoff game).
+        # series_game_num also defaults to 1 for non-playoff games.
+        for col, l10_col in [('pts_series_L3', 'pts_L10'),
+                              ('reb_series_L3', 'reb_L10'),
+                              ('ast_series_L3', 'ast_L10'),
+                              ('pra_series_L3', 'pra_L10')]:
+            if pd.isna(row.get(col)):
+                row[col] = row.get(l10_col, float('nan'))
+        if pd.isna(row.get('series_game_num')):
+            row['series_game_num'] = 1
 
         rows.append(row)
 
@@ -393,23 +471,28 @@ def predict_stat_raw(df: pd.DataFrame, stat: str,
             cols = [c for c in m['feature_cols'] if c in df.columns]
             valid &= df[cols].notna().all(axis=1)
         preds = pd.Series(0.0, index=df.index)
-        for m in models.values():
-            cols = [c for c in m['feature_cols'] if c in df.columns]
-            preds.loc[valid] += m['model'].predict(df.loc[valid, cols])
+        if valid.sum() > 0:
+            for m in models.values():
+                cols = [c for c in m['feature_cols'] if c in df.columns]
+                preds.loc[valid] += m['model'].predict(df.loc[valid, cols])
         preds[~valid] = np.nan
     else:
         m = _get(stat)
         cols = [c for c in m['feature_cols'] if c in df.columns]
         valid = df[cols].notna().all(axis=1)
         preds = pd.Series(np.nan, index=df.index)
-        preds.loc[valid] = m['model'].predict(df.loc[valid, cols])
+        if valid.sum() > 0:
+            preds.loc[valid] = m['model'].predict(df.loc[valid, cols])
     return preds
 
 
 # ── Candidate generation ───────────────────────────────────────────────────────
 
 def build_candidates(df: pd.DataFrame, pp_lines: dict,
-                     injury_report: dict) -> pd.DataFrame:
+                     injury_report: dict,
+                     is_playoffs: bool = False,
+                     is_play_in: bool = False,
+                     playoff_ratios: dict | None = None) -> pd.DataFrame:
     """
     Score every (player, stat) pair. Returns OVER and UNDER candidates.
 
@@ -418,6 +501,11 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
       - Players with 'Day-To-Day' or 'Doubtful' are flagged but kept.
       - When pp_lines is populated: only surfaces picks with a real PP line.
       - Falls back to L10 baseline if pp_lines is empty.
+
+    Playoff mode (is_playoffs=True):
+      - Applies tier-based prediction and variance adjustments.
+      - Suppresses high-risk rotation plays (DNP/minute-cut signals).
+      - Labels each pick with its playoff tier and adjustment info.
 
     Returns a DataFrame with a 'direction' column: 'OVER' or 'UNDER'.
     """
@@ -437,11 +525,20 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
         if l10_col not in df.columns:
             continue
 
-        min_p = STAT_MIN_PROB[stat]
+        min_p = STAT_MIN_PROB_PLAYOFFS[stat] if is_playoffs else STAT_MIN_PROB[stat]
         preds = predict_stat_raw(df, stat, model_cache=model_cache)
 
         for idx, row in df.iterrows():
-            pred = preds.get(idx, np.nan)
+            pred_raw = preds.get(idx, np.nan)
+            l10_val = row.get(l10_col)
+
+            if is_playoffs and not pd.isna(pred_raw) and not pd.isna(l10_val) and float(l10_val) > 0:
+                # 50/50 L10 / model blend for playoff mode — mirrors backtest harness
+                # and aligns with the validate_playoffs.py calibration (67% hit rate)
+                pred = 0.50 * float(l10_val) + 0.50 * float(pred_raw)
+            else:
+                pred = pred_raw
+
             if pd.isna(pred):
                 continue
 
@@ -466,6 +563,24 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
 
             std_val = row.get(std_col, np.nan)
             std_float = float('nan') if pd.isna(std_val) else float(std_val)
+
+            # ── Playoff adjustment layer ───────────────────────────────────────
+            playoff_note = ''
+            tier = None
+            if is_playoffs:
+                adj_pred, adj_std, tier, pred_mult, std_mult = apply_playoff_adjustments(
+                    float(pred), std_float, stat, row, playoff_ratios,
+                    play_in=is_play_in,
+                )
+                # Suppress high-risk rotation plays
+                if should_suppress(row, tier):
+                    continue
+                has_history = bool(playoff_ratios and int(row.get('player_id', -1)) in playoff_ratios)
+                playoff_note = playoff_context_note(tier, pred_mult, std_mult, False, has_history)
+                pred = adj_pred
+                std_float = adj_std
+            # ──────────────────────────────────────────────────────────────────
+
             p_over = prob_over(float(pred), float(line), std_float)
             p_under = 1.0 - p_over
 
@@ -482,6 +597,7 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
                 'pred':         round(float(pred), 1),
                 'line_source':  'prizepicks' if using_real_lines else 'l10_avg',
                 'injury_flag':  inj_status,
+                'playoff_note': playoff_note,
             }
 
             if p_over >= min_p:
@@ -500,16 +616,19 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
 
 def build_card(candidates: pd.DataFrame, n_legs: int, exclude_keys: set) -> list[dict]:
     """
-    Greedy highest-confidence selection with constraints:
+    Greedy highest-confidence selection with correlation-aware constraints:
       - Skip (player_id, stat, direction) keys already in exclude_keys
       - One prop per player per card
-      - Max 2 legs per game
-      - Max 2 legs of the same stat type per card (diversity)
+      - Max 2 legs per game (limits correlated failure in blowouts/closeouts)
+      - Max 2 legs of the same stat type per card (diversification)
+      - Prefer different games over same game when confidence is close (within 2%)
+        to reduce correlated failure risk across legs.
     """
     used_players: set = set()
     game_counts: dict = {}
     stat_counts: dict = {}
     card: list[dict] = []
+    card_games: list = []  # ordered list of games added, for correlation tracking
 
     for _, row in candidates.iterrows():
         key = (row['player_id'], row['stat'], row['direction'])
@@ -517,42 +636,115 @@ def build_card(candidates: pd.DataFrame, n_legs: int, exclude_keys: set) -> list
             continue
         if row['player_id'] in used_players:
             continue
-        if game_counts.get(row['game'], 0) >= 2:
+
+        game = row['game']
+        game_cnt = game_counts.get(game, 0)
+        if game_cnt >= 2:
             continue
+
         if stat_counts.get(row['stat'], 0) >= 2:
             continue
 
+        # Soft correlation penalty: skip same-game if card already has 2+ legs
+        # AND there's a different-game candidate within 3% probability
+        # (only enforce when we have choices, i.e., card not yet desperate for legs)
+        if game_cnt == 1 and len(card) >= 2:
+            # Check if a different-game candidate is close in confidence
+            game_threshold = row['prob'] + 0.03
+            has_diff_game_alt = False
+            for _, alt in candidates.iterrows():
+                if alt['game'] != game and alt['game'] not in {r['game'] for r in card if r.get('game') == game}:
+                    alt_key = (alt['player_id'], alt['stat'], alt['direction'])
+                    if (alt_key not in exclude_keys and
+                            alt['player_id'] not in used_players and
+                            game_counts.get(alt['game'], 0) < 2 and
+                            stat_counts.get(alt['stat'], 0) < 2 and
+                            alt['prob'] >= game_threshold - 0.03):
+                        has_diff_game_alt = True
+                        break
+            if has_diff_game_alt:
+                continue  # defer this same-game pick, prefer diversity
+
         card.append(row.to_dict())
         used_players.add(row['player_id'])
-        game_counts[row['game']] = game_counts.get(row['game'], 0) + 1
+        game_counts[game] = game_cnt + 1
         stat_counts[row['stat']] = stat_counts.get(row['stat'], 0) + 1
+        card_games.append(game)
 
         if len(card) == n_legs:
             break
+
+    # If we fell short due to the correlation penalty, fill remaining slots without it
+    if len(card) < n_legs:
+        for _, row in candidates.iterrows():
+            if len(card) == n_legs:
+                break
+            key = (row['player_id'], row['stat'], row['direction'])
+            if key in exclude_keys:
+                continue
+            if row['player_id'] in used_players:
+                continue
+            if game_counts.get(row['game'], 0) >= 2:
+                continue
+            if stat_counts.get(row['stat'], 0) >= 2:
+                continue
+            card.append(row.to_dict())
+            used_players.add(row['player_id'])
+            game_counts[row['game']] = game_counts.get(row['game'], 0) + 1
+            stat_counts[row['stat']] = stat_counts.get(row['stat'], 0) + 1
+
     return card
 
 
 # ── Output ─────────────────────────────────────────────────────────────────────
 
-def print_card(card: list[dict], label: str) -> None:
+def print_ranked_board(candidates: pd.DataFrame, top_n: int = 20,
+                        is_playoffs: bool = False) -> None:
+    """Print the full ranked prop board before combo selection."""
+    if candidates.empty:
+        return
+    w = 84
+    label = "RANKED PROP BOARD (all qualifying legs, sorted by confidence)"
+    print(f"\n  {label}")
+    if is_playoffs:
+        print(f"  {'#':<3} {'Player':<26} {'Stat':<9} {'Dir':<5} {'Line':>6} {'Model':>6} {'P':>6}  Context")
+    else:
+        print(f"  {'#':<3} {'Player':<26} {'Stat':<9} {'Dir':<5} {'Line':>6} {'Model':>6} {'P':>6}  Game")
+    print(f"  {'-' * w}")
+    for rank, (_, row) in enumerate(candidates.head(top_n).iterrows(), 1):
+        direction = row.get('direction', 'OVER')
+        arrow = '▲' if direction == 'OVER' else '▼'
+        context = row.get('playoff_note', '') or row['game']
+        print(f"  {rank:<3} {row['player']:<26} {row['stat']:<9} {arrow}{direction:<4} "
+              f"{row['line']:>6.1f} {row['pred']:>6.1f} {row['prob']:>6.1%}  {context}")
+    if len(candidates) > top_n:
+        print(f"  ... and {len(candidates) - top_n} more legs above minimum threshold")
+
+
+def print_card(card: list[dict], label: str, is_playoffs: bool = False) -> None:
     w = 78
     print(f"\n  {label}")
-    print(f"  {'Player':<28} {'Stat':<9} {'Dir':<5} {'PP Line':>7} {'Model':>7} {'P(dir)':>7}  Matchup")
+    if is_playoffs:
+        print(f"  {'Player':<28} {'Stat':<9} {'Dir':<5} {'PP Line':>7} {'Model':>7} {'P(dir)':>7}  Playoff Context")
+    else:
+        print(f"  {'Player':<28} {'Stat':<9} {'Dir':<5} {'PP Line':>7} {'Model':>7} {'P(dir)':>7}  Matchup")
     print(f"  {'-' * w}")
     for leg in card:
         direction = leg.get('direction', 'OVER')
         arrow = '▲' if direction == 'OVER' else '▼'
+        context = leg.get('playoff_note', '') or leg['game']
         print(f"  {leg['player']:<28} {leg['stat']:<9} {arrow} {direction:<4} {leg['line']:>7.1f} "
-              f"{leg['pred']:>7.1f} {leg['prob']:>7.1%}  {leg['game']}")
+              f"{leg['pred']:>7.1f} {leg['prob']:>7.1%}  {context}")
     avg_prob = sum(leg['prob'] for leg in card) / len(card)
+    combo_edge = sum(leg['prob'] for leg in card) / len(card) - 0.5
     print(f"  {'-' * w}")
-    print(f"  {'Avg confidence':>44}  {avg_prob:>7.1%}")
+    print(f"  {'Avg confidence':>44}  {avg_prob:>7.1%}  (edge: {combo_edge:+.1%} vs 50%)")
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def save_picks(card1: list[dict], card2: list[dict], date_str: str,
-               season: str, line_source: str) -> Path:
+               season: str, line_source: str, is_playoffs: bool = False) -> Path:
     """Serialize both cards to data/picks/YYYY-MM-DD.json."""
     picks_dir = Path(__file__).parent.parent / "data" / "picks"
     picks_dir.mkdir(parents=True, exist_ok=True)
@@ -584,6 +776,7 @@ def save_picks(card1: list[dict], card2: list[dict], date_str: str,
         'season':       season,
         'generated_at': datetime.utcnow().isoformat() + 'Z',
         'line_source':  line_source,
+        'is_playoffs':  is_playoffs,
         'picks':        _serialize_card(card1, 'card1', len(card1))
                       + _serialize_card(card2, 'card2', len(card2)),
     }
@@ -602,15 +795,50 @@ def main() -> None:
                         help=f'NBA season string (default: {CURRENT_SEASON})')
     parser.add_argument('--save', action='store_true',
                         help='Save picks to data/picks/YYYY-MM-DD.json for later grading')
+    parser.add_argument('--playoffs', action='store_true',
+                        help='Activate playoffs mode: applies tier-based prediction and variance adjustments')
+    parser.add_argument('--play-in', action='store_true',
+                        help='Activate Play-In mode: shallower discounts/narrower stdev than full playoffs, '
+                             'no elevation ratios (no Play-In history in DB yet)')
     args = parser.parse_args()
+
+    if args.play_in and args.playoffs:
+        print("Error: --play-in and --playoffs are mutually exclusive.")
+        sys.exit(1)
 
     feature_path = PROCESSED_DIR / "features.parquet"
     if not feature_path.exists():
         print("Error: features.parquet not found. Run: python -m src.features.pipeline")
         sys.exit(1)
 
+    is_playoffs = args.playoffs or args.play_in   # both modes use the playoff adjustment path
+    is_play_in  = args.play_in
+    playoff_ratios: dict = {}
+
     print(f"\n  NBA Edge Model — Daily Picks")
-    print(f"  Date: {args.date}  |  Season: {args.season}")
+    if is_play_in:
+        mode_label = "PLAY-IN EDITION"
+    elif is_playoffs:
+        mode_label = "PLAYOFFS EDITION"
+    else:
+        mode_label = "Regular Season"
+    print(f"  Date: {args.date}  |  Season: {args.season}  |  Mode: {mode_label}")
+
+    if is_playoffs and not is_play_in:
+        print(f"\n  Loading playoff history from DB (per-stat elevation ratios)...")
+        playoff_ratios = load_playoff_elevation_ratios_per_stat(DB_PATH)
+        if playoff_ratios:
+            print(f"  Found per-stat elevation ratios for {len(playoff_ratios)} players")
+        else:
+            # Fall back to legacy PTS-only ratios
+            playoff_ratios = load_playoff_elevation_ratios(DB_PATH)
+            if playoff_ratios:
+                print(f"  Found legacy PTS-based ratios for {len(playoff_ratios)} players")
+            else:
+                print(f"  No playoff history in DB — using tier-based adjustments only")
+                print(f"  (Run 'python scripts/pull_season_data.py --playoffs' to add history)")
+    elif is_play_in:
+        print(f"  Play-In mode: elevation ratios disabled (no Play-In game log history in DB).")
 
     # Fetch PrizePicks lines
     print(f"\n  Fetching PrizePicks lines...")
@@ -647,7 +875,8 @@ def main() -> None:
         sys.exit(0)
 
     print(f"\n  Building features for {len(player_contexts)} roster slots...")
-    df_today = build_todays_features(features_df, player_contexts, args.date)
+    df_today = build_todays_features(features_df, player_contexts, args.date,
+                                      is_playoffs=is_playoffs, season=args.season)
 
     if df_today.empty:
         print("  No players with sufficient game history.")
@@ -655,7 +884,10 @@ def main() -> None:
 
     print(f"  Players qualifying (min_L10 >= {MIN_MINUTES} min): {len(df_today)}")
 
-    candidates = build_candidates(df_today, pp_lines, injury_report)
+    candidates = build_candidates(df_today, pp_lines, injury_report,
+                                  is_playoffs=is_playoffs,
+                                  is_play_in=is_play_in,
+                                  playoff_ratios=playoff_ratios if is_playoffs else None)
 
     if candidates.empty:
         if pp_lines:
@@ -671,32 +903,46 @@ def main() -> None:
     card2 = build_card(candidates, n_legs=5, exclude_keys=used)
 
     line_label = "PrizePicks lines" if pp_lines else "L10 avg lines (PP unavailable)"
+    if is_play_in:
+        playoffs_label = "  [PLAY-IN EDITION]"
+    elif is_playoffs:
+        playoffs_label = "  [PLAYOFFS EDITION]"
+    else:
+        playoffs_label = ""
     print(f"\n{'=' * 76}")
-    print(f"  SAFE FLEX DAILY PICKS  —  {line_label}")
+    print(f"  SAFE FLEX DAILY PICKS  —  {line_label}{playoffs_label}")
     print(f"{'=' * 76}")
 
+    # Show ranked board first (all qualifying legs)
+    if is_playoffs:
+        print_ranked_board(candidates, top_n=25, is_playoffs=True)
+
     if card1:
-        print_card(card1, "CARD 1  —  3-Leg SAFE Flex")
+        print_card(card1, "CARD 1  —  3-Leg SAFE Flex", is_playoffs=is_playoffs)
     else:
         print("\n  CARD 1: Not enough qualifying legs (need 3).")
 
     if card2:
-        print_card(card2, "CARD 2  —  5-Leg SAFE Flex")
+        print_card(card2, "CARD 2  —  5-Leg SAFE Flex", is_playoffs=is_playoffs)
     else:
         print("\n  CARD 2: Not enough non-overlapping legs (need 5).")
 
     print(f"\n{'=' * 76}")
     if pp_lines:
-        print(f"  PP Line = PrizePicks standard line  |  Model = raw model prediction")
-    thresholds_str = "  |  ".join(f"{s.upper()} >= {round(v*100)}%" for s, v in STAT_MIN_PROB.items())
+        print(f"  PP Line = PrizePicks standard line  |  Model = blended prediction")
+    thresholds = STAT_MIN_PROB_PLAYOFFS if is_playoffs else STAT_MIN_PROB
+    thresholds_str = "  |  ".join(f"{s.upper()} >= {round(v*100)}%" for s, v in thresholds.items())
     print(f"  THRESHOLDS  {thresholds_str}")
     print(f"  RULES       0 shared legs  |  max 2/game  |  1/player  |  max 2/stat-type")
+    if is_playoffs:
+        print(f"  ADJUSTMENTS per-stat elevation ratios | expanded stdev | suppression active")
     print(f"  ⚠️  = Day-To-Day/Doubtful — verify lineup before betting")
     print(f"{'=' * 76}\n")
 
     if args.save:
         line_source = 'prizepicks' if pp_lines else 'l10_avg'
-        out_path = save_picks(card1 or [], card2 or [], args.date, args.season, line_source)
+        out_path = save_picks(card1 or [], card2 or [], args.date, args.season, line_source,
+                              is_playoffs=is_playoffs)
         n_saved = len(card1 or []) + len(card2 or [])
         print(f"  Saved {n_saved} picks → {out_path}")
         print(f"  Grade after games: python scripts/log_pick_results.py --date {args.date}\n")

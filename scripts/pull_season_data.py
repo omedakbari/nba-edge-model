@@ -25,6 +25,44 @@ from config.settings import CURRENT_SEASON
 from src.utils.db import init_db, get_connection, table_row_count
 from src.ingestion.game_logs import ingest_season, backfill_all_seasons
 
+# Playoff seasons to pull for historical elevation analysis.
+# Add new seasons here each year after playoffs conclude.
+PLAYOFF_SEASONS = ["2024-25", "2023-24", "2022-23", "2021-22"]
+
+# Play-In seasons available in nba_api (tournament started in 2020-21).
+PLAYIN_SEASONS = ["2024-25", "2023-24", "2022-23", "2021-22", "2020-21"]
+
+
+def pull_playoff_data(seasons: list = None) -> None:
+    """
+    Pull Playoffs game logs for historical adjustment calculations.
+
+    This is separate from the regular daily workflow. Run once before
+    the current playoffs begin, or whenever you want updated history.
+
+    After running, generate_todays_picks.py --playoffs will automatically
+    use this data to apply per-player elevation ratios.
+    """
+    seasons = seasons or PLAYOFF_SEASONS
+    print("\n" + "=" * 60)
+    print("  NBA EDGE MODEL — PLAYOFF DATA PULL")
+    print("=" * 60)
+    print(f"  Pulling Playoffs data for: {', '.join(seasons)}")
+    print(f"  This takes ~10–30 min due to API rate limits.\n")
+    init_db()
+    total = {"inserted": 0, "skipped": 0, "errors": 0}
+    for season in seasons:
+        result = ingest_season(season, season_type="Playoffs", force_update=False)
+        for key in total:
+            total[key] += result.get(key, 0)
+        print(f"  {season} Playoffs: {result['inserted']} rows, {result['skipped']} skipped, {result['errors']} errors")
+    print("\n" + "=" * 60)
+    print(f"  PLAYOFF PULL COMPLETE")
+    print(f"  Total rows: {total['inserted']} inserted, {total['errors']} errors")
+    print(f"\n  Next: run picks with playoffs mode:")
+    print(f"  python scripts/generate_todays_picks.py --playoffs --save")
+    print("=" * 60 + "\n")
+
 
 def run_test():
     """
@@ -98,6 +136,11 @@ if __name__ == "__main__":
     parser.add_argument("--backfill", action="store_true", help="Full backfill of all seasons")
     parser.add_argument("--season", type=str, help="Pull a specific season")
     parser.add_argument("--test", action="store_true", help="Quick test with one player")
+    parser.add_argument("--playoffs", action="store_true",
+                        help="Pull Playoffs game logs for historical adjustment data")
+    parser.add_argument("--play-in", action="store_true",
+                        help="Pull Play-In game logs (2020-21 through 2024-25, ~5-10 min)")
+    parser.add_argument("--update", action="store_true", help="Update current regular season")
 
     args = parser.parse_args()
 
@@ -105,6 +148,32 @@ if __name__ == "__main__":
         run_test()
     elif args.backfill:
         backfill_all_seasons()
+    elif args.playoffs:
+        pull_playoff_data()
+    elif args.play_in:
+        print("\n" + "=" * 60)
+        print("  NBA EDGE MODEL — PLAY-IN DATA PULL")
+        print("=" * 60)
+        print(f"  Pulling PlayIn data for: {', '.join(PLAYIN_SEASONS)}")
+        print(f"  This takes ~5–10 min due to API rate limits.\n")
+        init_db()
+        total = {"inserted": 0, "skipped": 0, "errors": 0}
+        for season in PLAYIN_SEASONS:
+            result = ingest_season(season, season_type="PlayIn", force_update=False)
+            for key in total:
+                total[key] += result.get(key, 0)
+            print(f"  {season} Play-In: {result['inserted']} rows, {result['skipped']} skipped, {result['errors']} errors")
+        print("\n" + "=" * 60)
+        print(f"  PLAY-IN PULL COMPLETE")
+        print(f"  Total rows: {total['inserted']} inserted, {total['errors']} errors")
+        print(f"\n  Next: rebuild features and run picks with play-in mode:")
+        print(f"  python -m src.features.pipeline")
+        print(f"  python scripts/generate_todays_picks.py --play-in --save")
+        print("=" * 60 + "\n")
+    elif args.update:
+        init_db()
+        result = ingest_season(CURRENT_SEASON, force_update=True)
+        print(f"\n  Update complete: {result['inserted']} new rows, {result['errors']} errors")
     elif args.season:
         init_db()
         ingest_season(args.season)
