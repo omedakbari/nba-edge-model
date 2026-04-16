@@ -209,7 +209,17 @@ def grade_date(date_str: str, overwrite: bool = False) -> None:
     picks = payload['picks']
     season = payload.get('season', '2025-26')
     is_playoffs = payload.get('is_playoffs', False)
-    season_type = 'Playoffs' if is_playoffs else 'Regular Season'
+    is_play_in = payload.get('is_play_in', False)
+    # Map saved flags → the season_type string used in game_logs.
+    # Older JSON files lack 'is_play_in'; they may have is_playoffs=True for
+    # play-in dates — fall through to 'Playoffs' in that case (safe: the
+    # void-guard below will catch any dates that were never actually graded).
+    if is_play_in:
+        season_type = 'PlayIn'
+    elif is_playoffs:
+        season_type = 'Playoffs'
+    else:
+        season_type = 'Regular Season'
     if not picks:
         print(f"  No picks in {picks_path}")
         return
@@ -217,15 +227,33 @@ def grade_date(date_str: str, overwrite: bool = False) -> None:
     conn = sqlite3.connect(str(DB_PATH))
     init_results_table(conn)
 
-    # Check for already-graded picks
+    # Check for already-graded picks.
+    # Void-only rows are grading artifacts (DB not yet updated at grade time);
+    # they do not count as a real grade.  Auto-clear them so a re-run without
+    # --overwrite still produces correct results once the DB is current.
     if not overwrite:
-        existing = conn.execute(
-            "SELECT COUNT(*) FROM pick_results WHERE pick_date = ?", (date_str,)
-        ).fetchone()[0]
-        if existing > 0:
-            print(f"  {existing} picks already graded for {date_str}. Use --overwrite to re-grade.")
-            conn.close()
-            return
+        total_existing, gradeable_existing = conn.execute(
+            """SELECT COUNT(*),
+                      SUM(CASE WHEN result IN ('hit','miss') THEN 1 ELSE 0 END)
+               FROM pick_results WHERE pick_date = ?""",
+            (date_str,),
+        ).fetchone()
+        if total_existing > 0:
+            if gradeable_existing == 0:
+                # All existing rows are void/push — DB was stale at grade time.
+                # Delete them and fall through to a clean re-grade.
+                conn.execute(
+                    "DELETE FROM pick_results WHERE pick_date = ?", (date_str,)
+                )
+                conn.commit()
+                print(f"  Note: cleared {total_existing} void-only rows for {date_str} "
+                      f"— re-grading with current DB.")
+            else:
+                print(f"  {total_existing} picks already graded for {date_str} "
+                      f"({gradeable_existing} with real outcomes). "
+                      f"Use --overwrite to re-grade.")
+                conn.close()
+                return
 
     # Look up actuals — try DB first, fall back to API
     player_ids = list({p['player_id'] for p in picks})
@@ -439,6 +467,32 @@ def run_report(from_date: str | None = None, to_date: str | None = None) -> None
         bar = '█' * int(rate * 10)
         print(f"    {pick_date}:  {int(hits):>2}/{n:<3}  {rate:.0%}  {bar}")
 
+    # Void-only dates — in DB but excluded above because no hit/miss rows.
+    # Build a range-aware filter for the void query.
+    void_range = "1=1"
+    void_params: list = []
+    if from_date:
+        void_range += " AND pick_date >= ?"
+        void_params.append(from_date)
+    if to_date:
+        void_range += " AND pick_date <= ?"
+        void_params.append(to_date)
+    void_rows = conn.execute(f"""
+        SELECT pick_date, COUNT(*) as n
+        FROM pick_results
+        WHERE {void_range}
+          AND pick_date NOT IN (
+              SELECT DISTINCT pick_date FROM pick_results
+              WHERE result IN ('hit', 'miss')
+                AND {void_range}
+          )
+        GROUP BY pick_date ORDER BY pick_date
+    """, void_params + void_params).fetchall()
+    if void_rows:
+        print(f"\n  Void-only dates (excluded from hit-rate — no game data at grade time):")
+        for pick_date, n in void_rows:
+            print(f"    {pick_date}:  {n} void picks  ← run --overwrite after updating DB")
+
     # Threshold validation summary
     print(f"\n  Threshold calibration check:")
     print(f"  (model P vs actual hit rate — within ±5% is well-calibrated)")
@@ -450,8 +504,10 @@ def run_report(from_date: str | None = None, to_date: str | None = None) -> None
     status = "✅ well-calibrated" if abs(diff) <= 0.05 else ("📉 overconfident" if diff < 0 else "📈 underconfident")
     print(f"  Avg model P: {overall_model_p:.1%}  |  Actual hit rate: {actual_rate:.1%}  |  {status}")
     if abs(diff) > 0.05:
-        suggestion = "lower" if diff < 0 else "raise"
-        print(f"  → Consider {suggestion}ing STAT_MIN_PROB thresholds in generate_todays_picks.py")
+        # diff < 0  →  actual < model  →  model is OVERconfident  →  raise the bar
+        # diff > 0  →  actual > model  →  model is UNDERconfident →  can lower the bar
+        action = "raising" if diff < 0 else "lowering"
+        print(f"  → Consider {action} STAT_MIN_PROB thresholds in generate_todays_picks.py")
 
     print(f"  {sep}\n")
     conn.close()

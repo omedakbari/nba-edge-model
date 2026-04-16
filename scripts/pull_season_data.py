@@ -30,7 +30,7 @@ from src.ingestion.game_logs import ingest_season, backfill_all_seasons
 PLAYOFF_SEASONS = ["2024-25", "2023-24", "2022-23", "2021-22"]
 
 # Play-In seasons available in nba_api (tournament started in 2020-21).
-PLAYIN_SEASONS = ["2024-25", "2023-24", "2022-23", "2021-22", "2020-21"]
+PLAYIN_SEASONS = ["2025-26", "2024-25", "2023-24", "2022-23", "2021-22", "2020-21"]
 
 
 def pull_playoff_data(seasons: list = None) -> None:

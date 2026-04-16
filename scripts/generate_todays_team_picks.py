@@ -351,7 +351,7 @@ def print_summary_table(analyses: list[dict]) -> None:
 
 
 def print_header(target_date: str, season: str, is_playoffs: bool, is_play_in: bool) -> None:
-    mode = 'PLAYOFFS' if is_playoffs else ('PLAY-IN' if is_play_in else 'REGULAR SEASON')
+    mode = 'PLAY-IN' if is_play_in else ('PLAYOFFS' if is_playoffs else 'REGULAR SEASON')
     print(f"\n{'='*76}")
     print(f"  NBA TEAM PICKS  —  {target_date}  |  {season}  |  {mode}")
     print(f"  Model: power ratings (NET_RTG blend + L10 form + rest adj)")
@@ -359,13 +359,15 @@ def print_header(target_date: str, season: str, is_playoffs: bool, is_play_in: b
     print(f"{'='*76}")
 
 
-def print_footer(is_playoffs: bool) -> None:
+def print_footer(is_playoffs: bool, is_play_in: bool = False) -> None:
     print(f"\n  {'='*76}")
     print(f"  CAVEATS")
     print(f"  Edge = model spread vs opening DraftKings line (not closing line).")
     print(f"  Model directional accuracy: 68.2% (4-season backtest, 4,604 games).")
     print(f"  Win-probability calibrated (Platt scaling, Brier 0.219).")
-    if is_playoffs:
+    if is_play_in:
+        print(f"  Play-In mode: standard HCA (2.5 pts), no series momentum.")
+    elif is_playoffs:
         print(f"  Playoff adjustments active: HCA +3.0 pts, series momentum factor.")
     print(f"  ⚠️  Always verify injury/lineup news before placing bets.")
     print(f"  {'='*76}\n")
@@ -437,8 +439,9 @@ def main():
     args = parser.parse_args()
 
     target_date = args.date
-    is_playoffs = args.playoffs or args.play_in
+    is_playoffs = args.playoffs         # True only for actual playoffs, NOT play-in
     is_play_in  = args.play_in
+    include_in_form = args.playoffs or args.play_in  # include playoff/play-in results in rolling form
 
     print_header(target_date, args.season, is_playoffs, is_play_in)
 
@@ -466,7 +469,7 @@ def main():
     engine = TeamRatingEngine(
         conn, season=args.season,
         through_date=target_date,
-        include_playoffs=is_playoffs,
+        include_playoffs=include_in_form,
     )
     ratings_df = engine.all_ratings()
     teams_with_data = len(ratings_df[ratings_df['games'] >= MIN_GAMES_FOR_PICK])
@@ -524,7 +527,7 @@ def main():
 
     # Summary table
     print_summary_table(analyses)
-    print_footer(is_playoffs)
+    print_footer(is_playoffs, is_play_in=is_play_in)
 
     # Save
     if args.save:

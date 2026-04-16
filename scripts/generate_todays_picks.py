@@ -209,17 +209,22 @@ def fetch_injury_report() -> dict:
 # ── Schedule / roster fetching ─────────────────────────────────────────────────
 
 def get_todays_games(target_date: str) -> list[dict]:
-    """Fetch scheduled games from NBA.com for target_date ('YYYY-MM-DD')."""
-    from nba_api.stats.endpoints import scoreboardv2
-    from nba_api.stats.static import teams as static_teams
+    """Fetch scheduled games from NBA.com for target_date ('YYYY-MM-DD').
+
+    Uses ScoreboardV3 (ScoreboardV2 has known issues with 2025-26 season data).
+    gameCode format: 'YYYYMMDD/AWAYHOME'  e.g. '20260417/CHAORL' → CHA away, ORL home.
+    """
+    from nba_api.stats.endpoints import scoreboardv3
 
     dt = datetime.strptime(target_date, "%Y-%m-%d")
     nba_date = dt.strftime("%m/%d/%Y")
 
     time.sleep(NBA_API_DELAY)
     try:
-        board = scoreboardv2.ScoreboardV2(game_date=nba_date, league_id='00', day_offset=0)
-        games_df = board.get_data_frames()[0]
+        board = scoreboardv3.ScoreboardV3(game_date=nba_date, league_id='00')
+        dfs = board.get_data_frames()
+        games_df = dfs[1]   # one row per game (gameId, gameCode, gameStatusText, …)
+        teams_df = dfs[2]   # two rows per game (gameId, teamId, teamTricode, …)
     except Exception as e:
         print(f"  Error fetching schedule: {e}")
         return []
@@ -227,21 +232,33 @@ def get_todays_games(target_date: str) -> list[dict]:
     if games_df.empty:
         return []
 
-    team_dict = {t['id']: t['abbreviation'] for t in static_teams.get_teams()}
+    # Build (gameId, tricode) → teamId lookup from the teams sub-frame.
+    team_lookup: dict[tuple[str, str], int] = {}
+    for _, row in teams_df.iterrows():
+        team_lookup[(str(row['gameId']), str(row['teamTricode']))] = int(row['teamId'])
+
     result = []
     for _, row in games_df.iterrows():
-        raw_home = row.get('HOME_TEAM_ID')
-        raw_away = row.get('VISITOR_TEAM_ID')
-        if raw_home is None or raw_away is None:
-            continue  # API returns incomplete rows for games far in the future
-        home_id = int(raw_home)
-        away_id = int(raw_away)
+        game_id = str(row['gameId'])
+        game_code = row.get('gameCode', '')
+        try:
+            matchup = game_code.split('/')[1]   # e.g. 'CHAORL'
+            away_abbr = matchup[:3]             # 'CHA'
+            home_abbr = matchup[3:]             # 'ORL'
+        except (IndexError, AttributeError):
+            continue
+
+        home_id = team_lookup.get((game_id, home_abbr))
+        away_id = team_lookup.get((game_id, away_abbr))
+        if home_id is None or away_id is None:
+            continue
+
         result.append({
-            'game_id': str(row['GAME_ID']),
+            'game_id': game_id,
             'home_team_id': home_id,
             'away_team_id': away_id,
-            'home_abbr': team_dict.get(home_id, 'UNK'),
-            'away_abbr': team_dict.get(away_id, 'UNK'),
+            'home_abbr': home_abbr,
+            'away_abbr': away_abbr,
         })
     return result
 
@@ -774,8 +791,15 @@ def print_card(card: list[dict], label: str, is_playoffs: bool = False) -> None:
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def save_picks(card1: list[dict], card2: list[dict], date_str: str,
-               season: str, line_source: str, is_playoffs: bool = False) -> Path:
-    """Serialize both cards to data/picks/YYYY-MM-DD.json."""
+               season: str, line_source: str,
+               is_playoffs: bool = False, is_play_in: bool = False) -> Path:
+    """Serialize both cards to data/picks/YYYY-MM-DD.json.
+
+    is_playoffs: True only for actual NBA Playoffs (not Play-In).
+    is_play_in:  True for the Play-In tournament.
+    Grading uses these flags to select the correct season_type when querying
+    game_logs ('Playoffs', 'PlayIn', or 'Regular Season').
+    """
     picks_dir = Path(__file__).parent.parent / "data" / "picks"
     picks_dir.mkdir(parents=True, exist_ok=True)
     out_path = picks_dir / f"{date_str}.json"
@@ -801,12 +825,18 @@ def save_picks(card1: list[dict], card2: list[dict], date_str: str,
             })
         return out
 
+    # Serialize flags so the grader can pick the right season_type without
+    # needing CLI arguments at grade time.
+    # is_playoffs=True AND is_play_in=False  →  season_type 'Playoffs'
+    # is_play_in=True                        →  season_type 'PlayIn'
+    # both False                             →  season_type 'Regular Season'
     payload = {
         'date':         date_str,
         'season':       season,
         'generated_at': datetime.utcnow().isoformat() + 'Z',
         'line_source':  line_source,
-        'is_playoffs':  is_playoffs,
+        'is_playoffs':  is_playoffs and not is_play_in,
+        'is_play_in':   is_play_in,
         'picks':        _serialize_card(card1, 'card1', len(card1))
                       + _serialize_card(card2, 'card2', len(card2)),
     }
@@ -978,7 +1008,7 @@ def main() -> None:
     if args.save:
         line_source = 'prizepicks' if pp_lines else 'l10_avg'
         out_path = save_picks(card1 or [], card2 or [], args.date, args.season, line_source,
-                              is_playoffs=is_playoffs)
+                              is_playoffs=is_playoffs, is_play_in=is_play_in)
         n_saved = len(card1 or []) + len(card2 or [])
         print(f"  Saved {n_saved} picks → {out_path}")
         print(f"  Grade after games: python scripts/log_pick_results.py --date {args.date}\n")
