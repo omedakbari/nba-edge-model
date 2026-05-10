@@ -39,6 +39,17 @@ import pandas as pd
 from pathlib import Path
 from typing import Optional
 
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from config.settings import CURRENT_SEASON as _CURRENT_SEASON
+
+
+def _default_elev_seasons(current: str = _CURRENT_SEASON) -> list:
+    """Return the 3 most recent seasons with playoff data, ending at current season."""
+    all_seasons = ['2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25', '2025-26']
+    eligible = [s for s in all_seasons if s <= current]
+    return eligible[-3:]
+
 
 # ── Tier thresholds ────────────────────────────────────────────────────────────
 
@@ -255,7 +266,7 @@ def load_playoff_elevation_ratios_per_stat(
         elev_seasons: which seasons to include (default: 2022-23, 2023-24, 2024-25)
     """
     if elev_seasons is None:
-        elev_seasons = ['2022-23', '2023-24', '2024-25']
+        elev_seasons = _default_elev_seasons()
 
     conn = sqlite3.connect(str(db_path))
     try:

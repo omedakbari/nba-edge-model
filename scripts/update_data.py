@@ -61,13 +61,16 @@ def main():
     if args.playoffs:
         from config.settings import CURRENT_SEASON
         season = args.season or CURRENT_SEASON
-        # There's no --playoffs flag in game_logs.py; it uses --season + season_type
-        # We call it with a direct python command that targets playoffs
+        # force_update=True is required here: prior runs log every player as
+        # games_pulled=0 when the API hasn't published data yet (e.g. before
+        # playoffs start). Without force_update, all 587 players stay skipped
+        # forever even after real games are played. The extra ~6 min is acceptable
+        # for a once-daily update.
         cmd2 = [py, '-c',
             f"import sys; sys.path.insert(0,'{ROOT}'); "
             f"from src.ingestion.game_logs import ingest_season; "
-            f"ingest_season('{season}', 'Playoffs'); "
-            f"ingest_season('{season}', 'PlayIn')"
+            f"ingest_season('{season}', 'Playoffs', force_update=True); "
+            f"ingest_season('{season}', 'PlayIn', force_update=True)"
         ]
         ok2 = run(cmd2, 'game_logs playoffs + play-in')
         success = success and ok2
@@ -80,6 +83,11 @@ def main():
         ok3 = run(cmd3, 'team_stats')
         success = success and ok3
 
+    # 4. Rebuild features — always required after any new game logs land so
+    #    rolling windows (L5/L10/L20) reflect the latest games.
+    ok4 = run([py, '-m', 'src.features.pipeline'], 'features pipeline')
+    success = success and ok4
+
     print(f"\n{'='*60}")
     if success:
         print(f"  All updates complete. Ready to generate picks.")
@@ -87,9 +95,11 @@ def main():
         print(f"  ⚠️  One or more updates failed. Check errors above.")
     print(f"{'='*60}\n")
 
+    mode_flag   = ' --playoffs' if args.playoffs else ''
+    season_flag = f' --season {args.season}' if args.season else ''
     print(f"  Next steps:")
-    print(f"    python scripts/generate_todays_picks.py --playoffs --save")
-    print(f"    python scripts/generate_todays_team_picks.py --playoffs --save")
+    print(f"    python scripts/generate_todays_picks.py{mode_flag}{season_flag} --save")
+    print(f"    python scripts/generate_todays_team_picks.py{mode_flag}{season_flag} --save")
     print()
 
 

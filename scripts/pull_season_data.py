@@ -176,6 +176,18 @@ if __name__ == "__main__":
         print(f"\n  Update complete: {result['inserted']} new rows, {result['errors']} errors")
     elif args.season:
         init_db()
-        ingest_season(args.season)
+        # Current season: always force-update so new games since last ingest are included.
+        # Historical seasons: resumable (skip already-ingested players).
+        is_current = (args.season == CURRENT_SEASON)
+        result = ingest_season(args.season, force_update=is_current)
+        print(f"\n  Done: {result['inserted']} rows inserted, {result['skipped']} skipped, "
+              f"{result['errors']} errors")
+        if is_current:
+            conn = get_connection()
+            max_date = conn.execute(
+                "SELECT MAX(game_date) FROM game_logs WHERE season=?", (args.season,)
+            ).fetchone()[0]
+            conn.close()
+            print(f"  DB max game_date for {args.season}: {max_date}")
     else:
         parser.print_help()

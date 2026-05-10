@@ -26,7 +26,7 @@ from scipy import stats as scipy_stats
 
 warnings.filterwarnings("ignore")
 
-from config.settings import DB_PATH, PROCESSED_DIR
+from config.settings import DB_PATH, PROCESSED_DIR, CURRENT_SEASON
 from src.playoffs.adjustments import PRED_MULT as PRED_MULT_PLAYOFF
 
 
@@ -456,15 +456,15 @@ def run_playoff_backtest(
           series_l3_used, suppressed, is_home, days_rest
     """
     if seasons is None:
-        seasons = ['2024-25']
+        seasons = [CURRENT_SEASON]
 
     if elev_train_seasons is None:
         # Use prior seasons for elevation ratios (avoid eval-season leakage)
-        all_po = ['2022-23', '2023-24', '2024-25']
+        all_po = ['2022-23', '2023-24', '2024-25', '2025-26']
         elev_train_seasons = [s for s in all_po if s not in seasons]
-        # If evaluating all seasons, use 2022-23 + 2023-24 for elevation
+        # Fallback: if evaluating all available seasons, use two oldest
         if not elev_train_seasons:
-            elev_train_seasons = ['2022-23', '2023-24']
+            elev_train_seasons = sorted(all_po)[:2]
 
     conn = sqlite3.connect(str(DB_PATH))
 

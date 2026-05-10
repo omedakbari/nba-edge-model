@@ -1,24 +1,26 @@
 """
 Live daily picks generator — v8.
 
-Fetches real PrizePicks lines, today's NBA schedule, current rosters, and the
-ESPN injury report. Outputs two SAFE Flex cards: 3-leg and 5-leg. Falls back
-to L10-as-line mode with a warning if PrizePicks is unreachable.
+Fetches real Sleeper Pick'em lines (primary), today's NBA schedule, current rosters,
+and the ESPN injury report. Outputs two SAFE Flex cards: 3-leg and 5-leg. Falls back
+to PrizePicks then L10-as-line mode with a warning if Sleeper is unreachable.
 
 Usage:
     python scripts/generate_todays_picks.py [--date 2026-04-04] [--season 2025-26]
 
-Probability thresholds (against real PP lines, not L10 fake lines):
+Probability thresholds (against real Sleeper lines, not L10 fake lines):
     All stats: P >= 57-58%  — any model signal above 57% is edge on a no-vig platform.
 """
 
 import argparse
 import json
+import math
 import sys
 import time
 import sqlite3
 import unicodedata
 import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime, date
 
@@ -41,6 +43,10 @@ from src.playoffs.adjustments import (
     playoff_context_note,
     TIER_LABELS,
 )
+from src.utils.season import detect_phase
+
+# Sleeper API uses the start year of the season (e.g. 2025 for 2025-26)
+_SLEEPER_API_YEAR = CURRENT_SEASON.split('-')[0]
 
 
 # ── Constants ──────────────────────────────────────────────────────────────────
@@ -50,8 +56,8 @@ COMPOSITE_STATS = {
     'reb_ast': ['reb', 'ast'],
 }
 
-# Thresholds for use against REAL PrizePicks lines (not fake L10 baselines).
-# PP lines are set near expected value, so any P > 55% represents real edge.
+# Thresholds for use against REAL Sleeper lines (not fake L10 baselines).
+# Sleeper lines are set near expected value, so any P > 55% represents real edge.
 # The old 0.70-0.75 thresholds were calibrated on L10-as-line (a much easier bar).
 # Against real market lines, the model rarely exceeds 0.65 — that's expected and fine.
 # Daily cards are built by sorting on prob and picking the top N above these floors.
@@ -65,7 +71,7 @@ STAT_MIN_PROB = {
 
 # Playoff-specific minimums — tighter thresholds derived from backtest.
 # AST top-quintile (P≥0.75 vs synthetic line) hits 68%; REB non-monotonic → 0.60 floor.
-# PTS: model discriminates at P≥0.65 against real PP lines.
+# PTS: model discriminates at P≥0.65 against real Sleeper lines.
 STAT_MIN_PROB_PLAYOFFS = {
     'reb':     0.60,
     'ast':     0.62,
@@ -110,12 +116,53 @@ STATS = ['reb', 'ast', 'pra', 'reb_ast', 'pts']
 MIN_MINUTES = 25   # raised from 20 — keeps out fringe/garbage-time players
 DEF_WINDOW = 15
 
+# ── Edge buffer (item 4) ───────────────────────────────────────────────────────
+# Leg must have pred at least this far from line, OR prob >= MIN_EDGE_PROB.
+EDGE_BUFFER_GAP: dict[str, float] = {
+    'pts':     3.0,
+    'ast':     1.0,
+    'reb_ast': 2.0,
+    'pra':     2.0,
+    'reb':     2.0,
+}
+MIN_EDGE_PROB = 0.65   # override: include even if gap < threshold at this confidence
+
+# ── Direction exposure (item 6) ────────────────────────────────────────────────
+MAX_UNDERS_5LEG    = 4     # max unders on a 5-leg card
+HIGH_CONF_OVERRIDE = 0.75  # waive the 4-under limit when avg confidence is this high
+SIMILAR_CONF_WINDOW = 0.03 # within this prob gap, prefer OVER over UNDER
+
+# ── Strict Sleeper mode ────────────────────────────────────────────────────────
+# Sleeper API projections are NOT Pick'em app lines — they are per-game averages
+# that differ from what Sleeper actually posts in its Pick'em product.  Any line
+# not explicitly supplied via --lines is a proxy and must not appear in final cards.
+STRICT_SLEEPER_MODE  = True  # default ON whenever line source is Sleeper
+STRICT_CARD1_MIN_LEGS = 3    # verified override legs required to build Card 1
+STRICT_CARD2_MIN_LEGS = 8    # verified override legs required to build Card 2
+
 PP_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
     'Accept': 'application/json',
     'Referer': 'https://app.prizepicks.com/',
     'Origin': 'https://app.prizepicks.com',
 }
+
+# ── Sleeper integration ────────────────────────────────────────────────────────
+
+SLEEPER_STAT_MAP = {
+    'pts':         'pts',
+    'reb':         'reb',
+    'ast':         'ast',
+    'reb_ast':     'reb_ast',
+    'pts_reb_ast': 'pra',
+}
+
+SLEEPER_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+    'Accept': 'application/json',
+}
+
+_SLEEPER_PLAYER_CACHE = Path(__file__).parent.parent / 'data' / 'sleeper_players.json'
 
 
 # ── PrizePicks integration ─────────────────────────────────────────────────────
@@ -133,32 +180,51 @@ def normalize_name(name: str) -> str:
     return name
 
 
+def _fetch_pp_raw() -> tuple[dict, list]:
+    """
+    Hit the PrizePicks projections endpoint and return (player_map, projections_list).
+    player_map: {player_id_str: display_name}
+    projections_list: raw 'data' array from the API response
+    Returns ({}, []) on failure.
+    """
+    try:
+        r = requests.get(
+            'https://api.prizepicks.com/projections?league_id=7&per_page=1000',
+            headers=PP_HEADERS, timeout=12,
+        )
+        if r.status_code != 200:
+            return {}, []
+        data = r.json()
+        if 'data' not in data:
+            return {}, []
+    except Exception:
+        return {}, []
+
+    player_map = {
+        item['id']: item['attributes'].get('display_name', '')
+        for item in data.get('included', [])
+        if item.get('type') == 'new_player'
+    }
+    return player_map, data.get('data', [])
+
+
 def fetch_prizepicks_lines() -> dict:
     """
     Fetch tonight's NBA standard lines from PrizePicks.
     Returns {(normalized_player_name, stat_key): line_score} or {} on failure.
+
+    Deduplication: when multiple standard entries exist for the same
+    (player, stat) pair the one with the most recent updated_at timestamp
+    is kept — it reflects the current live line.  Falls back to highest
+    numeric projection ID when updated_at is absent.
     """
-    try:
-        r = requests.get(
-            'https://api.prizepicks.com/projections?league_id=7&per_page=500',
-            headers=PP_HEADERS, timeout=12,
-        )
-        if r.status_code != 200:
-            return {}
-        data = r.json()
-        if 'data' not in data:
-            return {}
-    except Exception:
+    player_map, projs = _fetch_pp_raw()
+    if not projs:
         return {}
 
-    # Build player ID → display name
-    player_map = {}
-    for item in data.get('included', []):
-        if item.get('type') == 'new_player':
-            player_map[item['id']] = item['attributes'].get('display_name', '')
-
-    lines = {}
-    for proj in data.get('data', []):
+    # {key: (line_score, updated_at_str, proj_id_int)}
+    _seen: dict = {}
+    for proj in projs:
         attr = proj.get('attributes', {})
         if attr.get('odds_type') != 'standard' or attr.get('status') != 'pre_game':
             continue
@@ -172,9 +238,418 @@ def fetch_prizepicks_lines() -> dict:
         if not player_name:
             continue
         key = (normalize_name(player_name), stat_key)
-        lines[key] = float(attr['line_score'])
+        updated = attr.get('updated_at') or ''
+        proj_id  = int(proj.get('id') or 0)
+        if key not in _seen:
+            _seen[key] = (float(attr['line_score']), updated, proj_id)
+        else:
+            cur_updated, cur_id = _seen[key][1], _seen[key][2]
+            # Prefer most recently updated; break ties by highest proj ID
+            if (updated > cur_updated) or (updated == cur_updated and proj_id > cur_id):
+                _seen[key] = (float(attr['line_score']), updated, proj_id)
+
+    return {k: v[0] for k, v in _seen.items()}
+
+
+def debug_prizepicks_lines(name_patterns: list[str]) -> None:
+    """
+    Dump every projection from the PrizePicks API whose player name contains
+    any of the strings in name_patterns (case-insensitive substring match).
+    Prints all fields relevant to understanding which line the app is showing.
+
+    Invoked directly:
+        python scripts/generate_todays_picks.py --debug-pp "julius randle,shai gilgeous"
+    Or via the CLI wrapper:
+        nba picks --props-only --debug-pp "julius randle,shai gilgeous"
+    """
+    player_map, projs = _fetch_pp_raw()
+    if not projs:
+        print("  [debug-pp] API returned no data")
+        return
+
+    patterns = [p.strip().lower() for p in name_patterns]
+    hits = []
+    for proj in projs:
+        attr  = proj.get('attributes', {})
+        rels  = proj.get('relationships', {})
+        pid   = rels.get('new_player', {}).get('data', {}).get('id', '')
+        pname = player_map.get(pid, '')
+        if not any(pat in pname.lower() for pat in patterns):
+            continue
+        hits.append({
+            'id':             proj.get('id'),
+            'player':         pname,
+            'stat_type':      attr.get('stat_type'),
+            'line_score':     attr.get('line_score'),
+            'odds_type':      attr.get('odds_type'),       # standard / goblin / demon
+            'status':         attr.get('status'),
+            'start_time':     attr.get('start_time'),
+            'created_at':     attr.get('created_at'),
+            'updated_at':     attr.get('updated_at'),
+            'projection_type': attr.get('projection_type'),
+            'flash_sale_line': attr.get('flash_sale_line_score'),
+            'is_promo':       attr.get('is_promo'),
+            'discount_pct':   attr.get('discount_percentage'),
+            'description':    attr.get('description'),      # opponent / game
+            'maps_to':        PP_STAT_MAP.get(attr.get('stat_type', ''), '—'),
+        })
+
+    if not hits:
+        print(f"  [debug-pp] No projections found for patterns: {patterns}")
+        return
+
+    w = 130
+    print(f"\n  PP DEBUG — {len(hits)} projection(s) matching {patterns}")
+    print(f"  {'─' * w}")
+    hdr = f"  {'ID':<12} {'Player':<32} {'Stat':<28} {'Type':<10} {'Line':>6} {'Status':<12} {'MapsTo':<10} {'Updated':<32} {'Note'}"
+    print(hdr)
+    print(f"  {'─' * w}")
+    for h in sorted(hits, key=lambda x: (x['player'], x['stat_type'] or '', x['odds_type'] or '')):
+        note_parts = []
+        if h['flash_sale_line'] is not None:
+            note_parts.append(f"flash={h['flash_sale_line']}")
+        if h['is_promo']:
+            note_parts.append('promo')
+        if h['discount_pct']:
+            note_parts.append(f"disc={h['discount_pct']}%")
+        note = '  '.join(note_parts)
+        updated = (h['updated_at'] or '')[:19]
+        print(f"  {str(h['id']):<12} {h['player']:<32} {str(h['stat_type']):<28} "
+              f"{str(h['odds_type']):<10} {h['line_score']:>6} {str(h['status']):<12} "
+              f"{h['maps_to']:<10} {updated:<32} {note}")
+    print(f"  {'─' * w}")
+    print(f"  Only 'standard' + 'pre_game' entries are used by fetch_prizepicks_lines().\n")
+
+
+# ── Sleeper Pick'em integration ────────────────────────────────────────────────
+
+def _load_sleeper_player_map() -> dict:
+    """
+    Returns {normalized_name: {'id': pid_str, 'team': abbr}} for active NBA players.
+    Cached in data/sleeper_players.json and refreshed once daily.
+    """
+    cache = _SLEEPER_PLAYER_CACHE
+    if cache.exists() and (time.time() - cache.stat().st_mtime) < 24 * 3600:
+        try:
+            with open(cache) as f:
+                return json.load(f)
+        except Exception:
+            pass
+
+    try:
+        r = requests.get(
+            'https://api.sleeper.app/v1/players/nba',
+            headers=SLEEPER_HEADERS, timeout=20,
+        )
+        if r.status_code != 200:
+            return {}
+        raw = r.json()
+    except Exception:
+        return {}
+
+    name_map: dict = {}
+    for pid, p in raw.items():
+        if not p.get('active'):
+            continue
+        fn = (p.get('first_name') or '').strip()
+        ln = (p.get('last_name') or '').strip()
+        full = f'{fn} {ln}'.strip()
+        if not full:
+            continue
+        norm = normalize_name(full)
+        name_map[norm] = {'id': pid, 'team': p.get('team') or ''}
+
+    try:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        with open(cache, 'w') as f:
+            json.dump(name_map, f)
+    except Exception:
+        pass
+
+    return name_map
+
+
+def _get_sleeper_tonight_teams() -> set:
+    """Return set of NBA team abbrs with games within the next 30 hours."""
+    try:
+        r = requests.get(
+            'https://api.sleeper.com/scores/lines_game_picker',
+            headers=SLEEPER_HEADERS, timeout=10,
+        )
+        if r.status_code != 200:
+            return set()
+        games = r.json()
+    except Exception:
+        return set()
+
+    now_ms   = time.time() * 1000
+    limit_ms = (time.time() + 30 * 3600) * 1000
+    teams: set = set()
+    for g in games:
+        if g.get('sport') != 'nba':
+            continue
+        start = g.get('start_time', 0)
+        if isinstance(start, (int, float)) and now_ms <= start <= limit_ms:
+            m = g.get('metadata', {})
+            away = m.get('away_team', {}).get('team', '')
+            home = m.get('home_team', {}).get('team', '')
+            if away:
+                teams.add(away)
+            if home:
+                teams.add(home)
+    return teams
+
+
+def _fetch_sleeper_proj_one(pid: str) -> dict:
+    """
+    Fetch Sleeper per-game projection stats for one player. Returns stats dict or {}.
+
+    Always uses season_type=regular: the 'post' variant returns RotoWire series-total
+    projections aggregated over the week_shard (number of games in the series), which
+    inflates lines 2× for back-to-back playoff series games and makes them appear as
+    'alternate/boosted' lines vs the app. The 'regular' variant returns stable per-game
+    averages that match the order of magnitude shown in the Sleeper Pick'em UI.
+
+    NOTE: The actual Sleeper Pick'em line-setting endpoint is not publicly accessible.
+    These RotoWire per-game averages are the closest proxy available without auth.
+    """
+    url = (f'https://api.sleeper.com/projections/nba/player/{pid}'
+           f'?season_type=regular&season={_SLEEPER_API_YEAR}')
+    try:
+        r = requests.get(url, headers=SLEEPER_HEADERS, timeout=8)
+        if r.status_code != 200:
+            return {}
+        data = r.json()
+        if isinstance(data, list) and data:
+            return data[0].get('stats', {})
+        if isinstance(data, dict):
+            return data.get('stats', {})
+    except Exception as e:
+        print(f"  [Sleeper] projection fetch failed for player {pid}: {e}", file=sys.stderr)
+    return {}
+
+
+def fetch_sleeper_lines(season_type: str = 'post') -> dict:
+    """
+    Fetch tonight's NBA player prop lines from Sleeper Pick'em.
+    Returns {(normalized_player_name, stat_key): line_score} or {} on failure.
+
+    Uses Sleeper's per-player projection endpoint; values are rounded to the nearest
+    0.5 to match the lines displayed in the Sleeper Pick'em app.
+    """
+    tonight_teams = _get_sleeper_tonight_teams()
+    if not tonight_teams:
+        return {}
+
+    player_map = _load_sleeper_player_map()
+    if not player_map:
+        return {}
+
+    # Only players on teams playing tonight
+    tonight_players = {
+        norm: info for norm, info in player_map.items()
+        if info['team'] in tonight_teams
+    }
+    if not tonight_players:
+        return {}
+
+    def _fetch(norm: str, pid: str):
+        return norm, _fetch_sleeper_proj_one(pid)
+
+    lines: dict = {}
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futs = {pool.submit(_fetch, n, info['id']): n for n, info in tonight_players.items()}
+        for fut in as_completed(futs):
+            try:
+                norm_name, stats = fut.result()
+                if not stats:
+                    continue
+                for sl_key, stat_key in SLEEPER_STAT_MAP.items():
+                    raw = stats.get(sl_key)
+                    if raw is None:
+                        continue
+                    raw = float(raw)
+                    if raw <= 0:
+                        continue
+                    # Round to nearest 0.5 (half rounds up)
+                    line = math.floor(raw * 2 + 0.5) / 2
+                    lines[(norm_name, stat_key)] = line
+            except Exception as _e:
+                norm_name = futs.get(fut, '?')
+                print(f"  [Sleeper] fetch error for {norm_name}: {_e}", file=sys.stderr)
 
     return lines
+
+
+def debug_sleeper_lines(name_patterns: list[str], season_type: str = 'post') -> None:
+    """
+    Dump raw Sleeper projection records for players matching name_patterns.
+
+    Shows both season_type=regular (what fetch_sleeper_lines actually uses — per-game
+    averages) and season_type=post (series totals, the old buggy source) side by side
+    so you can see the difference and verify the fix is working.
+
+    Usage:
+        python scripts/generate_todays_picks.py --debug-sleeper "jalen green,ausar thompson,ayo dosunmu"
+    Or via CLI wrapper:
+        nba picks --debug-sleeper "jalen green,ausar thompson"
+    """
+    player_map = _load_sleeper_player_map()
+    if not player_map:
+        print("  [debug-sleeper] Could not load Sleeper player map")
+        return
+
+    patterns = [p.strip().lower() for p in name_patterns]
+
+    # Find all players matching any pattern
+    matches = {
+        norm: info
+        for norm, info in player_map.items()
+        if any(pat in norm for pat in patterns)
+    }
+    if not matches:
+        print(f"  [debug-sleeper] No players found matching: {patterns}")
+        return
+
+    # Markets we care about — used to highlight relevant stats rows
+    WATCH_KEYS = list(SLEEPER_STAT_MAP.keys())
+    w = 120
+
+    for norm_name, info in sorted(matches.items()):
+        pid  = info['id']
+        team = info['team']
+
+        print(f"\n  {'─' * w}")
+        print(f"  PLAYER  : {norm_name}  (sleeper_id={pid}, team={team})")
+
+        # Show both season_type variants so the bug / fix are clearly visible
+        for st in ('regular', 'post'):
+            url = (f'https://api.sleeper.com/projections/nba/player/{pid}'
+                   f'?season_type={st}&season={_SLEEPER_API_YEAR}')
+            in_use = '  ← FETCH_SLEEPER_LINES USES THIS' if st == 'regular' else '  ← OLD BUGGY SOURCE (series totals)'
+            print(f"\n  ── season_type={st}{in_use}")
+            print(f"     URL: {url}")
+
+            try:
+                r = requests.get(url, headers=SLEEPER_HEADERS, timeout=10)
+                print(f"     HTTP: {r.status_code}")
+                if r.status_code != 200:
+                    print(f"     [error] HTTP {r.status_code}")
+                    continue
+                data = r.json()
+            except Exception as exc:
+                print(f"     [error] {exc}")
+                continue
+
+            if not data:
+                print("     [empty response]")
+                continue
+
+            items = data if isinstance(data, list) else [data]
+            print(f"     Records: {len(items)}")
+
+            for i, item in enumerate(items):
+                stats = item.get('stats') or {}
+                meta  = {k: v for k, v in item.items() if k != 'stats'}
+
+                flag_fields = [
+                    'type', 'category', 'rank', 'odds_type', 'line_type',
+                    'source', 'status', 'week', 'game_id', 'date',
+                    'sport', 'season', 'season_type', 'player_id',
+                    'projection_id', 'opponent', 'start_time', 'multiplier',
+                    'week_shard', 'company',
+                    'is_boost', 'is_promo', 'is_alt', 'boost_type',
+                ]
+                flag_vals = {k: meta.get(k) for k in flag_fields if k in meta}
+                extra_meta = {k: v for k, v in meta.items() if k not in flag_fields and k != 'player'}
+
+                print(f"     Record[{i}] flags: {json.dumps(flag_vals, default=str)}")
+                if extra_meta:
+                    print(f"             other : {json.dumps(extra_meta, default=str)[:200]}")
+
+                # Market lines this record would produce
+                for sl_key in WATCH_KEYS:
+                    raw = stats.get(sl_key)
+                    if raw is None:
+                        continue
+                    raw_f = float(raw)
+                    line  = math.floor(raw_f * 2 + 0.5) / 2
+                    stat_key = SLEEPER_STAT_MAP[sl_key]
+                    if raw_f > 0:
+                        print(f"       {sl_key:<16} raw={raw_f:>8.3f}  → line={line:>5.1f}  ({stat_key})")
+
+                other_stats = {k: v for k, v in stats.items() if k not in WATCH_KEYS}
+                if other_stats:
+                    print(f"       + {len(other_stats)} other stat keys")
+
+    print(f"\n  {'─' * w}")
+    print(f"  fetch_sleeper_lines() always uses season_type=regular (per-game averages).")
+    print(f"  season_type=post returns RotoWire series totals — inflated 2× on 2-game weeks.\n")
+
+
+# ── Manual line overrides ─────────────────────────────────────────────────────
+
+# Canonical display labels for stat keys — used by template and checklist output.
+# REB+AST is preferred over REB_AST because parse_line_overrides accepts it directly.
+_STAT_TEMPLATE_LABEL: dict[str, str] = {
+    'pts':     'PTS',
+    'reb':     'REB',
+    'ast':     'AST',
+    'pra':     'PRA',
+    'reb_ast': 'REB+AST',
+    'fg3m':    'FG3M',
+}
+
+# Stat aliases accepted in --lines / parse_line_overrides
+_OVERRIDE_STAT_MAP: dict[str, str] = {
+    'pts':     'pts',
+    'reb':     'reb',
+    'ast':     'ast',
+    'pra':     'pra',
+    'reb+ast': 'reb_ast',
+    'reb_ast': 'reb_ast',
+    'ra':      'reb_ast',
+    'fg3m':    'fg3m',
+    '3pm':     'fg3m',
+}
+
+
+def parse_line_overrides(text: str) -> dict:
+    """
+    Parse manual Sleeper Pick'em lines from a string.
+
+    Format: comma-separated entries, each "<Player Name> <STAT> <line>"
+        "Jalen Green PTS 19.5, Ausar Thompson PRA 19.5, Ayo Dosunmu PTS 19.5"
+
+    Supported stat aliases (case-insensitive):
+        PTS  REB  AST  PRA  REB+AST  REB_AST  RA  FG3M  3PM
+
+    Returns {(normalized_player_name, stat_key): line_score}
+    Prints a warning and skips any entry it cannot parse.
+    """
+    result: dict = {}
+    for raw in text.split(','):
+        entry = raw.strip()
+        if not entry:
+            continue
+        parts = entry.rsplit(None, 2)          # split from right: [name, stat, line]
+        if len(parts) != 3:
+            print(f"  [--lines] Skipping — expected '<Name> <STAT> <line>': {entry!r}")
+            continue
+        player_str, stat_str, line_str = parts
+        try:
+            line = float(line_str)
+        except ValueError:
+            print(f"  [--lines] Invalid line value {line_str!r}: {entry!r}")
+            continue
+        stat_key = _OVERRIDE_STAT_MAP.get(stat_str.lower())
+        if stat_key is None:
+            valid = list(_OVERRIDE_STAT_MAP.keys())
+            print(f"  [--lines] Unknown stat {stat_str!r} (valid: {valid}): {entry!r}")
+            continue
+        norm = normalize_name(player_str)
+        result[(norm, stat_key)] = line
+    return result
 
 
 # ── Injury report ─────────────────────────────────────────────────────────────
@@ -208,11 +683,176 @@ def fetch_injury_report() -> dict:
 
 # ── Schedule / roster fetching ─────────────────────────────────────────────────
 
-def get_todays_games(target_date: str) -> list[dict]:
-    """Fetch scheduled games from NBA.com for target_date ('YYYY-MM-DD').
+# Static NBA team ID map (NBA.com IDs; stable across seasons).
+# Used by ESPN/Sleeper fallbacks that return abbrs but not team IDs.
+_NBA_TEAM_IDS: dict[str, int] = {
+    'ATL': 1610612737, 'BOS': 1610612738, 'BKN': 1610612751,
+    'CHA': 1610612766, 'CHI': 1610612741, 'CLE': 1610612739,
+    'DAL': 1610612742, 'DEN': 1610612743, 'DET': 1610612765,
+    'GSW': 1610612744, 'HOU': 1610612745, 'IND': 1610612754,
+    'LAC': 1610612746, 'LAL': 1610612747, 'MEM': 1610612763,
+    'MIA': 1610612748, 'MIL': 1610612749, 'MIN': 1610612750,
+    'NOP': 1610612740, 'NYK': 1610612752, 'OKC': 1610612760,
+    'ORL': 1610612753, 'PHI': 1610612755, 'PHX': 1610612756,
+    'POR': 1610612757, 'SAC': 1610612758, 'SAS': 1610612759,
+    'TOR': 1610612761, 'UTA': 1610612762, 'WAS': 1610612764,
+}
 
-    Uses ScoreboardV3 (ScoreboardV2 has known issues with 2025-26 season data).
-    gameCode format: 'YYYYMMDD/AWAYHOME'  e.g. '20260417/CHAORL' → CHA away, ORL home.
+
+def _games_from_espn(target_date: str) -> list[dict]:
+    """Build game list from ESPN scoreboard. Fallback when NBA.com returns empty."""
+    try:
+        from src.data.espn_odds import fetch_odds
+    except ImportError:
+        return []
+
+    espn_games = fetch_odds(target_date)
+    result = []
+    for g in espn_games:
+        if g.get('status') == 'final':
+            continue
+        home_abbr = g['home']
+        away_abbr = g['away']
+        home_id = _NBA_TEAM_IDS.get(home_abbr)
+        away_id = _NBA_TEAM_IDS.get(away_abbr)
+        if home_id is None or away_id is None:
+            print(f"  Warning: unknown abbr in ESPN data: {away_abbr} @ {home_abbr}")
+            continue
+        result.append({
+            'game_id': g['game_id'],
+            'home_team_id': home_id,
+            'away_team_id': away_id,
+            'home_abbr': home_abbr,
+            'away_abbr': away_abbr,
+        })
+    return result
+
+
+def _games_from_sleeper() -> list[dict]:
+    """Build game list from Sleeper game-picker API. Last-resort fallback."""
+    try:
+        r = requests.get(
+            'https://api.sleeper.com/scores/lines_game_picker',
+            headers=SLEEPER_HEADERS, timeout=10,
+        )
+        if r.status_code != 200:
+            return []
+        raw_games = r.json()
+    except Exception:
+        return []
+
+    now_ms   = time.time() * 1000
+    limit_ms = (time.time() + 30 * 3600) * 1000
+    result = []
+    for g in raw_games:
+        if g.get('sport') != 'nba':
+            continue
+        start = g.get('start_time', 0)
+        if not (isinstance(start, (int, float)) and now_ms <= start <= limit_ms):
+            continue
+        m = g.get('metadata', {})
+        away_abbr = (m.get('away_team', {}).get('team', '') or '').upper()
+        home_abbr = (m.get('home_team', {}).get('team', '') or '').upper()
+        if not away_abbr or not home_abbr:
+            continue
+        home_id = _NBA_TEAM_IDS.get(home_abbr)
+        away_id = _NBA_TEAM_IDS.get(away_abbr)
+        if home_id is None or away_id is None:
+            print(f"  Warning: unknown abbr in Sleeper data: {away_abbr} @ {home_abbr}")
+            continue
+        result.append({
+            'game_id': str(g.get('game_id', f'{away_abbr}{home_abbr}')),
+            'home_team_id': home_id,
+            'away_team_id': away_id,
+            'home_abbr': home_abbr,
+            'away_abbr': away_abbr,
+        })
+    return result
+
+
+def get_todays_games(target_date: str) -> list[dict]:
+    """Fetch scheduled games for target_date ('YYYY-MM-DD').
+
+    Primary: NBA.com ScoreboardV3.
+    Fallback 1: ESPN scoreboard (canonical abbrs + static team ID map).
+    Fallback 2: Sleeper game-picker (within next 30 hours).
+    Raises a loud warning if all three return empty so the pipeline never silently skips a real slate.
+    """
+    from nba_api.stats.endpoints import scoreboardv3
+
+    dt = datetime.strptime(target_date, "%Y-%m-%d")
+    nba_date = dt.strftime("%m/%d/%Y")
+
+    time.sleep(NBA_API_DELAY)
+    nba_games: list[dict] = []
+    try:
+        board = scoreboardv3.ScoreboardV3(game_date=nba_date, league_id='00')
+        dfs = board.get_data_frames()
+        games_df = dfs[1]   # one row per game (gameId, gameCode, gameStatusText, …)
+        teams_df = dfs[2]   # two rows per game (gameId, teamId, teamTricode, …)
+
+        if not games_df.empty:
+            team_lookup: dict[tuple[str, str], int] = {}
+            for _, row in teams_df.iterrows():
+                team_lookup[(str(row['gameId']), str(row['teamTricode']))] = int(row['teamId'])
+
+            for _, row in games_df.iterrows():
+                game_id = str(row['gameId'])
+                game_code = row.get('gameCode', '')
+                try:
+                    matchup = game_code.split('/')[1]   # e.g. 'CHAORL'
+                    away_abbr = matchup[:3]             # 'CHA'
+                    home_abbr = matchup[3:]             # 'ORL'
+                except (IndexError, AttributeError):
+                    continue
+
+                home_id = team_lookup.get((game_id, home_abbr))
+                away_id = team_lookup.get((game_id, away_abbr))
+                if home_id is None or away_id is None:
+                    continue
+
+                nba_games.append({
+                    'game_id': game_id,
+                    'home_team_id': home_id,
+                    'away_team_id': away_id,
+                    'home_abbr': home_abbr,
+                    'away_abbr': away_abbr,
+                })
+    except Exception as e:
+        print(f"  Error fetching NBA.com schedule: {e}")
+
+    if nba_games:
+        return nba_games
+
+    print("  *** NBA.com returned 0 games — trying ESPN schedule fallback... ***")
+    espn_games = _games_from_espn(target_date)
+    if espn_games:
+        print(f"  ESPN fallback found {len(espn_games)} game(s).")
+        return espn_games
+
+    print("  *** ESPN returned 0 games — trying Sleeper game-picker fallback... ***")
+    sleeper_games = _games_from_sleeper()
+    if sleeper_games:
+        print(f"  Sleeper fallback found {len(sleeper_games)} game(s).")
+        return sleeper_games
+
+    print("  *** WARNING: All 3 schedule sources (NBA.com, ESPN, Sleeper) returned empty. ***")
+    print("  *** If games are scheduled today, check network/API connectivity. ***")
+    return []
+
+
+def detect_nba_game_type(target_date: str) -> str:
+    """
+    Query the NBA scoreboard to determine whether games on target_date are
+    'PlayIn', 'Playoffs', or 'Regular Season'.
+
+    Uses ScoreboardV3 game metadata:
+      - gameLabel contains 'play-in'  → PlayIn
+      - poRoundDesc is non-empty      → Playoffs
+      - neither                       → Regular Season
+
+    Returns one of: 'PlayIn', 'Playoffs', 'Regular Season'
+    If the API call fails, returns '' (caller should not auto-correct).
     """
     from nba_api.stats.endpoints import scoreboardv3
 
@@ -222,45 +862,23 @@ def get_todays_games(target_date: str) -> list[dict]:
     time.sleep(NBA_API_DELAY)
     try:
         board = scoreboardv3.ScoreboardV3(game_date=nba_date, league_id='00')
-        dfs = board.get_data_frames()
-        games_df = dfs[1]   # one row per game (gameId, gameCode, gameStatusText, …)
-        teams_df = dfs[2]   # two rows per game (gameId, teamId, teamTricode, …)
-    except Exception as e:
-        print(f"  Error fetching schedule: {e}")
-        return []
+        data = board.get_dict()
+        games = data.get('scoreboard', {}).get('games', [])
+    except Exception:
+        return ''
 
-    if games_df.empty:
-        return []
+    if not games:
+        return ''
 
-    # Build (gameId, tricode) → teamId lookup from the teams sub-frame.
-    team_lookup: dict[tuple[str, str], int] = {}
-    for _, row in teams_df.iterrows():
-        team_lookup[(str(row['gameId']), str(row['teamTricode']))] = int(row['teamId'])
+    for game in games:
+        label = game.get('gameLabel', '') or ''
+        po_round = game.get('poRoundDesc', '') or ''
+        if 'play-in' in label.lower():
+            return 'PlayIn'
+        if po_round:
+            return 'Playoffs'
 
-    result = []
-    for _, row in games_df.iterrows():
-        game_id = str(row['gameId'])
-        game_code = row.get('gameCode', '')
-        try:
-            matchup = game_code.split('/')[1]   # e.g. 'CHAORL'
-            away_abbr = matchup[:3]             # 'CHA'
-            home_abbr = matchup[3:]             # 'ORL'
-        except (IndexError, AttributeError):
-            continue
-
-        home_id = team_lookup.get((game_id, home_abbr))
-        away_id = team_lookup.get((game_id, away_abbr))
-        if home_id is None or away_id is None:
-            continue
-
-        result.append({
-            'game_id': game_id,
-            'home_team_id': home_id,
-            'away_team_id': away_id,
-            'home_abbr': home_abbr,
-            'away_abbr': away_abbr,
-        })
-    return result
+    return 'Regular Season'
 
 
 def get_roster_player_ids(team_id: int, season: str) -> list[int]:
@@ -531,7 +1149,9 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
                      injury_report: dict,
                      is_playoffs: bool = False,
                      is_play_in: bool = False,
-                     playoff_ratios: dict | None = None) -> pd.DataFrame:
+                     playoff_ratios: dict | None = None,
+                     line_source: str = 'sleeper',
+                     override_keys: set | None = None) -> pd.DataFrame:
     """
     Score every (player, stat) pair. Returns OVER and UNDER candidates.
 
@@ -631,6 +1251,8 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
                 stat_tier_key = (tier, stat)
                 min_p = max(min_p, STAT_TIER_MIN_PROB_PLAYOFFS.get(stat_tier_key, 0.0))
 
+            is_dtd = bool(inj_flag)
+            final_std = std_float if not np.isnan(std_float) else max(abs(float(pred)) * 0.2, 1.0)
             base = {
                 'player_id':    row['player_id'],
                 'player':       inj_flag + player_name,
@@ -642,16 +1264,25 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
                 'stat_key':     stat,                     # lowercase for DB lookup
                 'line':         round(float(line), 1),
                 'pred':         round(float(pred), 1),
-                'line_source':  'prizepicks' if using_real_lines else 'l10_avg',
+                'std':          round(float(final_std), 3),
+                'line_source':  (
+                    'sleeper_override' if (override_keys and pp_key in override_keys)
+                    else (line_source if using_real_lines else 'l10_avg')
+                ),
                 'injury_flag':  inj_status,
                 'playoff_note': playoff_note,
+                'is_dtd':       is_dtd,
             }
 
-            if p_over >= min_p:
+            buf_gap = EDGE_BUFFER_GAP.get(stat, 0.0)
+            over_edge_ok  = (float(pred) - float(line) >= buf_gap) or (p_over  >= MIN_EDGE_PROB)
+            under_edge_ok = (float(line) - float(pred) >= buf_gap) or (p_under >= MIN_EDGE_PROB)
+
+            if p_over >= min_p and over_edge_ok:
                 rows.append({**base, 'direction': 'OVER', 'prob': p_over})
 
             # UNDER pick: model thinks player will fall well short of the line
-            if p_under >= min_p:
+            if p_under >= min_p and under_edge_ok:
                 rows.append({**base, 'direction': 'UNDER', 'prob': p_under})
 
     if not rows:
@@ -661,84 +1292,94 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
 
 # ── Card builder ───────────────────────────────────────────────────────────────
 
-def build_card(candidates: pd.DataFrame, n_legs: int, exclude_keys: set) -> list[dict]:
+def build_card(candidates: pd.DataFrame, n_legs: int, exclude_keys: set,
+               safe_only: bool = True, strict_override: bool = False) -> list[dict]:
     """
-    Greedy highest-confidence selection with correlation-aware constraints:
-      - Skip (player_id, stat, direction) keys already in exclude_keys
-      - One prop per player per card
-      - Max 2 legs per game (limits correlated failure in blowouts/closeouts)
-      - Max 2 legs of the same stat type per card (diversification)
-      - Prefer different games over same game when confidence is close (within 2%)
-        to reduce correlated failure risk across legs.
+    Greedy highest-confidence selection with:
+      - One prop per player, max 2/game, max 2/stat-type
+      - OVER preference within SIMILAR_CONF_WINDOW (direction exposure control)
+      - Max MAX_UNDERS_5LEG unders on 5-leg cards unless avg conf >= HIGH_CONF_OVERRIDE
+      - safe_only=True (default): skip DTD/Doubtful players
+      - strict_override=True: only use legs with line_source='sleeper_override'
     """
+    if candidates.empty:
+        return []
+
     used_players: set = set()
     game_counts: dict = {}
     stat_counts: dict = {}
     card: list[dict] = []
-    card_games: list = []  # ordered list of games added, for correlation tracking
+    under_count = 0
 
-    for _, row in candidates.iterrows():
-        key = (row['player_id'], row['stat'], row['direction'])
-        if key in exclude_keys:
-            continue
-        if row['player_id'] in used_players:
+    # Re-sort with a tiny OVER bonus so OVERs beat UNDERs within SIMILAR_CONF_WINDOW
+    working = candidates.copy()
+    if 'direction' in working.columns:
+        bonus = working['direction'].map({'OVER': SIMILAR_CONF_WINDOW / 2, 'UNDER': 0.0}).fillna(0.0)
+        order = (working['prob'] + bonus).argsort()[::-1].values
+        working = working.iloc[order].reset_index(drop=True)
+
+    def _basic_ok(r) -> bool:
+        if strict_override and r.get('line_source') != 'sleeper_override':
+            return False
+        if safe_only and r.get('is_dtd', False):
+            return False
+        if (r['player_id'], r['stat'], r['direction']) in exclude_keys:
+            return False
+        if r['player_id'] in used_players:
+            return False
+        if game_counts.get(r['game'], 0) >= 2:
+            return False
+        if stat_counts.get(r['stat'], 0) >= 2:
+            return False
+        return True
+
+    def _under_ok(r) -> bool:
+        if n_legs == 5 and r['direction'] == 'UNDER' and under_count >= MAX_UNDERS_5LEG:
+            avg_conf = sum(c['prob'] for c in card) / len(card) if card else 0.0
+            return avg_conf >= HIGH_CONF_OVERRIDE
+        return True
+
+    for _, row in working.iterrows():
+        if not _basic_ok(row) or not _under_ok(row):
             continue
 
         game = row['game']
         game_cnt = game_counts.get(game, 0)
-        if game_cnt >= 2:
-            continue
 
-        if stat_counts.get(row['stat'], 0) >= 2:
-            continue
-
-        # Soft correlation penalty: skip same-game if card already has 2+ legs
-        # AND there's a different-game candidate within 3% probability
-        # (only enforce when we have choices, i.e., card not yet desperate for legs)
+        # Soft correlation penalty: prefer different-game alternative within 3%
         if game_cnt == 1 and len(card) >= 2:
-            # Check if a different-game candidate is close in confidence
-            game_threshold = row['prob'] + 0.03
-            has_diff_game_alt = False
-            for _, alt in candidates.iterrows():
-                if alt['game'] != game and alt['game'] not in {r['game'] for r in card if r.get('game') == game}:
-                    alt_key = (alt['player_id'], alt['stat'], alt['direction'])
-                    if (alt_key not in exclude_keys and
-                            alt['player_id'] not in used_players and
-                            game_counts.get(alt['game'], 0) < 2 and
-                            stat_counts.get(alt['stat'], 0) < 2 and
-                            alt['prob'] >= game_threshold - 0.03):
-                        has_diff_game_alt = True
-                        break
-            if has_diff_game_alt:
-                continue  # defer this same-game pick, prefer diversity
+            has_diff_alt = False
+            for _, alt in working.iterrows():
+                if (alt['game'] != game and
+                        _basic_ok(alt) and
+                        alt['prob'] >= row['prob'] - 0.03):
+                    has_diff_alt = True
+                    break
+            if has_diff_alt:
+                continue
 
         card.append(row.to_dict())
         used_players.add(row['player_id'])
         game_counts[game] = game_cnt + 1
         stat_counts[row['stat']] = stat_counts.get(row['stat'], 0) + 1
-        card_games.append(game)
-
+        if row['direction'] == 'UNDER':
+            under_count += 1
         if len(card) == n_legs:
             break
 
-    # If we fell short due to the correlation penalty, fill remaining slots without it
+    # Fallback: fill remaining slots without soft constraints
     if len(card) < n_legs:
-        for _, row in candidates.iterrows():
+        for _, row in working.iterrows():
             if len(card) == n_legs:
                 break
-            key = (row['player_id'], row['stat'], row['direction'])
-            if key in exclude_keys:
-                continue
-            if row['player_id'] in used_players:
-                continue
-            if game_counts.get(row['game'], 0) >= 2:
-                continue
-            if stat_counts.get(row['stat'], 0) >= 2:
+            if not _basic_ok(row):
                 continue
             card.append(row.to_dict())
             used_players.add(row['player_id'])
             game_counts[row['game']] = game_counts.get(row['game'], 0) + 1
             stat_counts[row['stat']] = stat_counts.get(row['stat'], 0) + 1
+            if row['direction'] == 'UNDER':
+                under_count += 1
 
     return card
 
@@ -746,35 +1387,99 @@ def build_card(candidates: pd.DataFrame, n_legs: int, exclude_keys: set) -> list
 # ── Output ─────────────────────────────────────────────────────────────────────
 
 def print_ranked_board(candidates: pd.DataFrame, top_n: int = 20,
-                        is_playoffs: bool = False) -> None:
+                        is_playoffs: bool = False,
+                        strict_mode: bool = False) -> None:
     """Print the full ranked prop board before combo selection."""
     if candidates.empty:
         return
-    w = 84
+    w = 100 if strict_mode else 84
     label = "RANKED PROP BOARD (all qualifying legs, sorted by confidence)"
+    if strict_mode:
+        label += "  — ✅ = verified override  ⚠ = proxy / not actionable"
     print(f"\n  {label}")
-    if is_playoffs:
-        print(f"  {'#':<3} {'Player':<26} {'Stat':<9} {'Dir':<5} {'Line':>6} {'Model':>6} {'P':>6}  Context")
+    col_hdr = 'Context' if is_playoffs else 'Game'
+    if strict_mode:
+        print(f"  {'#':<3} {'Player':<26} {'Stat':<9} {'Dir':<5} {'Line':>6} {'Model':>6} {'P':>6}  {'Source':<22}  {col_hdr}")
     else:
-        print(f"  {'#':<3} {'Player':<26} {'Stat':<9} {'Dir':<5} {'Line':>6} {'Model':>6} {'P':>6}  Game")
+        print(f"  {'#':<3} {'Player':<26} {'Stat':<9} {'Dir':<5} {'Line':>6} {'Model':>6} {'P':>6}  {col_hdr}")
     print(f"  {'-' * w}")
     for rank, (_, row) in enumerate(candidates.head(top_n).iterrows(), 1):
         direction = row.get('direction', 'OVER')
         arrow = '▲' if direction == 'OVER' else '▼'
         context = row.get('playoff_note', '') or row['game']
-        print(f"  {rank:<3} {row['player']:<26} {row['stat']:<9} {arrow}{direction:<4} "
-              f"{row['line']:>6.1f} {row['pred']:>6.1f} {row['prob']:>6.1%}  {context}")
+        if strict_mode:
+            src = row.get('line_source', '')
+            if src == 'sleeper_override':
+                src_label = '✅ verified override'
+            else:
+                src_label = '⚠  proxy / not actionable'
+            print(f"  {rank:<3} {row['player']:<26} {row['stat']:<9} {arrow}{direction:<4} "
+                  f"{row['line']:>6.1f} {row['pred']:>6.1f} {row['prob']:>6.1%}  {src_label:<22}  {context}")
+        else:
+            print(f"  {rank:<3} {row['player']:<26} {row['stat']:<9} {arrow}{direction:<4} "
+                  f"{row['line']:>6.1f} {row['pred']:>6.1f} {row['prob']:>6.1%}  {context}")
     if len(candidates) > top_n:
         print(f"  ... and {len(candidates) - top_n} more legs above minimum threshold")
+
+
+def print_screenshot_checklist(candidates: pd.DataFrame, top_n: int = 15) -> None:
+    """Print players and stats to look up in Sleeper, grouped by player."""
+    if candidates.empty:
+        return
+    seen: set = set()
+    player_stats: dict[str, list[str]] = {}
+    for _, row in candidates.iterrows():
+        key = (row['player_name'], row['stat_key'])
+        if key in seen:
+            continue
+        seen.add(key)
+        name = row['player_name']
+        if name not in player_stats:
+            player_stats[name] = []
+        player_stats[name].append(_STAT_TEMPLATE_LABEL.get(row['stat_key'], row['stat_key'].upper()))
+        if len(seen) >= top_n:
+            break
+    print(f"\n  ── SCREENSHOT CHECKLIST  (top {top_n} legs, grouped by player) {'─' * 8}")
+    for name, stats in player_stats.items():
+        print(f"  {name:<28}  {'  '.join(stats)}")
+    print(f"  {'─' * 58}")
+
+
+def print_sleeper_template(candidates: pd.DataFrame, top_n: int = 15) -> None:
+    """Print a fill-in-the-blank template to paste into ChatGPT alongside screenshots."""
+    if candidates.empty:
+        return
+    seen: set = set()
+    entries: list[str] = []
+    for _, row in candidates.iterrows():
+        key = (row['player_name'], row['stat_key'])
+        if key in seen:
+            continue
+        seen.add(key)
+        stat_label = _STAT_TEMPLATE_LABEL.get(row['stat_key'], row['stat_key'].upper())
+        entries.append(f"{row['player_name']} {stat_label} ___")
+        if len(entries) >= top_n:
+            break
+    today = date.today().isoformat()
+    print(f"\n  {'─' * 72}")
+    print(f"  SLEEPER SCREENSHOT TEMPLATE  —  top {len(entries)} props")
+    print(f"  Paste into ChatGPT with your Sleeper screenshots.")
+    print(f"  ChatGPT fills the blanks → save as a .txt file, one entry per line.")
+    print(f"  {'─' * 72}")
+    for entry in entries:
+        print(f"  {entry}")
+    print(f"  {'─' * 72}")
+    print(f"  Then run: nba picks --props-only --quick --lines-file")
+    print()
 
 
 def print_card(card: list[dict], label: str, is_playoffs: bool = False) -> None:
     w = 78
     print(f"\n  {label}")
     if is_playoffs:
-        print(f"  {'Player':<28} {'Stat':<9} {'Dir':<5} {'PP Line':>7} {'Model':>7} {'P(dir)':>7}  Playoff Context")
+        print(f"  {'Player':<28} {'Stat':<9} {'Dir':<5} {'Line':>7} {'Model':>7} {'P(dir)':>7}  Playoff Context")
     else:
-        print(f"  {'Player':<28} {'Stat':<9} {'Dir':<5} {'PP Line':>7} {'Model':>7} {'P(dir)':>7}  Matchup")
+        print(f"  {'Player':<28} {'Stat':<9} {'Dir':<5} {'Line':>7} {'Model':>7} {'P(dir)':>7}  Matchup")
     print(f"  {'-' * w}")
     for leg in card:
         direction = leg.get('direction', 'OVER')
@@ -786,6 +1491,147 @@ def print_card(card: list[dict], label: str, is_playoffs: bool = False) -> None:
     combo_edge = sum(leg['prob'] for leg in card) / len(card) - 0.5
     print(f"  {'-' * w}")
     print(f"  {'Avg confidence':>44}  {avg_prob:>7.1%}  (edge: {combo_edge:+.1%} vs 50%)")
+
+
+# ── Live re-pricing ────────────────────────────────────────────────────────────
+
+def reprice_candidates(
+    candidates: pd.DataFrame,
+    pp_lines_fresh: dict,
+    is_playoffs: bool,
+) -> tuple[pd.DataFrame, list[dict]]:
+    """
+    Re-score every candidate against freshly-fetched Sleeper lines.
+    Drops legs where: line moved and edge is now below threshold, OR the line
+    moved from a whole number to a half-number on an UNDER (push protection lost).
+    Returns (updated_candidates, movement_report).
+    """
+    if candidates.empty or not pp_lines_fresh:
+        return candidates, []
+
+    min_prob_map = STAT_MIN_PROB_PLAYOFFS if is_playoffs else STAT_MIN_PROB
+    updated_rows: list[dict] = []
+    movement_report: list[dict] = []
+
+    for _, row in candidates.iterrows():
+        stat      = row['stat_key']
+        direction = row['direction']
+        orig_line = float(row['line'])
+        orig_prob = float(row['prob'])
+        pred      = float(row['pred'])
+        std       = float(row.get('std', max(abs(pred) * 0.2, 1.0)))
+
+        pp_key   = (normalize_name(row['player_name']), stat)
+        new_line = float(pp_lines_fresh.get(pp_key, orig_line))
+        new_row  = dict(row)
+        new_row['orig_line'] = orig_line
+        new_row['orig_prob'] = orig_prob
+
+        line_moved = abs(new_line - orig_line) >= 0.5
+
+        if line_moved:
+            new_p_over = prob_over(pred, new_line, std)
+            new_prob   = new_p_over if direction == 'OVER' else (1.0 - new_p_over)
+
+            # Whole-number → half-number UNDER: push protection disappears.
+            # e.g. UNDER 3.0 → UNDER 2.5 means exactly 3 now loses instead of pushing.
+            is_wth_under = (
+                direction == 'UNDER' and
+                orig_line == float(int(orig_line)) and   # was a whole number
+                new_line == orig_line - 0.5              # moved down by exactly 0.5
+            )
+
+            buf_gap = EDGE_BUFFER_GAP.get(stat, 0.0)
+            if direction == 'OVER':
+                still_edgy = (pred - new_line >= buf_gap) or (new_prob >= MIN_EDGE_PROB)
+            else:
+                still_edgy = (new_line - pred >= buf_gap) or (new_prob >= MIN_EDGE_PROB)
+
+            still_playable = (
+                new_prob >= min_prob_map.get(stat, 0.57) and
+                still_edgy and
+                not is_wth_under
+            )
+
+            movement_report.append({
+                'player':         row['player_name'],
+                'stat':           row['stat'],
+                'direction':      direction,
+                'orig_line':      orig_line,
+                'new_line':       new_line,
+                'orig_prob':      orig_prob,
+                'new_prob':       new_prob,
+                'wth_under':      is_wth_under,
+                'still_playable': still_playable,
+            })
+
+            if not still_playable:
+                continue  # drop — edge gone or push protection lost
+
+            new_row['line'] = round(new_line, 1)
+            new_row['prob'] = new_prob
+
+        updated_rows.append(new_row)
+
+    if not updated_rows:
+        return pd.DataFrame(columns=candidates.columns), movement_report
+
+    updated = (
+        pd.DataFrame(updated_rows)
+        .sort_values('prob', ascending=False)
+        .reset_index(drop=True)
+    )
+    return updated, movement_report
+
+
+def print_movement_report(movement_report: list[dict]) -> None:
+    """Print a concise line-movement table before the final cards."""
+    w = 88
+    print(f"\n  LINE MOVEMENT CHECK  ({len(movement_report)} prop(s) repriced against fresh lines)")
+    print(f"  {'─' * w}")
+    print(f"  {'Player':<24} {'Stat':<9} {'Dir':<5} {'Orig':>6} {'Live':>6}  "
+          f"{'Old P':>6}  {'New P':>6}  {'ΔEdge':>7}  Status")
+    print(f"  {'─' * w}")
+    for m in movement_report:
+        delta = m['new_prob'] - m['orig_prob']
+        if m['wth_under']:
+            status = '⛔ WHOLE→HALF UNDER — dropped'
+        elif not m['still_playable']:
+            status = '❌ edge below threshold — dropped'
+        else:
+            status = '✅ still playable'
+        print(f"  {m['player']:<24} {m['stat']:<9} {m['direction']:<5} "
+              f"{m['orig_line']:>6.1f} {m['new_line']:>6.1f}  "
+              f"{m['orig_prob']:>6.1%}  {m['new_prob']:>6.1%}  "
+              f"{delta:>+7.1%}  {status}")
+    print(f"  {'─' * w}")
+
+
+# ── Saved-line helpers ────────────────────────────────────────────────────────
+
+def load_saved_card_lines(date_str: str) -> dict:
+    """
+    Load previously saved card lines from data/picks/YYYY-MM-DD.json.
+    Returns {(normalize_name(player), stat_key): {'line', 'prob', 'direction'}}
+    or {} if no file exists for that date.
+    """
+    picks_path = Path(__file__).parent.parent / "data" / "picks" / f"{date_str}.json"
+    if not picks_path.exists():
+        return {}
+    try:
+        with open(picks_path) as f:
+            data = json.load(f)
+    except Exception:
+        return {}
+    result = {}
+    for leg in data.get('picks', []):
+        key = (normalize_name(leg['player_name']), leg['stat_key'])
+        result[key] = {
+            'line':      float(leg['line']),
+            'prob':      float(leg['prob']),
+            'direction': leg['direction'],
+        }
+    return result
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -860,7 +1706,39 @@ def main() -> None:
     parser.add_argument('--play-in', action='store_true',
                         help='Activate Play-In mode: shallower discounts/narrower stdev than full playoffs, '
                              'no elevation ratios (no Play-In history in DB yet)')
+    parser.add_argument('--lines', metavar='OVERRIDES',
+                        help='Manual Sleeper Pick\'em lines, comma-separated: '
+                             '"Jalen Green PTS 19.5, Ausar Thompson PRA 19.5". '
+                             'Merges with (and wins over) fetched proxy lines. '
+                             'Stats: PTS REB AST PRA REB+AST FG3M')
+    parser.add_argument('--lines-file', metavar='FILE', dest='lines_file',
+                        help='Path to a text file of verified Sleeper lines, one per line: '
+                             '"Jalen Green PTS 19.5". Blank lines and #-comments are ignored. '
+                             '--lines overrides any duplicate entries in the file.')
+    parser.add_argument('--template', action='store_true',
+                        help='Print a fill-in-the-blank prop template to paste into ChatGPT '
+                             'alongside Sleeper screenshots')
+    parser.add_argument('--debug-pp', metavar='NAMES',
+                        help='Dump all PP projections for comma-separated player name substrings '
+                             '(e.g. "julius randle,shai gilgeous") then exit')
+    parser.add_argument('--debug-sleeper', metavar='NAMES',
+                        help='Dump raw Sleeper API records for comma-separated player name substrings '
+                             '(e.g. "jalen green,ausar thompson,ayo dosunmu") then exit; '
+                             'shows every record returned by the projections endpoint so you can '
+                             'identify which type/flags distinguish standard vs alternate lines')
     args = parser.parse_args()
+
+    # ── Debug dump modes — print raw API data for given player(s) then exit ──
+    if args.debug_pp:
+        patterns = [p.strip() for p in args.debug_pp.split(',') if p.strip()]
+        debug_prizepicks_lines(patterns)
+        sys.exit(0)
+
+    if args.debug_sleeper:
+        patterns = [p.strip() for p in args.debug_sleeper.split(',') if p.strip()]
+        season_type = 'post' if (args.playoffs or args.play_in) else 'regular'
+        debug_sleeper_lines(patterns, season_type=season_type)
+        sys.exit(0)
 
     if args.play_in and args.playoffs:
         print("Error: --play-in and --playoffs are mutually exclusive.")
@@ -873,6 +1751,44 @@ def main() -> None:
 
     is_playoffs = args.playoffs or args.play_in   # both modes use the playoff adjustment path
     is_play_in  = args.play_in
+
+    # Auto-detect season phase when the user did not explicitly pass a phase flag.
+    # This prevents running in regular-season mode during playoffs (wrong thresholds + no adjustments).
+    if not is_playoffs and not is_play_in:
+        db_phase = detect_phase(args.season)
+        if db_phase == 'playoffs':
+            print(f"\n  AUTO-DETECT: DB shows Playoffs games in the last 14 days.")
+            print(f"  Enabling --playoffs mode automatically. Pass --playoffs explicitly to suppress.")
+            is_playoffs = True
+            is_play_in  = False
+        elif db_phase == 'play-in':
+            print(f"\n  AUTO-DETECT: DB shows Play-In games in the last 14 days.")
+            print(f"  Enabling --play-in mode automatically. Pass --play-in explicitly to suppress.")
+            is_playoffs = True
+            is_play_in  = True
+        elif db_phase == 'offseason':
+            print(f"\n  ERROR: No games found in the last 14 days — season appears to be over.")
+            print(f"  Check your --date argument or wait for the season to begin.")
+            sys.exit(1)
+
+    # Auto-correct Play-In vs Playoffs from the NBA schedule API when a playoff flag is active,
+    # to catch the mislabeling bug (e.g. passing --playoffs on a Play-In game night).
+    if is_playoffs:
+        detected = detect_nba_game_type(args.date)
+        if detected == 'PlayIn' and not is_play_in:
+            print(f"\n  AUTO-CORRECT: Schedule shows today's games are Play-In, not Playoffs.")
+            print(f"       Switching to --play-in mode. Use --play-in explicitly to suppress this.")
+            is_play_in = True
+        elif detected == 'Playoffs' and is_play_in:
+            print(f"\n  AUTO-CORRECT: Schedule shows today's games are Playoffs, not Play-In.")
+            print(f"       Switching to --playoffs mode. Use --playoffs explicitly to suppress this.")
+            is_play_in = False
+        elif detected == 'Regular Season':
+            print(f"\n  WARNING: Schedule shows regular-season games today, but playoff mode is active.")
+            print(f"       Continuing with playoffs mode as requested — verify the date is correct.")
+        elif not detected:
+            print(f"\n  WARNING: Could not verify game type from NBA API — using detected/flag mode.")
+
     playoff_ratios: dict = {}
 
     print(f"\n  NBA Edge Model — Daily Picks")
@@ -900,14 +1816,56 @@ def main() -> None:
     elif is_play_in:
         print(f"  Play-In mode: elevation ratios disabled (no Play-In game log history in DB).")
 
-    # Fetch PrizePicks lines
-    print(f"\n  Fetching PrizePicks lines...")
-    pp_lines = fetch_prizepicks_lines()
-    if pp_lines:
-        print(f"  Found {len(pp_lines)} PrizePicks standard lines for tonight")
+    # Fetch Sleeper lines (primary); fall back to PrizePicks if unavailable
+    sleeper_season_type = 'post' if (is_playoffs or is_play_in) else 'regular'
+    print(f"\n  Fetching Sleeper lines ({sleeper_season_type})...")
+    sleeper_lines = fetch_sleeper_lines(season_type=sleeper_season_type)
+    using_sleeper = bool(sleeper_lines)
+    if using_sleeper:
+        print(f"  Found {len(sleeper_lines)} Sleeper lines for tonight")
+        pp_lines = sleeper_lines
     else:
-        print(f"  *** PrizePicks unavailable — falling back to L10 averages as lines ***")
-        print(f"  *** Output will NOT be directly actionable on PrizePicks ***")
+        print(f"  Sleeper unavailable — trying PrizePicks fallback...")
+        pp_lines = fetch_prizepicks_lines()
+        if pp_lines:
+            print(f"  Found {len(pp_lines)} PrizePicks standard lines (fallback)")
+        else:
+            print(f"  *** Both Sleeper and PrizePicks unavailable — falling back to L10 averages ***")
+            print(f"  *** Output will NOT be directly actionable on Sleeper ***")
+
+    # Merge --lines-file into args.lines (file is loaded first; --lines wins on duplicates)
+    if getattr(args, 'lines_file', None):
+        lines_path = Path(args.lines_file)
+        if not lines_path.exists():
+            print(f"\n  [--lines-file] File not found: {args.lines_file}")
+            sys.exit(1)
+        try:
+            raw_lines = lines_path.read_text(encoding='utf-8').splitlines()
+            file_entries = [l.strip() for l in raw_lines
+                            if l.strip() and not l.strip().startswith('#')]
+            file_text = ', '.join(file_entries)
+        except Exception as e:
+            print(f"\n  [--lines-file] Could not read {args.lines_file}: {e}")
+            sys.exit(1)
+        if file_text:
+            print(f"\n  Loading lines file: {args.lines_file}  ({len(file_entries)} entries)")
+            args.lines = (file_text + ', ' + args.lines) if args.lines else file_text
+
+    # Apply manual line overrides — merges with proxy; override values win for any
+    # (player, stat) key that appears in both.  Works even if proxy fetch failed.
+    override_lines: dict = {}
+    if args.lines:
+        override_lines = parse_line_overrides(args.lines)
+        if override_lines:
+            print(f"\n  Manual line overrides ({len(override_lines)} entries):")
+            for (name, stat), line in sorted(override_lines.items()):
+                prev = pp_lines.get((name, stat))
+                note = f"  (was {prev})" if prev is not None and prev != line else ''
+                print(f"    {name:<30} {stat.upper():<10} {line}{note}")
+            pp_lines.update(override_lines)
+            using_sleeper = using_sleeper or bool(pp_lines)
+        elif args.lines.strip():
+            print(f"\n  [--lines] No valid entries parsed — check format.")
 
     # Fetch injury report
     print(f"  Fetching injury report from ESPN...")
@@ -925,7 +1883,7 @@ def main() -> None:
         severity = "*** CRITICAL" if staleness > 14 else "*** WARNING"
         print(f"\n  {severity}: DB is {staleness} days stale (latest game: {db_latest.date()}) ***")
         print(f"  *** Rolling features are stale — run before trusting picks:")
-        print(f"  *** python scripts/pull_season_data.py --update && python -m src.features.pipeline ***")
+        print(f"  *** python scripts/update_data.py --playoffs  (rebuilds features automatically) ***")
 
     print(f"\n  Fetching today's schedule from NBA.com...")
     player_contexts = get_todays_player_contexts(args.date, args.season)
@@ -944,25 +1902,119 @@ def main() -> None:
 
     print(f"  Players qualifying (min_L10 >= {MIN_MINUTES} min): {len(df_today)}")
 
+    if using_sleeper:
+        line_source_str = 'sleeper'
+    elif pp_lines:
+        line_source_str = 'prizepicks'
+    else:
+        line_source_str = 'l10_avg'
+
+    # Keys that came from --lines are the only legs allowed in strict-mode cards
+    override_keys: set = set(override_lines.keys()) if override_lines else set()
+
     candidates = build_candidates(df_today, pp_lines, injury_report,
                                   is_playoffs=is_playoffs,
                                   is_play_in=is_play_in,
-                                  playoff_ratios=playoff_ratios if is_playoffs else None)
+                                  playoff_ratios=playoff_ratios if is_playoffs else None,
+                                  line_source=line_source_str,
+                                  override_keys=override_keys)
 
     if candidates.empty:
         if pp_lines:
-            print("  No players matched PrizePicks lines above probability thresholds.")
+            src = "Sleeper" if using_sleeper else "PrizePicks"
+            print(f"  No players matched {src} lines above probability thresholds.")
         else:
             print("  No legs met minimum probability thresholds.")
         sys.exit(0)
 
     print(f"  Qualified legs: {len(candidates)}")
 
-    card1 = build_card(candidates, n_legs=3, exclude_keys=set())
-    used = {(leg['player_id'], leg['stat'], leg['direction']) for leg in card1}
-    card2 = build_card(candidates, n_legs=5, exclude_keys=used)
+    # Compare previously saved card lines against current live Sleeper lines.
+    # The old within-run re-fetch always returned identical lines (fetched seconds
+    # apart), so movement was never detected.  The real signal lives in the prior
+    # save file: if lines shifted since the last --save run, that's what we flag.
+    movement_report: list[dict] = []
+    if pp_lines:
+        saved_lines = load_saved_card_lines(args.date)
+        if saved_lines:
+            live_src = "Sleeper" if using_sleeper else "PP"
+            print(f"\n  Checking {len(saved_lines)} saved-card leg(s) against live {live_src} lines...")
+            # Patch candidates: for any leg that was in the prior save, temporarily
+            # set its line/prob to the saved values so reprice_candidates can detect
+            # movement and compute correct delta-prob for the report.
+            cands_patched = candidates.copy()
+            for i, row in cands_patched.iterrows():
+                key = (normalize_name(row['player_name']), row['stat_key'])
+                if key in saved_lines:
+                    cands_patched.at[i, 'line'] = saved_lines[key]['line']
+                    cands_patched.at[i, 'prob'] = saved_lines[key]['prob']
+            candidates, movement_report = reprice_candidates(
+                cands_patched, pp_lines, is_playoffs=is_playoffs,
+            )
+            n_moved   = len(movement_report)
+            n_dropped = sum(1 for m in movement_report if not m['still_playable'])
+            if n_moved:
+                print(f"  {n_moved} saved-card line(s) moved | {n_dropped} leg(s) dropped after repricing")
+                if candidates.empty:
+                    print("  All legs dropped after repricing — no playable edges remain.")
+                    sys.exit(0)
+            else:
+                print(f"  Lines stable vs saved picks — no movement detected")
+        else:
+            print(f"\n  No saved picks for today — line-movement check skipped (first run)")
 
-    line_label = "PrizePicks lines" if pp_lines else "L10 avg lines (PP unavailable)"
+    # Separate DTD/Doubtful into a conditional pool (excluded from SAFE cards)
+    dtd_candidates = (
+        candidates[candidates['is_dtd']].copy()
+        if 'is_dtd' in candidates.columns else pd.DataFrame()
+    )
+
+    strict_mode = STRICT_SLEEPER_MODE and using_sleeper
+    n_verified = 0
+
+    if strict_mode:
+        n_verified = int((candidates['line_source'] == 'sleeper_override').sum())
+        if n_verified < STRICT_CARD1_MIN_LEGS:
+            card1 = []
+            card2 = []
+            print(f"\n  Not enough verified Sleeper lines to build Card 1.")
+            print(f"  Need {STRICT_CARD1_MIN_LEGS} --lines overrides; have {n_verified}.")
+            print(f"  Supply real app lines with: --lines \"Player Name STAT line, ...\"")
+        else:
+            card1 = build_card(candidates, n_legs=3, exclude_keys=set(), strict_override=True)
+            used = {(leg['player_id'], leg['stat'], leg['direction']) for leg in card1}
+            if n_verified >= STRICT_CARD2_MIN_LEGS:
+                card2 = build_card(candidates, n_legs=5, exclude_keys=used, strict_override=True)
+            else:
+                card2 = []
+    else:
+        card1 = build_card(candidates, n_legs=3, exclude_keys=set())
+        used = {(leg['player_id'], leg['stat'], leg['direction']) for leg in card1}
+        card2 = build_card(candidates, n_legs=5, exclude_keys=used)
+
+    # Conditional card: DTD/Doubtful legs — confirm active before betting
+    conditional_card: list[dict] = []
+    if not dtd_candidates.empty:
+        cond_excl = {(leg['player_id'], leg['stat'], leg['direction'])
+                     for leg in card1 + card2}
+        conditional_card = build_card(
+            dtd_candidates,
+            n_legs=min(3, len(dtd_candidates)),
+            exclude_keys=cond_excl,
+            safe_only=False,
+            strict_override=strict_mode,
+        )
+
+    if override_lines and using_sleeper:
+        line_label = f"Sleeper proxy + {len(override_lines)} verified override(s)"
+    elif override_lines:
+        line_label = f"{len(override_lines)} verified override(s) only"
+    elif using_sleeper:
+        line_label = "Sleeper proxy lines (STRICT MODE — no actionable cards without --lines)"
+    elif pp_lines:
+        line_label = "PrizePicks lines (Sleeper fallback)"
+    else:
+        line_label = "L10 avg lines (Sleeper + PP unavailable)"
     if is_play_in:
         playoffs_label = "  [PLAY-IN EDITION]"
     elif is_playoffs:
@@ -973,23 +2025,52 @@ def main() -> None:
     print(f"  SAFE FLEX DAILY PICKS  —  {line_label}{playoffs_label}")
     print(f"{'=' * 76}")
 
-    # Show ranked board first (all qualifying legs)
+    # Show line-movement summary before cards
+    if movement_report:
+        print_movement_report(movement_report)
+
+    # Show ranked board first (all qualifying legs — proxy and override both appear)
     if is_playoffs:
-        print_ranked_board(candidates, top_n=25, is_playoffs=True)
+        print_ranked_board(candidates, top_n=25, is_playoffs=True, strict_mode=strict_mode)
+    elif strict_mode:
+        print_ranked_board(candidates, top_n=25, is_playoffs=False, strict_mode=True)
+
+    if strict_mode:
+        print_screenshot_checklist(candidates, top_n=15)
+
+    if getattr(args, 'template', False):
+        print_sleeper_template(candidates, top_n=15)
 
     if card1:
         print_card(card1, "CARD 1  —  3-Leg SAFE Flex", is_playoffs=is_playoffs)
-    else:
+    elif not (strict_mode and n_verified < STRICT_CARD1_MIN_LEGS):
         print("\n  CARD 1: Not enough qualifying legs (need 3).")
 
     if card2:
         print_card(card2, "CARD 2  —  5-Leg SAFE Flex", is_playoffs=is_playoffs)
+    elif strict_mode and (not card1 or n_verified < STRICT_CARD2_MIN_LEGS):
+        if card1:
+            print(f"\n  CARD 2: Need {STRICT_CARD2_MIN_LEGS} verified override legs to build Card 2 "
+                  f"(have {n_verified}).")
     else:
         print("\n  CARD 2: Not enough non-overlapping legs (need 5).")
 
+    if conditional_card:
+        print_card(
+            conditional_card,
+            "CONDITIONAL CARD  —  DTD/Doubtful players (confirm active before betting)",
+            is_playoffs=is_playoffs,
+        )
+
     print(f"\n{'=' * 76}")
     if pp_lines:
-        print(f"  PP Line = PrizePicks standard line  |  Model = blended prediction")
+        if override_lines:
+            src_label = "Override line"
+        elif using_sleeper:
+            src_label = "Sleeper proxy line"
+        else:
+            src_label = "PP line"
+        print(f"  {src_label} = line used for edge calc  |  Model = blended prediction")
     thresholds = STAT_MIN_PROB_PLAYOFFS if is_playoffs else STAT_MIN_PROB
     thresholds_str = "  |  ".join(f"{s.upper()} >= {round(v*100)}%" for s, v in thresholds.items())
     print(f"  THRESHOLDS  {thresholds_str}")
@@ -1003,11 +2084,14 @@ def main() -> None:
     if is_playoffs:
         print(f"  ADJUSTMENTS per-stat elevation ratios | expanded stdev | suppression active")
     print(f"  ⚠️  = Day-To-Day/Doubtful — verify lineup before betting")
+    if strict_mode:
+        print(f"  {'─' * 72}")
+        print(f"  Only manual Sleeper overrides are actionable. Proxy lines are informational only.")
+        print(f"  To add real app lines: nba picks --playoffs --lines \"Name STAT line, ...\"")
     print(f"{'=' * 76}\n")
 
     if args.save:
-        line_source = 'prizepicks' if pp_lines else 'l10_avg'
-        out_path = save_picks(card1 or [], card2 or [], args.date, args.season, line_source,
+        out_path = save_picks(card1 or [], card2 or [], args.date, args.season, line_source_str,
                               is_playoffs=is_playoffs, is_play_in=is_play_in)
         n_saved = len(card1 or []) + len(card2 or [])
         print(f"  Saved {n_saved} picks → {out_path}")
