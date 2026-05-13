@@ -43,7 +43,7 @@ from src.playoffs.adjustments import (
     playoff_context_note,
     TIER_LABELS,
 )
-from src.utils.season import detect_phase
+from src.utils.season import detect_phase, get_playoff_round, ROUND_LABELS
 
 # Sleeper API uses the start year of the season (e.g. 2025 for 2025-26)
 _SLEEPER_API_YEAR = CURRENT_SEASON.split('-')[0]
@@ -101,6 +101,19 @@ TIER_MIN_PROB_PLAYOFFS = {
 STAT_TIER_MIN_PROB_PLAYOFFS: dict[tuple[str, str], float] = {
     ('STAR', 'pts'): 0.70,
 }
+
+# Round-progressive probability floors (playoffs only).
+# Tighter thresholds in later rounds: backtest shows R1 has best accuracy,
+# Finals has worst (PTS 59.7% R1 → 55.6% Finals). These are added on top of
+# STAT_MIN_PROB_PLAYOFFS so the effective floor = max(stat_floor, round_floor).
+ROUND_PROB_FLOORS: dict[int, float] = {
+    1: 0.60,   # First Round — baseline
+    2: 0.62,   # Conference Semifinals
+    3: 0.63,   # Conference Finals
+    4: 0.65,   # Finals — most volatile, highest model error
+    0: 0.60,   # Unknown / fallback
+}
+
 
 # PrizePicks stat_type strings → our internal stat keys
 PP_STAT_MAP = {
@@ -913,6 +926,7 @@ def get_todays_player_contexts(target_date: str, season: str) -> list[dict]:
                 'team_abbr': game['home_abbr'],
                 'opp_abbr': game['away_abbr'],
                 'is_home': 1,
+                'game_id': game.get('game_id', ''),
             })
         for pid in away_ids:
             contexts.append({
@@ -921,6 +935,7 @@ def get_todays_player_contexts(target_date: str, season: str) -> list[dict]:
                 'team_abbr': game['away_abbr'],
                 'opp_abbr': game['home_abbr'],
                 'is_home': 0,
+                'game_id': game.get('game_id', ''),
             })
         print(f" {len(home_ids) + len(away_ids)} players")
     return contexts
@@ -1044,6 +1059,27 @@ def build_todays_features(features_df: pd.DataFrame,
             pace_cache[team] = get_team_pace(team, target_date)
         row.update(pace_cache[team])
 
+        # Playoff round from game_id (position 7: 1=R1, 2=CSF, 3=CF, 4=Finals).
+        # ESPN fallback returns its own event IDs (not NBA format) so position [7]
+        # is meaningless — detect by format and substitute the most recent NBA
+        # game_id for this series from playoff_logs.
+        game_id_str = ctx.get('game_id', '')
+        if is_playoffs:
+            is_valid_nba_id = len(game_id_str) == 10 and game_id_str.startswith('004')
+            if not is_valid_nba_id and not playoff_logs.empty and 'game_id' in playoff_logs.columns:
+                opp = ctx['opp_abbr']
+                team = ctx['team_abbr']
+                series_gids = playoff_logs[
+                    (playoff_logs['team_abbr'] == team) &
+                    (playoff_logs['opp_abbr'] == opp) &
+                    (playoff_logs['game_id'].astype(str).str.startswith('004'))
+                ]['game_id']
+                if not series_gids.empty:
+                    game_id_str = str(series_gids.iloc[-1])
+            row['playoff_round'] = get_playoff_round(game_id_str)
+        else:
+            row['playoff_round'] = 0
+
         # Playoff series context: compute series_game_num and series_L3 features
         # from actual prior games in this series, not the stale parquet row values.
         if is_playoffs and not playoff_logs.empty:
@@ -1053,6 +1089,21 @@ def build_todays_features(features_df: pd.DataFrame,
             ]
             row['is_playoff'] = 1
             row['series_game_num'] = len(series_games) + 1
+
+            # Team-level series wins/losses for elimination game detection.
+            # Use distinct game_ids to avoid duplicating player rows.
+            if 'wl' in playoff_logs.columns and 'team_abbr' in playoff_logs.columns:
+                team = ctx['team_abbr']
+                team_series_log = playoff_logs[
+                    (playoff_logs['team_abbr'] == team) &
+                    (playoff_logs['opp_abbr'] == opp)
+                ][['game_id', 'wl']].drop_duplicates('game_id')
+                row['series_team_wins'] = int((team_series_log['wl'] == 'W').sum())
+                row['series_opp_wins']  = int((team_series_log['wl'] == 'L').sum())
+            else:
+                row['series_team_wins'] = 0
+                row['series_opp_wins']  = 0
+
             for stat in ['pts', 'reb', 'ast']:
                 col = f'{stat}_series_L3'
                 if not series_games.empty and stat in series_games.columns:
@@ -1069,6 +1120,8 @@ def build_todays_features(features_df: pd.DataFrame,
         elif is_playoffs:
             row['is_playoff'] = 1
             row['series_game_num'] = 1
+            row['series_team_wins'] = 0
+            row['series_opp_wins']  = 0
             for col in ['pts_series_L3', 'reb_series_L3', 'ast_series_L3', 'pra_series_L3']:
                 row[col] = float('nan')
 
@@ -1145,13 +1198,61 @@ def predict_stat_raw(df: pd.DataFrame, stat: str,
 
 # ── Candidate generation ───────────────────────────────────────────────────────
 
+def get_rotation_tightening_teams(target_date: str) -> set[str]:
+    """
+    Return set of team abbrs whose last game had a tighter rotation than their
+    playoff average. Signal: last game's ≥15-min player count < season PO avg - 1.
+
+    Backtest finding: when rotation tightens, hit rate improves 3-7pp (62.5-66.5%
+    vs 53.9-59.1%). Used as a display annotation only — does not alter probabilities.
+    """
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        rows = conn.execute("""
+            WITH last_game AS (
+                SELECT team_abbr, MAX(game_date) AS last_date
+                FROM game_logs
+                WHERE game_date < ? AND min >= 15
+                GROUP BY team_abbr
+            ),
+            last_count AS (
+                SELECT g.team_abbr, COUNT(DISTINCT g.player_id) AS n
+                FROM game_logs g
+                JOIN last_game lg ON g.team_abbr = lg.team_abbr
+                                  AND g.game_date = lg.last_date
+                WHERE g.min >= 15
+                GROUP BY g.team_abbr
+            ),
+            po_avg AS (
+                SELECT team_abbr, AVG(cnt) AS avg_n
+                FROM (
+                    SELECT team_abbr, game_id, COUNT(DISTINCT player_id) AS cnt
+                    FROM game_logs
+                    WHERE min >= 15 AND season_type = 'Playoffs'
+                    GROUP BY team_abbr, game_id
+                )
+                GROUP BY team_abbr
+            )
+            SELECT lc.team_abbr
+            FROM last_count lc
+            JOIN po_avg pa ON lc.team_abbr = pa.team_abbr
+            WHERE lc.n <= pa.avg_n - 1.0
+        """, (target_date,)).fetchall()
+    except Exception:
+        return set()
+    finally:
+        conn.close()
+    return {r[0] for r in rows}
+
+
 def build_candidates(df: pd.DataFrame, pp_lines: dict,
                      injury_report: dict,
                      is_playoffs: bool = False,
                      is_play_in: bool = False,
                      playoff_ratios: dict | None = None,
                      line_source: str = 'sleeper',
-                     override_keys: set | None = None) -> pd.DataFrame:
+                     override_keys: set | None = None,
+                     rotation_tight_teams: set | None = None) -> pd.DataFrame:
     """
     Score every (player, stat) pair. Returns OVER and UNDER candidates.
 
@@ -1163,8 +1264,14 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
 
     Playoff mode (is_playoffs=True):
       - Applies tier-based prediction and variance adjustments.
+      - Round-progressive thresholds: tighter floors in later rounds (R1→Finals).
+      - Finals/CF extra prediction discounts (model over-predicts most in Finals).
+      - Elimination game std expansion when series score is 3-x.
       - Suppresses high-risk rotation plays (DNP/minute-cut signals).
-      - Labels each pick with its playoff tier and adjustment info.
+      - Labels each pick with its playoff tier, round, and adjustment info.
+
+    rotation_tight_teams: set of team abbrs where last game had fewer active
+      players than playoff average — added as annotation to playoff_note.
 
     Returns a DataFrame with a 'direction' column: 'OVER' or 'UNDER'.
     """
@@ -1184,7 +1291,7 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
         if l10_col not in df.columns:
             continue
 
-        min_p = STAT_MIN_PROB_PLAYOFFS[stat] if is_playoffs else STAT_MIN_PROB[stat]
+        base_min_p = STAT_MIN_PROB_PLAYOFFS[stat] if is_playoffs else STAT_MIN_PROB[stat]
         preds = predict_stat_raw(df, stat, model_cache=model_cache)
 
         for idx, row in df.iterrows():
@@ -1223,6 +1330,12 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
             std_val = row.get(std_col, np.nan)
             std_float = float('nan') if pd.isna(std_val) else float(std_val)
 
+            # Extract round and elimination context from row (set in build_todays_features)
+            playoff_round = int(row.get('playoff_round', 0) or 0)
+            team_wins = int(row.get('series_team_wins', 0) or 0)
+            opp_wins  = int(row.get('series_opp_wins',  0) or 0)
+            is_elim_game = max(team_wins, opp_wins) == 3
+
             # ── Playoff adjustment layer ───────────────────────────────────────
             playoff_note = ''
             tier = None
@@ -1230,18 +1343,34 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
                 adj_pred, adj_std, tier, pred_mult, std_mult = apply_playoff_adjustments(
                     float(pred), std_float, stat, row, playoff_ratios,
                     play_in=is_play_in,
+                    playoff_round=playoff_round,
+                    elimination_game=is_elim_game,
                 )
                 # Suppress high-risk rotation plays
                 if should_suppress(row, tier):
                     continue
                 has_history = bool(playoff_ratios and int(row.get('player_id', -1)) in playoff_ratios)
                 playoff_note = playoff_context_note(tier, pred_mult, std_mult, False, has_history)
+
+                # Annotate rotation tightening signal
+                team_abbr = str(row.get('team_abbr', ''))
+                if rotation_tight_teams and team_abbr in rotation_tight_teams:
+                    playoff_note = (playoff_note + ' | ↑rot-tight') if playoff_note else '↑rot-tight'
+
+                # Annotate elimination game
+                if is_elim_game:
+                    playoff_note = (playoff_note + ' | elim') if playoff_note else 'elim'
+
                 pred = adj_pred
                 std_float = adj_std
             # ──────────────────────────────────────────────────────────────────
 
             p_over = prob_over(float(pred), float(line), std_float)
             p_under = 1.0 - p_over
+
+            # Round-progressive floor: later rounds require higher confidence.
+            # Effective floor = max(stat floor, round floor).
+            min_p = max(base_min_p, ROUND_PROB_FLOORS.get(playoff_round, base_min_p)) if is_playoffs else base_min_p
 
             # Tier-aware gate (playoffs only): raise min_p for ROTATION picks.
             # Effective threshold = max(stat-level floor, tier floor, stat×tier override).
@@ -1259,7 +1388,7 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
                 'player_name':  player_name,              # clean name, no flag
                 'team':         row.get('team_abbr', ''),
                 'opp':          row.get('opp_abbr', ''),
-                'game':         row.get('matchup', 'UNK'),
+                'game':         _canonical_game(row.get('matchup', 'UNK')),
                 'stat':         stat.upper(),
                 'stat_key':     stat,                     # lowercase for DB lookup
                 'line':         round(float(line), 1),
@@ -1292,8 +1421,22 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
 
 # ── Card builder ───────────────────────────────────────────────────────────────
 
+def _canonical_game(matchup: str) -> str:
+    """Return a stable game key regardless of home/away perspective.
+
+    'MIN @ SAS' and 'SAS vs. MIN' both become 'MIN_SAS' so the max-2/game
+    limit correctly treats them as the same physical game.
+    """
+    for sep in (' @ ', ' vs. ', ' vs '):
+        if sep in matchup:
+            teams = sorted(t.strip() for t in matchup.split(sep, 1))
+            return '_'.join(teams)
+    return matchup
+
+
 def build_card(candidates: pd.DataFrame, n_legs: int, exclude_keys: set,
-               safe_only: bool = True, strict_override: bool = False) -> list[dict]:
+               safe_only: bool = True, strict_override: bool = False,
+               exclude_players: set | None = None) -> list[dict]:
     """
     Greedy highest-confidence selection with:
       - One prop per player, max 2/game, max 2/stat-type
@@ -1318,12 +1461,16 @@ def build_card(candidates: pd.DataFrame, n_legs: int, exclude_keys: set,
         order = (working['prob'] + bonus).argsort()[::-1].values
         working = working.iloc[order].reset_index(drop=True)
 
+    _excl_players = exclude_players or set()
+
     def _basic_ok(r) -> bool:
         if strict_override and r.get('line_source') != 'sleeper_override':
             return False
         if safe_only and r.get('is_dtd', False):
             return False
         if (r['player_id'], r['stat'], r['direction']) in exclude_keys:
+            return False
+        if r['player_id'] in _excl_players:
             return False
         if r['player_id'] in used_players:
             return False
@@ -1749,6 +1896,11 @@ def main() -> None:
         print("Error: features.parquet not found. Run: python -m src.features.pipeline")
         sys.exit(1)
 
+    # Validate --lines-file early, before any expensive fetches or DB loads.
+    if getattr(args, 'lines_file', None) and not Path(args.lines_file).exists():
+        print(f"\n  [--lines-file] File not found: {args.lines_file}")
+        sys.exit(1)
+
     is_playoffs = args.playoffs or args.play_in   # both modes use the playoff adjustment path
     is_play_in  = args.play_in
 
@@ -1790,6 +1942,7 @@ def main() -> None:
             print(f"\n  WARNING: Could not verify game type from NBA API — using detected/flag mode.")
 
     playoff_ratios: dict = {}
+    rotation_tight_teams: set = set()
 
     print(f"\n  NBA Edge Model — Daily Picks")
     if is_play_in:
@@ -1902,6 +2055,26 @@ def main() -> None:
 
     print(f"  Players qualifying (min_L10 >= {MIN_MINUTES} min): {len(df_today)}")
 
+    # Detect playoff round from today's game IDs and print with mode
+    if is_playoffs and not is_play_in:
+        detected_rounds = df_today['playoff_round'].dropna().astype(int)
+        detected_rounds = detected_rounds[detected_rounds > 0]
+        if not detected_rounds.empty:
+            cur_round = int(detected_rounds.mode().iloc[0])
+            round_label = ROUND_LABELS.get(cur_round, f"Round {cur_round}")
+            print(f"  Playoff round detected: {round_label} (R{cur_round})")
+        else:
+            cur_round = 0
+            print(f"  Playoff round: unknown (game_id format unrecognized)")
+
+        # Rotation tightening signal (display only — does not alter probabilities)
+        # Intersect with today's slate teams so off-slate teams (e.g. HOU on a CLE/DET day)
+        # never bleed into the annotation.
+        slate_teams = {ctx['team_abbr'] for ctx in player_contexts}
+        rotation_tight_teams = get_rotation_tightening_teams(args.date) & slate_teams
+        if rotation_tight_teams:
+            print(f"  Rotation tightening teams: {', '.join(sorted(rotation_tight_teams))} (↑rot-tight annotation applied)")
+
     if using_sleeper:
         line_source_str = 'sleeper'
     elif pp_lines:
@@ -1917,7 +2090,8 @@ def main() -> None:
                                   is_play_in=is_play_in,
                                   playoff_ratios=playoff_ratios if is_playoffs else None,
                                   line_source=line_source_str,
-                                  override_keys=override_keys)
+                                  override_keys=override_keys,
+                                  rotation_tight_teams=rotation_tight_teams if is_playoffs else None)
 
     if candidates.empty:
         if pp_lines:
@@ -1983,14 +2157,17 @@ def main() -> None:
         else:
             card1 = build_card(candidates, n_legs=3, exclude_keys=set(), strict_override=True)
             used = {(leg['player_id'], leg['stat'], leg['direction']) for leg in card1}
+            used_pids = {leg['player_id'] for leg in card1}
             if n_verified >= STRICT_CARD2_MIN_LEGS:
-                card2 = build_card(candidates, n_legs=5, exclude_keys=used, strict_override=True)
+                card2 = build_card(candidates, n_legs=5, exclude_keys=used, strict_override=True,
+                                   exclude_players=used_pids)
             else:
                 card2 = []
     else:
         card1 = build_card(candidates, n_legs=3, exclude_keys=set())
         used = {(leg['player_id'], leg['stat'], leg['direction']) for leg in card1}
-        card2 = build_card(candidates, n_legs=5, exclude_keys=used)
+        used_pids = {leg['player_id'] for leg in card1}
+        card2 = build_card(candidates, n_legs=5, exclude_keys=used, exclude_players=used_pids)
 
     # Conditional card: DTD/Doubtful legs — confirm active before betting
     conditional_card: list[dict] = []
@@ -2042,12 +2219,12 @@ def main() -> None:
         print_sleeper_template(candidates, top_n=15)
 
     if card1:
-        print_card(card1, "CARD 1  —  3-Leg SAFE Flex", is_playoffs=is_playoffs)
+        print_card(card1, f"CARD 1  —  {len(card1)}-Leg SAFE Flex", is_playoffs=is_playoffs)
     elif not (strict_mode and n_verified < STRICT_CARD1_MIN_LEGS):
         print("\n  CARD 1: Not enough qualifying legs (need 3).")
 
     if card2:
-        print_card(card2, "CARD 2  —  5-Leg SAFE Flex", is_playoffs=is_playoffs)
+        print_card(card2, f"CARD 2  —  {len(card2)}-Leg SAFE Flex", is_playoffs=is_playoffs)
     elif strict_mode and (not card1 or n_verified < STRICT_CARD2_MIN_LEGS):
         if card1:
             print(f"\n  CARD 2: Need {STRICT_CARD2_MIN_LEGS} verified override legs to build Card 2 "

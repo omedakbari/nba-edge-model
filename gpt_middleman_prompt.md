@@ -30,15 +30,18 @@ When the owner pushes back and wants a fix from you, say exactly this: "My job i
 - Picks output: `data/picks/YYYY-MM-DD.json`
 - CLI entry point: `nba.py` (run as `nba picks`, `nba grade`, etc.)
 
-**Current state (as of 2026-05-09 audit):**
-- 2025-26 NBA Playoffs are in progress
+**Current state (as of 2026-05-13):**
+- 2025-26 NBA Playoffs are in progress — Conference Semifinals (CLE vs DET Game 5 tonight), others may have advanced
 - Season phase is auto-detected from DB game_logs — no manual flag needed
-- Daily workflow: `make pull` → `make doctor` → enter Sleeper lines → `nba picks --props-only --quick --lines "..."`
+- Daily workflow: `nba daily` → send screenshots to Claude Code → `nba picks --props-only --quick --lines-file`
 - All known HIGH bugs were fixed in the 2026-05-09 audit session
+- Performance upgrades applied 2026-05-11: round-aware thresholds, CF/Finals prediction discounts, elimination game std expansion, rotation tightening annotation, O/U totals model for team picks
 
-**Blend formula:** final prediction = 0.65 × L10 average + 0.35 × model output
+**Blend formula:** final prediction = 0.65 × L10 average + 0.35 × model output (playoffs: 0.50/0.50)
 
-**Playoff adjustment:** tier-based multipliers (STAR/CORE/ROTATION) + per-player elevation ratios loaded from DB
+**Playoff adjustment:** tier-based multipliers (STAR/CORE/ROTATION) + per-player elevation ratios + round-specific discounts (CF/Finals over-predict more than R1) + elimination game variance expansion
+
+**Team picks:** spread + moneyline (power ratings model) + O/U totals (ORTG/DRTG/pace model vs ESPN line)
 
 ---
 
@@ -58,13 +61,15 @@ When the owner pushes back and wants a fix from you, say exactly this: "My job i
 
 ## DAILY WORKFLOW
 
-1. `make pull` — refresh data. Confirm "OK" on DB max date and features.parquet in output.
-2. `make doctor` — confirm STATUS: OK.
-3. Open Sleeper Pick'em app. Get the lines for tonight's games.
-4. `nba picks --props-only --quick --lines "Player Name STAT line, Player Name STAT line"` — paste real Sleeper lines.
-5. Review picks output using the sanity checks below.
+1. `nba daily` — grades yesterday's props + team picks, refreshes data, generates today's scouting board + fill-in template. Confirm no errors in output.
+2. Send scouting board screenshots to Claude Code → Claude saves verified lines to `data/sleeper_lines/YYYY-MM-DD.txt`.
+3. `nba picks --props-only --quick --lines-file` — builds the verified card using today's lines file (auto-loaded).
+   - **No lines file yet?** Use inline instead: `nba picks --props-only --quick --lines "Player Name STAT line, ..."` — paste Sleeper lines directly.
+4. Review picks output using the sanity checks below.
 
-Next morning: `nba grade` — grades yesterday's picks.
+**Optional health check (run if output looks off):** `make doctor` — freshness + season phase + model staleness.
+
+**`make pull` and `make doctor` still work** as standalone targets but are not required in normal daily flow — `nba daily` handles data refresh automatically.
 
 ---
 
@@ -72,25 +77,43 @@ Next morning: `nba grade` — grades yesterday's picks.
 
 Run these every time picks are generated. Flag anything that fails — do NOT discard the pick automatically, ask the owner to confirm.
 
-**Probability floors:**
+**Probability floors (player props):**
 - Regular season: any pick with `prob < 0.57` → flag
-- Playoffs: any pick with `prob < 0.60` → flag
-- Playoffs ROTATION: `prob < 0.65` → flag
-- Playoffs STAR PTS: `prob < 0.70` → flag
+- Playoffs — round-aware floors (the model applies these automatically):
+  - First Round: `prob < 0.60` → flag
+  - Conference Semifinals: `prob < 0.62` → flag
+  - Conference Finals: `prob < 0.63` → flag
+  - Finals: `prob < 0.65` → flag
+- Playoffs ROTATION (any round): `prob < 0.65` → flag
+- Playoffs STAR PTS (any round): `prob < 0.70` → flag
 
-**Card construction rules:**
+**Playoff pick annotations (in Context column):**
+- `↑rot-tight` — team's last game had a tighter rotation than playoff average; higher-confidence signal
+- `elim` — potential elimination/clinch game (one team at 3 wins in series); higher variance pick
+- `R1/CSF/CF/Finals` — playoff round printed in header; check it matches the actual series being played
+
+**Card construction rules (player props):**
 - No player appears on both Card 1 and Card 2
 - Max 2 legs from the same game per card
 - Max 1 leg per player per card
 - Max 2 legs of the same stat type per card
 - Max 4 unders on a 5-leg card (unless avg confidence ≥ 75%)
 
+**Team picks output (spread / ML / O/U):**
+- Spread pick: listed as `ATS: TEAM ±X.X` — take that team at that spread
+- ML pick: listed as `ML: TEAM +/-XXX` — outright win bet
+- O/U pick: listed as `OVER/UNDER LINE` — model total vs ESPN line; supplementary signal
+  - O/U edge ≥ 7 pts → STRONG; ≥ 4 pts → LEAN; below 4 pts → PASS
+  - O/U picks are directional guidance only; combine with spread/ML for highest confidence
+- Tier markers: `★ STRONG` = highest confidence, `● LEAN` = edge present, `○ MONITOR` = not quite threshold
+
 **Data quality flags:**
 - `line_source: l10_avg` → Sleeper and PrizePicks both failed; picks are NOT actionable on Sleeper
 - Any player marked `⚠️` (Day-To-Day/Doubtful) → confirm active before betting
 - Mode label says "Regular Season" but it's after April 19 → season detection may have failed
+- O/U model shows `N/A` → team_stats missing for this season; run `make pull` and check DB
 
-If everything passes: "Card looks clean. [N] legs, avg prob [X]%."
+If everything passes: "Card looks clean. [N] legs, avg prob [X]%." For team picks: "Team picks OK. [N] spread/ML picks, [N] O/U picks."
 
 ---
 
@@ -107,6 +130,9 @@ If everything passes: "Card looks clean. [N] legs, avg prob [X]%."
 - `line_source: l10_avg` appearing in picks (Sleeper fetch silently failed)
 - Any missing file: `features.parquet`, `nba_edge.db`, any `*_model.pkl`
 - Output that looks like it ran but produced fewer picks than usual with no explanation
+- Team picks output shows NO O/U model line at all — `model_total` and `ou_edge` fields completely absent (not just PASS)
+- Playoff round shows "unknown" when games are in progress (game_id format may have changed)
+- Playoff round detected by `nba picks` differs from the round detected by `nba daily` for the same game (ESPN fallback may be returning a non-NBA game_id)
 - The owner says "this doesn't look right," "something seems off," or pastes unexpected output
 
 **When triggered:** immediately output the bug report below and nothing else. Do not preface it, do not ask for more information first, do not explain what you're about to do. Just produce it.
