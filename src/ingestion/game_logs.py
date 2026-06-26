@@ -48,14 +48,27 @@ def get_active_players(season: str) -> pd.DataFrame:
     who appeared in at least one game.
     """
     print(f"  Fetching player list for {season}...")
-    time.sleep(NBA_API_DELAY)
+    MAX_RETRIES = 3
+    last_exc = None
 
-    result = commonallplayers.CommonAllPlayers(
-        is_only_current_season=0,
-        league_id="00",
-        season=season,
-    )
-    df = result.get_data_frames()[0]
+    for attempt in range(MAX_RETRIES):
+        time.sleep(NBA_API_DELAY * (2 ** attempt) if attempt > 0 else NBA_API_DELAY)
+        try:
+            result = commonallplayers.CommonAllPlayers(
+                is_only_current_season=0,
+                league_id="00",
+                season=season,
+            )
+            df = result.get_data_frames()[0]
+            last_exc = None
+            break
+        except Exception as e:
+            last_exc = e
+            if attempt < MAX_RETRIES - 1:
+                print(f"  ⚠ Retry {attempt + 2}/{MAX_RETRIES} for player list ({type(e).__name__})")
+
+    if last_exc is not None:
+        raise last_exc
 
     # Filter to players who were active during this season.
     # FROM_YEAR/TO_YEAR store the start-year of first/last season (e.g. "2024" for 2024-25).
@@ -108,21 +121,34 @@ def fetch_player_game_log(player_id: int, season: str, season_type: str = "Regul
     """
     Pull one player's game log for a season from NBA.com.
 
+    Retries up to 3 times with exponential backoff on network errors (e.g. timeouts).
     Returns a cleaned DataFrame ready for database insertion,
-    or an empty DataFrame if the API returns no data.
+    or an empty DataFrame if all attempts fail or the API returns no data.
     """
-    time.sleep(NBA_API_DELAY)  # Rate limit — respect the API
+    MAX_RETRIES = 3
+    last_exc = None
 
-    try:
-        response = playergamelog.PlayerGameLog(
-            player_id=player_id,
-            season=season,
-            season_type_all_star=season_type,
-        )
-        df = response.get_data_frames()[0]
-    except Exception as e:
-        # Some players have IDs but no game logs (e.g., two-way guys who never played)
-        print(f"    ⚠ Error fetching player {player_id}: {e}")
+    for attempt in range(MAX_RETRIES):
+        # Respect rate limit; back off on retries to reduce timeout likelihood
+        time.sleep(NBA_API_DELAY * (2 ** attempt) if attempt > 0 else NBA_API_DELAY)
+
+        try:
+            response = playergamelog.PlayerGameLog(
+                player_id=player_id,
+                season=season,
+                season_type_all_star=season_type,
+                timeout=60,
+            )
+            df = response.get_data_frames()[0]
+            last_exc = None
+            break
+        except Exception as e:
+            last_exc = e
+            if attempt < MAX_RETRIES - 1:
+                print(f"    ⚠ Retry {attempt + 2}/{MAX_RETRIES} for player {player_id} ({type(e).__name__})")
+
+    if last_exc is not None:
+        print(f"    ⚠ Error fetching player {player_id}: {last_exc}")
         return pd.DataFrame()
 
     if df.empty:

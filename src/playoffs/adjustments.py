@@ -155,6 +155,35 @@ STD_MULT: dict[str, float] = {
 STD_MULT_UNSTABLE = 1.10   # applied on top for rotation players with 2+ low-min games in L5
                             # (reduced from 1.15 since we already expand baseline std)
 
+STD_MULT_ELIM = 1.10       # additional std expansion for elimination/clinch games (G6+, series 3-x)
+                            # reflects higher-variance outcomes when one team faces or delivers elimination
+
+
+# ── Finals-specific extra discounts ───────────────────────────────────────────
+# Source: 4-season playoff backtest mean prediction error by round.
+# Finals vs R1 over-prediction gap: PTS +0.59 pts/game, PRA +1.30 pts/game.
+# These multipliers are applied ON TOP of PRED_MULT when playoff_round == 4.
+# Conservative caps: floor at 0.94 to avoid over-correcting on small Finals sample.
+FINALS_EXTRA_DISCOUNT: dict[str, float] = {
+    'pts':     0.96,   # +0.59pp R1→Finals gap → ~3% additional discount
+    'reb':     1.00,   # rebounding holds well across rounds; no extra discount
+    'ast':     0.97,   # mild extra discount to reflect Finals defensive intensity
+    'fg3m':    0.97,   # follows PTS directionally
+    'pra':     0.95,   # +1.30pp R1→Finals gap → ~5% additional discount
+    'reb_ast': 0.97,   # AST-driven; mirrors AST discount
+}
+
+# Conference Finals extra discounts (round 3)
+# Mean error intermediate: PTS ~+0.65, PRA ~+1.60 vs R1.
+CF_EXTRA_DISCOUNT: dict[str, float] = {
+    'pts':     0.98,
+    'reb':     1.00,
+    'ast':     0.98,
+    'fg3m':    0.98,
+    'pra':     0.97,
+    'reb_ast': 0.98,
+}
+
 
 # ── Play-In std multipliers ────────────────────────────────────────────────────
 # Narrower expansion than full playoffs: single game, less series-specific fatigue,
@@ -348,6 +377,8 @@ def apply_playoff_adjustments(
     row: pd.Series,
     playoff_ratios: Optional[dict] = None,
     play_in: bool = False,
+    playoff_round: int = 0,
+    elimination_game: bool = False,
 ) -> tuple[float, float, str, float, float]:
     """
     Apply playoff (or Play-In) adjustment to a single (player, stat) prediction.
@@ -366,6 +397,10 @@ def apply_playoff_adjustments(
             Ignored when play_in=True (no Play-In history in DB).
         play_in: if True, use PLAY_IN_PRED_MULT / PLAY_IN_STD_MULT instead of
             full-playoff values, and skip elevation ratios.
+        playoff_round: 1=R1, 2=CSF, 3=CF, 4=Finals. Applies round-specific
+            extra discounts (CF/Finals over-predict more than R1).
+        elimination_game: if True, apply STD_MULT_ELIM on top of tier std —
+            elimination/clinch games have higher variance outcomes.
 
     Returns:
         (adj_pred, adj_std, tier, pred_mult, std_mult)
@@ -399,13 +434,24 @@ def apply_playoff_adjustments(
 
     # Combined prediction multiplier
     pred_mult = tier_pred_mult * elev_ratio
+
+    # 3. Round-specific extra discount (CF and Finals over-predict more than R1).
+    # Applied in non-play-in mode only (Play-In has shallower discounts already).
+    if not play_in and playoff_round in (3, 4):
+        extra_table = FINALS_EXTRA_DISCOUNT if playoff_round == 4 else CF_EXTRA_DISCOUNT
+        pred_mult *= extra_table.get(stat, 1.0)
+
     adj_pred = pred * pred_mult
 
-    # 3. Std multiplier — EXPANDED for all tiers (corrected from prior compressed values)
+    # 4. Std multiplier — EXPANDED for all tiers (corrected from prior compressed values)
     tier_std_mult = std_mult_table.get(tier, 1.10)
     low_min_count = int(row.get('low_min_count_L5', 0) or 0)
     unstable = (low_min_count >= 2) and (tier != 'STAR')
     std_mult = tier_std_mult * (STD_MULT_UNSTABLE if unstable else 1.0)
+
+    # Elimination/clinch game: additional variance expansion (higher-stakes outcomes)
+    if elimination_game:
+        std_mult *= STD_MULT_ELIM
 
     adj_std = std * std_mult
 

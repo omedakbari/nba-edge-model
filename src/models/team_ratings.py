@@ -5,19 +5,23 @@ Produces a per-team adjusted margin rating that can be used to predict
 game spreads and win probabilities.
 
 Design:
-  - Season-level component: NET_RTG from team_stats (ORTG - DRTG), scaled to
-    points-per-game. Uses pace to convert per-100-poss to per-game.
+  - Full-season component: SRS (Simple Rating System) — iteratively solved
+    opponent-quality-adjusted margin. Replaces raw NET_RTG as the primary
+    season signal. Rating[i] = avg_adj_margin[i] + avg(rating[opponents_of_i]).
+    Converges in ~40 iterations; zero-mean normalized.
   - Recent-form component: rolling L10 adjusted margin from actual game results.
-    Margins are home-court-neutralized before averaging, so ratings are
-    "true strength" independent of schedule home/away balance.
-  - Combined: 0.65 * season + 0.35 * L10 form  (season dominates early,
-    form gets weight once L10 games are available)
+    Margins are home-court-neutralized before averaging.
+  - Per-team HCA: historical home-road split from last 3 seasons. DEN, MIL, OKC
+    significantly above 2.5pt league average; WAS, SAC, GSW below.
+  - Combined: 0.65 * SRS + 0.35 * L10 form. Falls back to NET_RTG when
+    insufficient current-season games (cold start < SRS_MIN_GAMES).
 
 Predicted spread (from home team perspective):
-    model_spread = home_rating - away_rating + HOME_COURT_ADJ
+    model_spread = home_rating - away_rating + team_hca[home_team]
 
 Playoff adjustments:
-    HOME_COURT_ADJ raised to PLAYOFF_HCA (3.0 pts).
+    HCA raised to PLAYOFF_HCA (3.0 pts) — per-team HCA not used in playoffs
+    due to limited sample size and different crowd dynamics.
     Series momentum: G1 winner gets small uplift in G2.
 
 Usage:
@@ -41,12 +45,12 @@ warnings.filterwarnings("ignore")
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-HOME_COURT_ADJ  = 2.5   # regular season avg HCA in points
-PLAYOFF_HCA     = 3.0   # HCA is worth slightly more in high-stakes series
+HOME_COURT_ADJ  = 2.5   # league-avg regular season HCA (fallback when no team HCA)
+PLAYOFF_HCA     = 3.0   # HCA in playoffs (flat — less historical data per team)
 PACE_BASELINE   = 100.0 # per-100-poss → per-game conversion denominator
 REST_BONUS      = 0.75  # pts per extra rest day vs opponent (capped at 2 days diff)
 B2B_PENALTY     = 2.3   # pts deducted for a team on back-to-back
-SEASON_WEIGHT   = 0.65  # blend: season NET_RTG share
+SEASON_WEIGHT   = 0.65  # blend: SRS (full-season) share
 FORM_WEIGHT     = 0.35  # blend: recent L10 share
 L10_MIN_GAMES   = 5     # minimum games for L10 form to carry weight
 SPREAD_STD      = 11.0  # historical NBA spread std-dev (points) — for P(cover) calc
@@ -57,6 +61,20 @@ SPREAD_STD      = 11.0  # historical NBA spread std-dev (points) — for P(cover
 # Fitted value 0.664 minimizes Brier score: 0.2186 → 0.2147.
 # Effect: raw 70% → calibrated 63.7%, raw 80% → calibrated 71.5%.
 WIN_PROB_SCALE  = 0.664
+
+# ── SRS / HCA tuning ──────────────────────────────────────────────────────────
+
+SRS_ITER        = 40    # iterations for SRS convergence (stable after ~25)
+SRS_MIN_GAMES   = 10   # min current-season games before SRS trusted over net_rtg
+HCA_HIST_N      = 3    # past seasons to use for per-team HCA computation
+HCA_MIN_SPLIT   = 20   # min home (or away) games for team HCA to be used
+HCA_CAP_LO      = 0.0  # per-team HCA floor (pts) — prevent sub-zero home advantages
+HCA_CAP_HI      = 5.5  # per-team HCA ceiling (pts) — prevent outlier inflation
+
+# All known seasons in chronological order (extend as new seasons are added)
+_ALL_SEASONS = [
+    '2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25', '2025-26',
+]
 
 
 # ── SQL ───────────────────────────────────────────────────────────────────────
@@ -148,10 +166,16 @@ class TeamRatingEngine:
         # Load game results for the current season
         self._games = _load_team_games(conn, [season], stypes, through_date)
 
-        # Load season-level NET_RTG from team_stats
+        # Load season-level NET_RTG from team_stats (cold-start fallback)
         self._season_ratings = self._load_season_ratings(season)
 
-        # Compute rolling form for each team
+        # Per-team historical HCA from past seasons
+        self._team_hca = self._load_team_hca()
+
+        # SRS: opponent-quality-adjusted full-season rating
+        self._srs = self._compute_srs()
+
+        # Rolling L10 form
         self._form = self._compute_form()
 
         # Combined ratings dict: team → adjusted points rating
@@ -159,9 +183,93 @@ class TeamRatingEngine:
 
     # ── Internals ─────────────────────────────────────────────────────────────
 
+    def _get_past_seasons(self, n: int) -> list[str]:
+        """Return the N seasons immediately before self.season."""
+        try:
+            idx = _ALL_SEASONS.index(self.season)
+        except ValueError:
+            idx = len(_ALL_SEASONS)
+        return _ALL_SEASONS[max(0, idx - n):idx]
+
+    def _load_team_hca(self) -> dict[str, float]:
+        """
+        Per-team home-court advantage from last HCA_HIST_N regular seasons.
+
+        Method: HCA_i = (avg_home_margin_i - avg_road_margin_i) / 2
+        Margins are from each team's perspective, so this cleanly isolates
+        venue effect from team quality.
+
+        Returns {team_abbr: hca_pts}. Falls back to HOME_COURT_ADJ per team
+        if fewer than HCA_MIN_SPLIT home or away games found.
+        """
+        past = self._get_past_seasons(HCA_HIST_N)
+        if not past:
+            return {}
+
+        hist = _load_team_games(self.conn, past, ['Regular Season'])
+        if hist.empty:
+            return {}
+
+        hca: dict[str, float] = {}
+        for team, grp in hist.groupby('team'):
+            home_g = grp[grp['is_home'] == 1]['margin']
+            away_g = grp[grp['is_home'] == 0]['margin']
+            if len(home_g) < HCA_MIN_SPLIT or len(away_g) < HCA_MIN_SPLIT:
+                continue
+            raw = float((home_g.mean() - away_g.mean()) / 2)
+            hca[team] = float(np.clip(raw, HCA_CAP_LO, HCA_CAP_HI))
+
+        return hca
+
+    def _compute_srs(self) -> dict[str, float]:
+        """
+        Simple Rating System: iteratively solve opponent-adjusted season ratings.
+
+        Formula (converges to self-consistent solution):
+            rating[i] = avg_adj_margin[i] + avg(rating[opponents_of_i])
+
+        Where adj_margin neutralizes each game's HCA using the team's historical
+        per-team HCA (falls back to HOME_COURT_ADJ when not available).
+
+        Result is zero-mean normalized across all teams with data.
+        Returns {} when insufficient season data (early-season cold start).
+        """
+        df = self._games.copy()
+        if df.empty or len(df['game_id'].unique()) < 15:
+            return {}
+
+        teams = df['team'].unique().tolist()
+        srs: dict[str, float] = {t: 0.0 for t in teams}
+
+        for _ in range(SRS_ITER):
+            new_srs: dict[str, float] = {}
+            for team in teams:
+                t_games = df[df['team'] == team]
+                if len(t_games) < 5:
+                    new_srs[team] = 0.0
+                    continue
+
+                # Neutralize home-court using per-team HCA when available
+                hca_val = self._team_hca.get(team, HOME_COURT_ADJ)
+                adj = np.where(
+                    t_games['is_home'].values == 1,
+                    t_games['margin'].values - hca_val,
+                    t_games['margin'].values + hca_val,
+                )
+
+                # Strength of schedule: avg SRS of opponents faced
+                opp_srs = t_games['opp'].map(srs).fillna(0.0).values
+                new_srs[team] = float(np.mean(adj)) + float(np.mean(opp_srs))
+
+            # Zero-mean normalize each iteration
+            mean_v = float(np.mean(list(new_srs.values())))
+            srs = {t: v - mean_v for t, v in new_srs.items()}
+
+        return srs
+
     def _load_season_ratings(self, season: str) -> dict[str, float]:
         """
-        Load season NET_RTG from team_stats.
+        Load season NET_RTG from team_stats (cold-start fallback only).
         Scale from per-100-poss to points-per-game using average pace.
         Returns {team_abbr: net_rtg_per_game}.
         """
@@ -171,8 +279,6 @@ class TeamRatingEngine:
         )
         if df.empty:
             return {}
-        # Convert per-100-poss to per-game: net_rtg_pg = net_rtg * (pace / 100)
-        # pace = possessions per team per 48 min.
         df['net_rtg_pg'] = df['net_rtg'] * (df['pace'] / PACE_BASELINE)
         return dict(zip(df['team_abbr'], df['net_rtg_pg']))
 
@@ -187,7 +293,6 @@ class TeamRatingEngine:
         if df.empty:
             return {}
 
-        # Neutralize home-court: measure "true" performance
         df['adj_margin'] = np.where(
             df['is_home'] == 1,
             df['margin'] - HOME_COURT_ADJ,
@@ -199,30 +304,49 @@ class TeamRatingEngine:
             recent = grp.sort_values('game_date').tail(10)
             n = len(recent)
             if n < L10_MIN_GAMES:
-                form[team] = None   # not enough games — fall back to season rating
+                form[team] = None
             else:
                 form[team] = float(recent['adj_margin'].mean())
         return form
 
     def _build_combined_ratings(self) -> dict[str, float]:
         """
-        Blend season NET_RTG (per-game scaled) with L10 adjusted margin.
+        Blend SRS (opponent-adjusted full-season) with L10 form.
+
+        Primary path (>= SRS_MIN_GAMES): SEASON_WEIGHT * srs + FORM_WEIGHT * L10
+        Cold-start (<SRS_MIN_GAMES): falls back to net_rtg + L10 blend,
+        matching the old behavior so early-season predictions aren't disrupted.
+
         Returns {team_abbr: combined_rating} in points-per-game units.
         """
-        all_teams = set(self._season_ratings.keys()) | set(self._form.keys())
-        ratings = {}
+        all_teams = (set(self._srs.keys()) | set(self._season_ratings.keys())
+                     | set(self._form.keys()))
+        ratings: dict[str, float] = {}
+
         for team in all_teams:
+            srs_r    = self._srs.get(team)
             season_r = self._season_ratings.get(team)
             form_r   = self._form.get(team)
 
-            if season_r is None and form_r is None:
-                ratings[team] = 0.0
-            elif season_r is None:
-                ratings[team] = form_r
-            elif form_r is None:
-                ratings[team] = season_r
+            # Count how many games this team played in current season
+            t_games = self._games[self._games['team'] == team]
+            n_games = len(t_games['game_id'].unique()) if not t_games.empty else 0
+
+            if srs_r is not None and n_games >= SRS_MIN_GAMES:
+                # SRS available and reliable: use as primary full-season signal
+                primary = srs_r
+            elif season_r is not None:
+                # Cold start: fall back to official net_rtg
+                primary = season_r
+            elif srs_r is not None:
+                primary = srs_r
             else:
-                ratings[team] = SEASON_WEIGHT * season_r + FORM_WEIGHT * form_r
+                primary = 0.0
+
+            if form_r is not None:
+                ratings[team] = SEASON_WEIGHT * primary + FORM_WEIGHT * form_r
+            else:
+                ratings[team] = primary
 
         return ratings
 
@@ -258,6 +382,10 @@ class TeamRatingEngine:
         """Return combined power rating for a team (higher = stronger)."""
         return self._ratings.get(team, 0.0)
 
+    def get_team_hca(self, team: str) -> float:
+        """Return per-team HCA (pts). Falls back to HOME_COURT_ADJ."""
+        return self._team_hca.get(team, HOME_COURT_ADJ)
+
     def predict_spread(
         self,
         home_team: str,
@@ -265,6 +393,7 @@ class TeamRatingEngine:
         game_date: str | None = None,
         is_playoffs: bool = False,
         series_g1_winner: str | None = None,
+        series_context: dict | None = None,
     ) -> float:
         """
         Predict point spread from home team's perspective.
@@ -274,12 +403,21 @@ class TeamRatingEngine:
             home_team: abbreviation of home team
             away_team: abbreviation of away team
             game_date: YYYY-MM-DD (used for rest adjustment; optional)
-            is_playoffs: use playoff HCA if True
-            series_g1_winner: if G2+, abbreviation of team that won G1
+            is_playoffs: use flat PLAYOFF_HCA (3.0 pts) — per-team HCA not
+                         applied in playoffs due to limited sample size.
+            series_context: auto-derived series state dict; takes priority when
+                            game_num > 1.  Momentum scaled by series lead:
+                            +0.75 pts per game led (home perspective), capped ±2.0.
+            series_g1_winner: legacy ±1.5 pt uplift; used when series_context is None.
         """
         home_r = self.get_rating(home_team)
         away_r = self.get_rating(away_team)
-        hca = PLAYOFF_HCA if is_playoffs else HOME_COURT_ADJ
+
+        if is_playoffs:
+            hca = PLAYOFF_HCA
+        else:
+            # Per-team HCA: home team's historically measured venue advantage
+            hca = self._team_hca.get(home_team, HOME_COURT_ADJ)
 
         spread = (home_r - away_r) + hca
 
@@ -289,8 +427,11 @@ class TeamRatingEngine:
             away_rest = self._rest_adjustment(away_team, game_date)
             spread += (home_rest - away_rest)
 
-        # Series momentum (G2+): G1 winner gets ~1.5 pt uplift
-        if series_g1_winner == home_team:
+        # Series momentum — prefer richer series_context over legacy g1_winner
+        if series_context and series_context.get('game_num', 1) > 1:
+            lead = series_context.get('home_wins', 0) - series_context.get('away_wins', 0)
+            spread += max(-2.0, min(2.0, lead * 0.75))
+        elif series_g1_winner == home_team:
             spread += 1.5
         elif series_g1_winner == away_team:
             spread -= 1.5
@@ -304,6 +445,7 @@ class TeamRatingEngine:
         game_date: str | None = None,
         is_playoffs: bool = False,
         series_g1_winner: str | None = None,
+        series_context: dict | None = None,
     ) -> float:
         """
         Return calibrated model P(home team wins).
@@ -311,7 +453,10 @@ class TeamRatingEngine:
         Step 2: Platt-style scaling to correct over-confidence (fitted from backtest).
         """
         from scipy.special import expit, logit
-        spread = self.predict_spread(home_team, away_team, game_date, is_playoffs, series_g1_winner)
+        spread = self.predict_spread(
+            home_team, away_team, game_date, is_playoffs,
+            series_g1_winner, series_context,
+        )
         p_raw = float(scipy_stats.norm.cdf(spread / SPREAD_STD))
         p_raw = float(np.clip(p_raw, 0.02, 0.98))
         p_cal = float(expit(WIN_PROB_SCALE * logit(p_raw)))
@@ -323,11 +468,15 @@ class TeamRatingEngine:
         for team, rating in sorted(self._ratings.items(), key=lambda x: -x[1]):
             season_r = self._season_ratings.get(team)
             form_r   = self._form.get(team)
+            srs_r    = self._srs.get(team)
+            hca_v    = self._team_hca.get(team)
             rows.append({
                 'team':      team,
                 'rating':    round(rating, 2),
+                'srs':       round(srs_r, 2) if srs_r is not None else None,
                 'season_pg': round(season_r, 2) if season_r is not None else None,
                 'form_l10':  round(form_r, 2) if form_r is not None else None,
+                'hca':       round(hca_v, 2) if hca_v is not None else None,
                 'games':     len(self._games[self._games['team'] == team]),
             })
         return pd.DataFrame(rows)

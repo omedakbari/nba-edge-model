@@ -10,6 +10,7 @@ After shell setup (see below), all workflows reduce to one short command:
     nba picks --props-only            player props only
     nba picks --template              print ChatGPT screenshot template for top props
     nba picks --lines-file [FILE]     load verified Sleeper lines (auto-resolves today's date if no FILE given)
+    nba picks --playoffs              force playoffs mode (auto-detected, but can override)
     nba grade                         grade yesterday's picks
     nba grade 2026-04-20              grade a specific date
     nba refresh                       force data refresh only
@@ -79,6 +80,11 @@ def _label(phase: str) -> str:
 def cmd_picks(args):
     season = CURRENT_SEASON
     phase  = detect_phase(season)
+    # Explicit --playoffs / --play-in overrides auto-detection
+    if getattr(args, 'playoffs', False):
+        phase = 'playoffs'
+    elif getattr(args, 'play_in', False):
+        phase = 'play-in'
     flags  = _flags(phase)
     today  = date.today().isoformat()
 
@@ -116,10 +122,19 @@ def cmd_picks(args):
         print(f"\n  Data already refreshed today — skipping (run `nba refresh` to force)")
     else:
         refresh_flags = ['--playoffs'] if phase in ('playoffs', 'play-in') else []
-        run(
+        rc = run(
             ['scripts/update_data.py'] + refresh_flags,
             'STEP 1 — Refreshing data'
         )
+        if rc != 0:
+            print(f"\n  {'='*62}")
+            print(f"  ❌  DATA REFRESH FAILED — picks generation aborted.")
+            print(f"      Game logs could not be updated; picks would be based on")
+            print(f"      stale data. Fix the issue and retry:")
+            print(f"        nba refresh       # retry data refresh")
+            print(f"        nba picks --quick # generate picks from cached data (with risk)")
+            print(f"  {'='*62}\n")
+            return
 
     # Step 2 — Player props
     if not args.team_only:
@@ -143,8 +158,11 @@ def cmd_grade(args):
     print(f"\n{'='*64}")
     print(f"  GRADING  |  {grade_date}")
     print(f"{'='*64}")
-    run(['scripts/log_pick_results.py', '--date', grade_date], 'Player props results')
-    run(['scripts/log_team_results.py',  '--date', grade_date], 'Team pick results')
+    props_cmd = ['scripts/log_pick_results.py', '--date', grade_date]
+    if args.overwrite:
+        props_cmd.append('--overwrite')
+    run(props_cmd, 'Player props results')
+    run(['scripts/log_team_results.py', '--date', grade_date], 'Team pick results')
 
 
 def cmd_daily(_args):
@@ -165,7 +183,16 @@ def cmd_daily(_args):
         print(f"\n  Data already refreshed today — skipping")
     else:
         refresh_flags = ['--playoffs'] if phase in ('playoffs', 'play-in') else []
-        run(['scripts/update_data.py'] + refresh_flags, 'Refreshing data')
+        rc = run(['scripts/update_data.py'] + refresh_flags, 'Refreshing data')
+        if rc != 0:
+            print(f"\n  {'='*62}")
+            print(f"  ❌  DATA REFRESH FAILED — picks generation aborted.")
+            print(f"      Game logs could not be updated; picks would be based on")
+            print(f"      stale data. Fix the issue and retry:")
+            print(f"        nba refresh       # retry data refresh")
+            print(f"        nba picks --quick # generate picks from cached data (with risk)")
+            print(f"  {'='*62}\n")
+            return
 
     run(
         ['scripts/generate_todays_picks.py'] + flags + ['--template', '--season', season, '--save'],
@@ -255,7 +282,7 @@ def main():
     p = subs.add_parser('picks', help="Today's full picks workflow")
     p.add_argument('--quick',      action='store_true',
                    help='Skip data refresh (use today\'s cached data)')
-    p.add_argument('--team-only',  action='store_true', dest='team_only',
+    p.add_argument('--team-only', '--teams-only', action='store_true', dest='team_only',
                    help='Team spread/ML picks only (skip player props)')
     p.add_argument('--props-only', action='store_true', dest='props_only',
                    help='Player props only (skip team picks)')
@@ -274,10 +301,16 @@ def main():
                         'Blank lines and #-comments are ignored. --lines overrides duplicates.')
     p.add_argument('--template', action='store_true',
                    help='Print fill-in-the-blank prop template to paste into ChatGPT with screenshots')
+    p.add_argument('--playoffs', action='store_true',
+                   help='Force playoffs mode (overrides auto-detection)')
+    p.add_argument('--play-in', action='store_true', dest='play_in',
+                   help='Force Play-In mode (overrides auto-detection)')
 
     p = subs.add_parser('grade', help='Grade picks (default: yesterday)')
-    p.add_argument('date', nargs='?', default=None, metavar='YYYY-MM-DD',
+    p.add_argument('--date', default=None, metavar='YYYY-MM-DD',
                    help='Date to grade (default: yesterday)')
+    p.add_argument('--overwrite', action='store_true',
+                   help='Re-grade picks even if already graded')
 
     subs.add_parser('daily',   help='Grade yesterday + today\'s picks + screenshot template (one command)')
     subs.add_parser('refresh', help='Force data refresh from NBA/ESPN APIs')

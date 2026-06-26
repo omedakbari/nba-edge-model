@@ -6,12 +6,30 @@
 
 ---
 
-## Quick start (any game day)
+## Daily commands (all you need to know)
+
+The `nba` shell command works from any directory, any season phase:
 
 ```bash
-cd ~/projects/nba-edge-model
-source venv/bin/activate
+nba picks              # full workflow: refresh data → props → team picks
+nba picks --quick      # skip data refresh (use if already ran refresh today)
+nba picks --team-only  # team spread/ML only
+nba picks --props-only # player props only
+nba grade              # grade yesterday's picks (props + team)
+nba grade 2026-04-20   # grade a specific date
+nba refresh            # just refresh data from NBA/ESPN APIs
+nba status             # cumulative performance report
+nba ratings            # current team power ratings table
 ```
+
+Season phase (regular / play-in / playoffs) is **auto-detected** — no flags needed.
+
+---
+
+## Legacy manual commands (reference / troubleshooting)
+
+These still work and are used internally by `nba`. Use them only if you need
+more control (e.g. different date, grading specific seasons, backtesting).
 
 ---
 
@@ -42,7 +60,11 @@ python scripts/log_team_results.py --date YYYY-MM-DD
 
 ## Playoffs workflow
 
-### Pregame — Game 1 of a series
+### Pregame — any game in a series (universal command)
+
+The same command works for Game 1 through Game 7. Series context (game number,
+series score, G1 winner, last game winner, momentum) is derived automatically
+from the local DB.
 
 ```bash
 # 1. Refresh data (pulls latest game logs + team stats including playoff games)
@@ -51,32 +73,25 @@ python scripts/update_data.py --playoffs
 # 2. Player props
 python scripts/generate_todays_picks.py --playoffs --season 2025-26 --save
 
-# 3. Team spread / ML picks
+# 3. Team spread / ML picks — auto-derives full series context
 python scripts/generate_todays_team_picks.py --playoffs --season 2025-26 --save
 ```
 
-### Pregame — Game 2+ of a series
-
-Add `--g1-winner` to the team picks command to apply series momentum (±1.5 pts):
-
-```bash
-python scripts/generate_todays_team_picks.py --playoffs --season 2025-26 --save \
-  --g1-winner HOME_ABBR:WINNER_ABBR[,HOME_ABBR:WINNER_ABBR...]
+The output will print for each game:
+```
+Series [auto]:  Game 3  |  DET 1–1 OKC  (tied)  |  G1: OKC  |  Last: DET
+Series momentum: +0.00 pts applied  (series tied)
 ```
 
-**Format:** `HOME_TEAM:WHO_WON_G1`
+**Manual G1 winner override** — only needed if the DB is missing prior games:
 
-| Situation | Flag |
-|-----------|------|
-| Boston hosted G1, Boston won | `BOS:BOS` |
-| Boston hosted G1, Milwaukee won | `BOS:MIL` |
-| Two series on same day | `BOS:BOS,DEN:DEN` |
-
-Example:
 ```bash
 python scripts/generate_todays_team_picks.py --playoffs --season 2025-26 --save \
   --g1-winner BOS:BOS,MIL:IND
 ```
+
+If the DB is out of date, run `update_data.py --playoffs` first — that is always
+the right fix. Use `--g1-winner` only as a last resort.
 
 ### Next morning (grade)
 

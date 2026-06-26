@@ -98,7 +98,7 @@ def upsert_team_stats(conn: sqlite3.Connection, df: pd.DataFrame) -> int:
     rows = df.to_dict('records')
     conn.executemany("""
         INSERT INTO team_stats (team_abbr, season, pace, off_rtg, def_rtg, net_rtg, reb_rate, ast_rate, updated_at)
-        VALUES (:team_abbr, :season, :pace, :off_rtg, :def_rtg, :net_rtg, :reb_rate, :ast_rate, datetime('now'))
+        VALUES (:team_abbr, :season, :pace, :off_rtg, :def_rtg, :net_rtg, :reb_rate, :ast_rate, datetime('now', 'localtime'))
         ON CONFLICT(team_abbr, season) DO UPDATE SET
             pace      = excluded.pace,
             off_rtg   = excluded.off_rtg,

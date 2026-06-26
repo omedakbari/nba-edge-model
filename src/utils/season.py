@@ -91,3 +91,38 @@ def phase_label(phase: str) -> str:
         "regular": "REGULAR SEASON",
         "offseason": "OFFSEASON",
     }.get(phase, phase.upper())
+
+
+# ── Playoff round helpers ──────────────────────────────────────────────────────
+
+ROUND_LABELS = {
+    1: "First Round",
+    2: "Conference Semifinals",
+    3: "Conference Finals",
+    4: "Finals",
+}
+
+
+def get_playoff_round(game_id: str) -> int:
+    """
+    Extract playoff round digit from an NBA game_id string.
+
+    NBA playoff game_id format (10 chars): e.g. '0042500101'
+      game_id[7] = round (1=First Round, 2=CSF, 3=CF, 4=Finals)
+      game_id[9] = game number within the series
+
+    Returns 0 if the format is unexpected or game_id is too short.
+    """
+    try:
+        r = int(game_id[7])
+        return r if 1 <= r <= 4 else 0
+    except (IndexError, ValueError):
+        return 0
+
+
+def get_series_game_number(game_id: str) -> int:
+    """Extract game number within the series from a playoff game_id (position 9)."""
+    try:
+        return int(game_id[9])
+    except (IndexError, ValueError):
+        return 0

@@ -36,6 +36,21 @@ dashboard/app_before_claude_fix.py
 
 # Generated picks (contain model predictions — keep private)
 data/picks/
+data/team_picks/
+
+# Runtime outputs / diagnostics
+data/diagnostics/
+data/*.bak*
+data/sleeper_lines/
+data/sleeper_players.json
+april18_picks_output.txt
+debug_snapshots/
 
 # Runtime logs
 logs/
+
+# R / misc
+.Rhistory
+
+# Claude Code settings
+.claude/

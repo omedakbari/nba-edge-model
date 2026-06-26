@@ -903,7 +903,35 @@ def get_roster_player_ids(team_id: int, season: str) -> list[int]:
         return [int(pid) for pid in df['PLAYER_ID'].tolist()]
     except Exception as e:
         print(f"  Warning: could not fetch roster for team {team_id}: {e}")
-        return []
+
+    # API failed — recover from DB using only the team's last 10 game dates.
+    # Scoping to recent games prevents traded/waived players (who played earlier
+    # in the season) from leaking into today's candidate pool.
+    team_abbr = next((a for a, tid in _NBA_TEAM_IDS.items() if tid == team_id), None)
+    if team_abbr:
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            rows = conn.execute(
+                """
+                SELECT DISTINCT player_id FROM game_logs
+                WHERE team_abbr = ? AND season = ?
+                  AND game_date IN (
+                      SELECT DISTINCT game_date FROM game_logs
+                      WHERE team_abbr = ? AND season = ?
+                      ORDER BY game_date DESC
+                      LIMIT 10
+                  )
+                ORDER BY game_date DESC
+                """,
+                (team_abbr, season, team_abbr, season),
+            ).fetchall()
+            conn.close()
+            if rows:
+                print(f"  Roster fallback: loaded {len(rows)} player_ids for {team_abbr} from DB (last 10 games)")
+                return [int(r[0]) for r in rows]
+        except Exception as db_e:
+            print(f"  Roster DB fallback also failed for {team_abbr}: {db_e}")
+    return []
 
 
 def get_todays_player_contexts(target_date: str, season: str) -> list[dict]:
@@ -1038,6 +1066,13 @@ def build_todays_features(features_df: pd.DataFrame,
         if min_l10 < MIN_MINUTES:
             continue
 
+        # min_L10 is a rolling average that can reflect regular season minutes
+        # for players not in the playoff rotation. Guard against this by requiring
+        # at least one playoff appearance this season once playoff data exists.
+        if is_playoffs and not playoff_logs.empty:
+            if not (playoff_logs['player_id'] == pid).any():
+                continue
+
         last_game_date = row['game_date']
         days_rest = (target_dt - last_game_date).days
         row['days_rest'] = min(int(days_rest), 10)
@@ -1060,22 +1095,66 @@ def build_todays_features(features_df: pd.DataFrame,
         row.update(pace_cache[team])
 
         # Playoff round from game_id (position 7: 1=R1, 2=CSF, 3=CF, 4=Finals).
-        # ESPN fallback returns its own event IDs (not NBA format) so position [7]
-        # is meaningless — detect by format and substitute the most recent NBA
-        # game_id for this series from playoff_logs.
+        # ESPN/Sleeper fallbacks return their own event IDs (not NBA format) so
+        # position [7] is meaningless there — resolve by finding a valid NBA game_id
+        # for this series from (1) features parquet, (2) DB for this matchup,
+        # (3) DB for any recent playoff game (all series in a phase share the same round).
         game_id_str = ctx.get('game_id', '')
         if is_playoffs:
             is_valid_nba_id = len(game_id_str) == 10 and game_id_str.startswith('004')
-            if not is_valid_nba_id and not playoff_logs.empty and 'game_id' in playoff_logs.columns:
-                opp = ctx['opp_abbr']
-                team = ctx['team_abbr']
-                series_gids = playoff_logs[
-                    (playoff_logs['team_abbr'] == team) &
-                    (playoff_logs['opp_abbr'] == opp) &
-                    (playoff_logs['game_id'].astype(str).str.startswith('004'))
-                ]['game_id']
-                if not series_gids.empty:
-                    game_id_str = str(series_gids.iloc[-1])
+            if not is_valid_nba_id:
+                resolved_id = ''
+                # 1. Features parquet: look for prior games in this series
+                if not playoff_logs.empty and 'game_id' in playoff_logs.columns:
+                    opp = ctx['opp_abbr']
+                    team = ctx['team_abbr']
+                    series_gids = playoff_logs[
+                        (playoff_logs['team_abbr'] == team) &
+                        (playoff_logs['opp_abbr'] == opp) &
+                        (playoff_logs['game_id'].astype(str).str.startswith('004'))
+                    ]['game_id']
+                    if not series_gids.empty:
+                        resolved_id = str(series_gids.iloc[-1])
+
+                # 2. DB: this specific matchup (Game 1 of a new series)
+                if not resolved_id:
+                    try:
+                        conn = sqlite3.connect(str(DB_PATH))
+                        db_row = conn.execute(
+                            """
+                            SELECT game_id FROM game_logs
+                            WHERE team_abbr = ? AND opp_abbr = ?
+                              AND season_type = 'Playoffs'
+                              AND game_id LIKE '004%'
+                            ORDER BY game_date DESC LIMIT 1
+                            """,
+                            (ctx['team_abbr'], ctx['opp_abbr']),
+                        ).fetchone()
+                        conn.close()
+                        if db_row:
+                            resolved_id = str(db_row[0])
+                    except Exception:
+                        pass
+
+                # 3. DB: any recent playoff game — all concurrent series share the round
+                if not resolved_id:
+                    try:
+                        conn = sqlite3.connect(str(DB_PATH))
+                        db_row = conn.execute(
+                            """
+                            SELECT game_id FROM game_logs
+                            WHERE season_type = 'Playoffs' AND game_id LIKE '004%'
+                            ORDER BY game_date DESC LIMIT 1
+                            """
+                        ).fetchone()
+                        conn.close()
+                        if db_row:
+                            resolved_id = str(db_row[0])
+                    except Exception:
+                        pass
+
+                if resolved_id:
+                    game_id_str = resolved_id
             row['playoff_round'] = get_playoff_round(game_id_str)
         else:
             row['playoff_round'] = 0

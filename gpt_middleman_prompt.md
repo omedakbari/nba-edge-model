@@ -30,12 +30,14 @@ When the owner pushes back and wants a fix from you, say exactly this: "My job i
 - Picks output: `data/picks/YYYY-MM-DD.json`
 - CLI entry point: `nba.py` (run as `nba picks`, `nba grade`, etc.)
 
-**Current state (as of 2026-05-13):**
-- 2025-26 NBA Playoffs are in progress — Conference Semifinals (CLE vs DET Game 5 tonight), others may have advanced
+**Current state (as of 2026-05-14):**
+- 2025-26 NBA Playoffs are in progress — Conference Finals stage (CLE eliminated DET in CSF; next games 2026-05-15: DET @ CLE Game 6 / SAS @ MIN)
+- Today (2026-05-14) is an off-day — no games scheduled; `nba daily` will correctly show "No games on 2026-05-14 (off-day). Next games 2026-05-15: …" for team picks — this is expected, NOT a bug
 - Season phase is auto-detected from DB game_logs — no manual flag needed
 - Daily workflow: `nba daily` → send screenshots to Claude Code → `nba picks --props-only --quick --lines-file`
 - All known HIGH bugs were fixed in the 2026-05-09 audit session
 - Performance upgrades applied 2026-05-11: round-aware thresholds, CF/Finals prediction discounts, elimination game std expansion, rotation tightening annotation, O/U totals model for team picks
+- NBA API timeout fix applied 2026-05-14: `fetch_player_game_log` now retries up to 3× with backoff + 60s timeout (was 30s, no retries)
 
 **Blend formula:** final prediction = 0.65 × L10 average + 0.35 × model output (playoffs: 0.50/0.50)
 
@@ -123,6 +125,7 @@ If everything passes: "Card looks clean. [N] legs, avg prob [X]%." For team pick
 
 - Any Python exception, stack trace, or `Error:` line in output
 - Zero rows / zero picks where output was expected (including a script that exits silently)
+- **NOT a bug:** "No games on YYYY-MM-DD (off-day). Next games…" — this is correct behavior on scheduled off-days; DO NOT file a bug report for this message
 - `make doctor` or `make freshness` shows any item marked `[STALE]`
 - DB max game date is more than 1 day behind today's date
 - features.parquet max date is behind DB max date

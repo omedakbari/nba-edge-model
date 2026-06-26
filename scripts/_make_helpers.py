@@ -34,6 +34,7 @@ def _db_freshness():
 
 
 def cmd_freshness():
+    from src.utils.season import detect_phase
     print()
     print("================================================================")
     print("  FRESHNESS CHECK")
@@ -41,7 +42,9 @@ def cmd_freshness():
     max_d, total, po = _db_freshness()
     today = date.today().isoformat()
     gap = (date.fromisoformat(today) - date.fromisoformat(max_d)).days
-    marker = "OK" if gap <= 1 else "STALE"
+    phase = detect_phase()
+    stale_threshold = 7 if phase in ("playoffs", "play-in") else 1
+    marker = "OK" if gap <= stale_threshold else "STALE"
     print(f"  DB max game date : {max_d}  (gap: {gap}d)  [{marker}]")
     print(f"  {CURRENT_SEASON} rows     : {total:,}  (Playoffs: {po:,})")
 
@@ -51,7 +54,7 @@ def cmd_freshness():
         df = pd.read_parquet(feat)
         fmax = str(df["game_date"].max())[:10]
         fgap = (date.fromisoformat(today) - date.fromisoformat(fmax)).days
-        fmark = "OK" if fgap <= 1 else "STALE"
+        fmark = "OK" if fgap <= stale_threshold else "STALE"
         print(f"  features.parquet : {fmax}  (gap: {fgap}d)  [{fmark}]")
     else:
         print("  features.parquet : NOT FOUND — run: make train")
@@ -68,7 +71,7 @@ def cmd_freshness():
             ).days
             print(f"  oldest model     : {oldest.name}  ({age_d}d old)")
 
-    sys.exit(1 if gap > 1 else 0)
+    sys.exit(1 if gap > stale_threshold else 0)
 
 
 def cmd_doctor():
@@ -80,11 +83,14 @@ def cmd_doctor():
 
     # --- Data freshness ---
     print("\n  --- Data freshness ---")
+    from src.utils.season import detect_phase as _detect_phase
+    phase = _detect_phase()
+    stale_threshold = 7 if phase in ("playoffs", "play-in") else 1
     max_d, total, po = _db_freshness()
     today = date.today().isoformat()
     gap = (date.fromisoformat(today) - date.fromisoformat(max_d)).days
-    marker = "OK" if gap <= 1 else "STALE"
-    if gap > 1:
+    marker = "OK" if gap <= stale_threshold else "STALE"
+    if gap > stale_threshold:
         ok = False
     print(f"  DB max date      : {max_d}  (gap: {gap}d)  [{marker}]")
     print(f"  {CURRENT_SEASON} rows     : {total:,}  Playoffs: {po:,}")
@@ -95,8 +101,8 @@ def cmd_doctor():
         df = pd.read_parquet(feat)
         fmax = str(df["game_date"].max())[:10]
         fgap = (date.fromisoformat(today) - date.fromisoformat(fmax)).days
-        fmark = "OK" if fgap <= 1 else "STALE"
-        if fgap > 1:
+        fmark = "OK" if fgap <= stale_threshold else "STALE"
+        if fgap > stale_threshold:
             ok = False
         print(f"  features.parquet : {fmax}  (gap: {fgap}d)  [{fmark}]")
     else:
@@ -144,7 +150,8 @@ def cmd_preflight():
     max_d, _total, _po = _db_freshness()
     today = date.today().isoformat()
     gap = (date.fromisoformat(today) - date.fromisoformat(max_d)).days
-    if gap > 1:
+    stale_threshold = 7 if phase in ("playoffs", "play-in") else 1
+    if gap > stale_threshold:
         print(f"\n  ERROR: DB is {gap} days stale (max: {max_d}). Run: make pull")
         sys.exit(1)
 

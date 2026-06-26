@@ -257,14 +257,30 @@ def grade_date(date_str: str, overwrite: bool = False) -> None:
 
     # Look up actuals — try DB first, fall back to API
     player_ids = list({p['player_id'] for p in picks})
-    mode_label = 'Playoffs' if is_playoffs else 'Regular Season'
+    if is_play_in:
+        mode_label = 'Play-In'
+    elif is_playoffs:
+        mode_label = 'Playoffs'
+    else:
+        mode_label = 'Regular Season'
     print(f"  Looking up actuals for {len(player_ids)} players on {date_str} [{mode_label}]...")
     actuals = fetch_actuals_from_db(conn, player_ids, date_str, season_type=season_type)
 
+    # Defensive fallback: picks files generated with --playoffs instead of --play-in
+    # will have season_type='Playoffs' but the game logs live under 'PlayIn'.
+    if not actuals and season_type == 'Playoffs':
+        play_in_check = fetch_actuals_from_db(conn, player_ids, date_str, season_type='PlayIn')
+        if play_in_check:
+            print(f"  Note: 0 Playoffs rows found — retrying as PlayIn "
+                  f"(picks file may have used --playoffs instead of --play-in).")
+            actuals = play_in_check
+            season_type = 'PlayIn'
+
     missing = [pid for pid in player_ids if pid not in actuals]
     if missing:
+        missing_names = [p['player_name'] for p in picks if p['player_id'] in missing]
         print(f"  {len(actuals)}/{len(player_ids)} found in DB. "
-              f"Fetching {len(missing)} via NBA API (slow)...")
+              f"Fetching {len(missing)} via NBA API (slow): {', '.join(missing_names)}")
         api_actuals = fetch_actuals_from_api(missing, date_str, season, season_type=season_type)
         actuals.update(api_actuals)
 
@@ -369,6 +385,84 @@ def _lookup_result(actuals: dict, pick: dict) -> str:
         actual_value = player_data.get(pick['stat_key'])
     result, _ = grade_pick(actual_value, pick['line'], pick['direction'])
     return result
+
+
+# ── Miss detail report (item 8) ────────────────────────────────────────────────
+
+def run_miss_detail_report(conn: sqlite3.Connection,
+                            date_filter: str, params: list) -> None:
+    """
+    Log high-confidence misses, near-misses, and direction×stat hit rates
+    to surface systematic underperformers (UNDERs, REB_AST, rotation props).
+    """
+    sep = "─" * 62
+
+    # High-confidence misses (P >= 75%)
+    hc_misses = conn.execute(f"""
+        SELECT player_name, stat_key, direction, line, actual_value, prob, pick_date
+        FROM pick_results
+        {date_filter} AND result = 'miss' AND prob >= 0.75
+        ORDER BY prob DESC
+        LIMIT 15
+    """, params).fetchall()
+
+    print(f"\n  {sep}")
+    print(f"  MISS DETAIL REPORT")
+    print(f"  {sep}")
+    print(f"\n  High-confidence misses (P ≥ 75%): {len(hc_misses)}")
+    if hc_misses:
+        print(f"  {'Date':<12} {'Player':<22} {'Stat':>7} {'Dir':>5}  "
+              f"{'Line':>5}  {'Actual':>6}  {'P':>5}  Note")
+        for name, stat, direction, line, actual, prob, pick_date in hc_misses:
+            actual_s = f"{actual:.0f}" if actual is not None else "DNP"
+            if actual is not None:
+                gap = abs(actual - line)
+                note = " [≤0.5]" if gap <= 0.5 else (" [≤1.0]" if gap <= 1.0 else "")
+            else:
+                note = ""
+            print(f"  {pick_date:<12} {name:<22} {stat.upper():>7} {direction:>5}  "
+                  f"{line:>5.1f}  {actual_s:>6}  {prob:>4.0%}{note}")
+
+    # Near-miss breakdown by stat × direction
+    near_rows = conn.execute(f"""
+        SELECT stat_key, direction,
+               COUNT(*)                                                          AS n,
+               SUM(CASE WHEN ABS(actual_value - line) <= 0.5 THEN 1 ELSE 0 END) AS w05,
+               SUM(CASE WHEN ABS(actual_value - line) <= 1.0 THEN 1 ELSE 0 END) AS w10
+        FROM pick_results
+        {date_filter} AND result = 'miss' AND actual_value IS NOT NULL
+        GROUP BY stat_key, direction
+        ORDER BY w05 DESC
+    """, params).fetchall()
+
+    if near_rows:
+        print(f"\n  Near-misses by stat × direction:")
+        print(f"  {'Stat':<10} {'Dir':<6} {'Misses':>6}  {'≤0.5':>5}  {'≤1.0':>5}")
+        for stat, direction, n, w05, w10 in near_rows:
+            print(f"  {stat.upper():<10} {direction:<6} {n:>6}  {(w05 or 0):>5}  {(w10 or 0):>5}")
+
+    # Hit rate by direction × stat — flag slices underperforming model by >8pp
+    slice_rows = conn.execute(f"""
+        SELECT direction, stat_key, COUNT(*) AS n, SUM(hit) AS hits, AVG(prob) AS avg_p
+        FROM pick_results
+        {date_filter}
+        GROUP BY direction, stat_key
+        ORDER BY direction, stat_key
+    """, params).fetchall()
+
+    if slice_rows:
+        print(f"\n  Hit rate by direction × stat  (⚠️  = underperforms model by >8pp):")
+        print(f"  {'Dir':<6} {'Stat':<10} {'N':>4}  {'Hit%':>6}  {'Model%':>7}  {'Diff':>6}")
+        for direction, stat, n, hits, avg_p in slice_rows:
+            if not n:
+                continue
+            hr   = (hits or 0) / n
+            diff = hr - (avg_p or 0)
+            flag = "  ⚠️" if diff < -0.08 else ""
+            print(f"  {direction:<6} {stat.upper():<10} {n:>4}  {hr:>6.1%}  "
+                  f"{(avg_p or 0):>7.1%}  {diff:>+6.1%}{flag}")
+
+    print(f"  {sep}\n")
 
 
 # ── Calibration report ─────────────────────────────────────────────────────────
@@ -504,12 +598,13 @@ def run_report(from_date: str | None = None, to_date: str | None = None) -> None
     status = "✅ well-calibrated" if abs(diff) <= 0.05 else ("📉 overconfident" if diff < 0 else "📈 underconfident")
     print(f"  Avg model P: {overall_model_p:.1%}  |  Actual hit rate: {actual_rate:.1%}  |  {status}")
     if abs(diff) > 0.05:
-        # diff < 0  →  actual < model  →  model is OVERconfident  →  raise the bar
-        # diff > 0  →  actual > model  →  model is UNDERconfident →  can lower the bar
         action = "raising" if diff < 0 else "lowering"
         print(f"  → Consider {action} STAT_MIN_PROB thresholds in generate_todays_picks.py")
 
     print(f"  {sep}\n")
+
+    run_miss_detail_report(conn, date_filter, params)
+
     conn.close()
 
 

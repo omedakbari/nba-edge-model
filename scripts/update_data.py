@@ -55,7 +55,10 @@ def main():
     if args.season:
         cmd += ['--season', args.season]
     ok = run(cmd, 'game_logs regular season')
-    success = success and ok
+    if not ok:
+        print(f"\n  ❌ Game-log refresh failed — aborting to prevent stale data in features.")
+        print(f"     Check your network connection and retry: nba refresh")
+        sys.exit(1)
 
     # 2. Game logs — playoffs (if requested or after April 18 in a typical season)
     if args.playoffs:
@@ -73,7 +76,10 @@ def main():
             f"ingest_season('{season}', 'PlayIn', force_update=True)"
         ]
         ok2 = run(cmd2, 'game_logs playoffs + play-in')
-        success = success and ok2
+        if not ok2:
+            print(f"\n  ❌ Playoff game-log refresh failed — aborting to prevent stale data in features.")
+            print(f"     Check your network connection and retry: nba refresh")
+            sys.exit(1)
 
     # 3. Team stats
     if not args.props_only:
@@ -101,6 +107,9 @@ def main():
     print(f"    python scripts/generate_todays_picks.py{mode_flag}{season_flag} --save")
     print(f"    python scripts/generate_todays_team_picks.py{mode_flag}{season_flag} --save")
     print()
+
+    if not success:
+        sys.exit(1)
 
 
 if __name__ == '__main__':
