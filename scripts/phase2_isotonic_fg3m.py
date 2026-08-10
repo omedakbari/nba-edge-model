@@ -31,7 +31,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from sklearn.isotonic import IsotonicRegression
-from sklearn.metrics import brier_score_loss, log_loss
+from sklearn.metrics import brier_score_loss
 from sklearn.calibration import calibration_curve
 
 OUT_DIR  = Path(__file__).parent.parent / "data" / "diagnostics"

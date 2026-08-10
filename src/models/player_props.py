@@ -22,7 +22,7 @@ import pickle
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.ensemble import HistGradientBoostingRegressor
 
-from config.settings import PROCESSED_DIR
+from config.settings import PROCESSED_DIR, BLEND_L10_WEIGHT
 
 TARGET_STATS = ['pts', 'reb', 'ast', 'fg3m', 'pra', 'reb_ast']
 TRAIN_SEASONS = ['2019-20', '2020-21', '2021-22', '2022-23', '2023-24']
@@ -50,8 +50,10 @@ FEATURES_TO_EXCLUDE = [
 ]
 
 # --- Blend weight: 0.0 = pure model, 1.0 = pure L10 baseline ---
-# 0.4 means 60% model + 40% L10. Stabilizes predictions when data is thin.
-BLEND_WEIGHT = 0.65
+# Unified with the rest of the codebase — see config/settings.py's
+# BLEND_L10_WEIGHT for the empirical derivation. Used here only to report a
+# blended-MAE metric during training; does not affect the saved model itself.
+BLEND_WEIGHT = BLEND_L10_WEIGHT
 
 
 def get_feature_columns(df: pd.DataFrame) -> list[str]:

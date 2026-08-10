@@ -21,6 +21,7 @@ from src.features.playoff_features import add_playoff_features
 
 
 def build_feature_dataset(min_minutes: float = 12.0) -> pd.DataFrame:
+    """Load game logs, filter to min_minutes+, and run the full feature-engineering chain."""
     print("Loading game logs from database...")
     conn = sqlite3.connect(str(DB_PATH))
     df = pd.read_sql("""
@@ -58,6 +59,7 @@ def build_feature_dataset(min_minutes: float = 12.0) -> pd.DataFrame:
 
 
 def save_feature_dataset(df: pd.DataFrame, filename: str = "features.parquet") -> Path:
+    """Write the feature dataset to data/processed/ as parquet."""
     path = PROCESSED_DIR / filename
     df.to_parquet(path, index=False)
     print(f"\n  ✅ Saved to {path} ({path.stat().st_size / 1e6:.1f} MB)")

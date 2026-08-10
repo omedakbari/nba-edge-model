@@ -28,22 +28,20 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import numpy as np
 import pandas as pd
-import pickle
 import requests
-from scipy import stats as scipy_stats
 
 warnings.filterwarnings("ignore")
 
-from config.settings import PROCESSED_DIR, DB_PATH, NBA_API_DELAY, CURRENT_SEASON
+from config.settings import PROCESSED_DIR, DB_PATH, NBA_API_DELAY, CURRENT_SEASON, BLEND_L10_WEIGHT
 from src.playoffs.adjustments import (
     load_playoff_elevation_ratios,
     load_playoff_elevation_ratios_per_stat,
     apply_playoff_adjustments,
     should_suppress,
     playoff_context_note,
-    TIER_LABELS,
 )
 from src.utils.season import detect_phase, get_playoff_round, ROUND_LABELS
+from src.utils.probability import prob_over, load_model
 
 # Sleeper API uses the start year of the season (e.g. 2025 for 2025-26)
 _SLEEPER_API_YEAR = CURRENT_SEASON.split('-')[0]
@@ -1224,20 +1222,7 @@ def build_todays_features(features_df: pd.DataFrame,
 
 
 # ── Model loading and prediction ───────────────────────────────────────────────
-
-def load_model(stat: str) -> dict:
-    path = PROCESSED_DIR / "models" / f"{stat}_model.pkl"
-    if not path.exists():
-        raise FileNotFoundError(f"Model not found: {path}. Run: python -m src.models.player_props")
-    with open(path, 'rb') as f:
-        return pickle.load(f)
-
-
-def prob_over(pred: float, line: float, std: float) -> float:
-    if std <= 0 or np.isnan(std):
-        std = max(abs(pred) * 0.2, 1.0)
-    z = (line - pred) / std
-    return float(np.clip(1 - scipy_stats.norm.cdf(z), 0.01, 0.99))
+# load_model()/prob_over() live in src.utils.probability (shared across scripts)
 
 
 def predict_stat_raw(df: pd.DataFrame, stat: str,
@@ -1377,10 +1362,11 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
             pred_raw = preds.get(idx, np.nan)
             l10_val = row.get(l10_col)
 
-            if is_playoffs and not pd.isna(pred_raw) and not pd.isna(l10_val) and float(l10_val) > 0:
-                # 50/50 L10 / model blend for playoff mode — mirrors backtest harness
-                # and aligns with the validate_playoffs.py calibration (67% hit rate)
-                pred = 0.50 * float(l10_val) + 0.50 * float(pred_raw)
+            if not pd.isna(pred_raw) and not pd.isna(l10_val) and float(l10_val) > 0:
+                # Unified L10/model blend (config.BLEND_L10_WEIGHT), applied in both
+                # regular-season and playoff mode. Empirically derived — see
+                # config/settings.py's BLEND_L10_WEIGHT comment for the derivation.
+                pred = BLEND_L10_WEIGHT * float(l10_val) + (1 - BLEND_L10_WEIGHT) * float(pred_raw)
             else:
                 pred = pred_raw
 

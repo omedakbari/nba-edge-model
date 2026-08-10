@@ -33,7 +33,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import warnings
 warnings.filterwarnings("ignore")
 
-import numpy as np
 import pandas as pd
 
 SEASONS = ['2024-25', '2023-24', '2022-23', '2021-22']

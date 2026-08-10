@@ -15,6 +15,7 @@ import numpy as np
 
 
 def add_playoff_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add is_playoff, series_game_num, and within-series L3 rolling performance."""
     df = df.sort_values(['player_id', 'game_date']).copy()
 
     # Binary flag — lets model learn different base rates for postseason

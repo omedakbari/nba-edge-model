@@ -8,6 +8,7 @@ import numpy as np
 
 
 def compute_team_defensive_stats(df: pd.DataFrame, window: int = 15) -> pd.DataFrame:
+    """Rolling L-window stats allowed per team, shift(1)-guarded against leakage."""
     team_game = df.groupby(['game_id', 'game_date', 'opp_abbr']).agg(
         pts_allowed=('pts', 'sum'),
         reb_allowed=('reb', 'sum'),
@@ -29,6 +30,7 @@ def compute_team_defensive_stats(df: pd.DataFrame, window: int = 15) -> pd.DataF
 
 
 def compute_team_pace(df: pd.DataFrame, window: int = 15) -> pd.DataFrame:
+    """Rolling L-window estimated possessions per team (FGA + TOV + 0.44*FTA)."""
     team_game = df.groupby(['game_id', 'game_date', 'team_abbr']).agg(
         total_fga=('fga', 'sum'),
         total_tov=('tov', 'sum'),
@@ -47,6 +49,7 @@ def compute_team_pace(df: pd.DataFrame, window: int = 15) -> pd.DataFrame:
 
 
 def add_team_features(df: pd.DataFrame, window: int = 15) -> pd.DataFrame:
+    """Join opponent defensive allowed-stats and both teams' pace onto each player-game row."""
     print("  Computing team defensive stats...")
     team_def = compute_team_defensive_stats(df, window=window)
 

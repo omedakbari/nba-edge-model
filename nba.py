@@ -75,6 +75,16 @@ def _label(phase: str) -> str:
     return {'playoffs': 'PLAYOFFS', 'play-in': 'PLAY-IN', 'regular': 'REGULAR SEASON'}[phase]
 
 
+def _print_refresh_failed() -> None:
+    print(f"\n  {'='*62}")
+    print(f"  ❌  DATA REFRESH FAILED — picks generation aborted.")
+    print(f"      Game logs could not be updated; picks would be based on")
+    print(f"      stale data. Fix the issue and retry:")
+    print(f"        nba refresh       # retry data refresh")
+    print(f"        nba picks --quick # generate picks from cached data (with risk)")
+    print(f"  {'='*62}\n")
+
+
 # ── Commands ──────────────────────────────────────────────────────────────────
 
 def cmd_picks(args):
@@ -127,13 +137,7 @@ def cmd_picks(args):
             'STEP 1 — Refreshing data'
         )
         if rc != 0:
-            print(f"\n  {'='*62}")
-            print(f"  ❌  DATA REFRESH FAILED — picks generation aborted.")
-            print(f"      Game logs could not be updated; picks would be based on")
-            print(f"      stale data. Fix the issue and retry:")
-            print(f"        nba refresh       # retry data refresh")
-            print(f"        nba picks --quick # generate picks from cached data (with risk)")
-            print(f"  {'='*62}\n")
+            _print_refresh_failed()
             return
 
     # Step 2 — Player props
@@ -185,13 +189,7 @@ def cmd_daily(_args):
         refresh_flags = ['--playoffs'] if phase in ('playoffs', 'play-in') else []
         rc = run(['scripts/update_data.py'] + refresh_flags, 'Refreshing data')
         if rc != 0:
-            print(f"\n  {'='*62}")
-            print(f"  ❌  DATA REFRESH FAILED — picks generation aborted.")
-            print(f"      Game logs could not be updated; picks would be based on")
-            print(f"      stale data. Fix the issue and retry:")
-            print(f"        nba refresh       # retry data refresh")
-            print(f"        nba picks --quick # generate picks from cached data (with risk)")
-            print(f"  {'='*62}\n")
+            _print_refresh_failed()
             return
 
     run(

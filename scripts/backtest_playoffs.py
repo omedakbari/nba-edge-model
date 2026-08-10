@@ -20,53 +20,41 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
 import numpy as np
-import pickle
-from scipy import stats as scipy_stats
 
-from config.settings import DB_PATH, PROCESSED_DIR
+from config.settings import DB_PATH, PROCESSED_DIR, BLEND_L10_WEIGHT
 from src.playoffs.adjustments import (
     apply_playoff_adjustments,
     load_playoff_elevation_ratios,
     should_suppress,
-    get_player_tier,
 )
+from src.utils.probability import prob_over, load_model
 
 COMPOSITE_STATS = {
     'pra':     ['pts', 'reb', 'ast'],
     'reb_ast': ['reb', 'ast'],
 }
-BLEND_WEIGHT = 0.65
-
-
-def load_model(stat: str) -> dict:
-    model_path = PROCESSED_DIR / "models" / f"{stat}_model.pkl"
-    with open(model_path, 'rb') as f:
-        return pickle.load(f)
-
-
-def prob_over(pred: float, line: float, std: float) -> float:
-    if std <= 0 or np.isnan(std):
-        std = max(abs(pred) * 0.2, 1.0)
-    z = (line - pred) / std
-    return float(np.clip(1 - scipy_stats.norm.cdf(z), 0.01, 0.99))
+BLEND_WEIGHT = BLEND_L10_WEIGHT  # unified value — see config/settings.py
 
 
 def predict_stat(df: pd.DataFrame, stat: str) -> pd.Series:
-    """Return blended model predictions for a stat column."""
+    """
+    Return blended model predictions for a stat column.
+
+    HistGradientBoostingRegressor has native NaN support and was trained
+    without any feature-NaN filtering (see player_props.py) — predict
+    directly on the full feature matrix, NaNs included, rather than
+    dropping rows with any missing feature (which silently excluded most
+    playoff Game 1s, since series_L3 has no history yet at that point).
+    """
     components = COMPOSITE_STATS.get(stat)
     if components:
         preds = pd.Series(0.0, index=df.index)
         for c in components:
             m = load_model(c)
-            valid = df[m['feature_cols']].notna().all(axis=1)
-            raw = pd.Series(np.nan, index=df.index)
-            raw[valid] = m['model'].predict(df.loc[valid, m['feature_cols']])
-            preds += raw
+            preds += pd.Series(m['model'].predict(df[m['feature_cols']]), index=df.index)
     else:
         m = load_model(stat)
-        valid = df[m['feature_cols']].notna().all(axis=1)
-        preds = pd.Series(np.nan, index=df.index)
-        preds[valid] = m['model'].predict(df.loc[valid, m['feature_cols']])
+        preds = pd.Series(m['model'].predict(df[m['feature_cols']]), index=df.index)
 
     l10_col = f'{stat}_L10'
     if l10_col in df.columns:

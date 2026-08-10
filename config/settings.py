@@ -42,26 +42,26 @@ BACKFILL_SEASONS = [
 # Current season (update this at season start)
 CURRENT_SEASON = "2025-26"
 
-# === Team Abbreviation Mapping ===
-# nba_api sometimes uses different abbreviations than what we want.
-# This maps to our canonical set.
-TEAM_ABBR_MAP = {
-    # These are the ones that sometimes differ
-    "PHX": "PHX",   # Phoenix Suns
-    "BKN": "BKN",   # Brooklyn Nets
-    "CHA": "CHA",   # Charlotte Hornets
-    "NOP": "NOP",   # New Orleans Pelicans (sometimes 'NO')
-    "NYK": "NYK",   # New York Knicks
-    "SAS": "SAS",   # San Antonio Spurs
-    "GSW": "GSW",   # Golden State Warriors
-    "OKC": "OKC",   # Oklahoma City Thunder
-    "UTA": "UTA",   # Utah Jazz (sometimes 'UTH')
-}
-
 # === Model Settings (Phase 2 — placeholder) ===
 SAFE_FLOOR_LOW_VAR = 0.58
 SAFE_FLOOR_MED_VAR = 0.60
 SAFE_FLOOR_HIGH_VAR = 0.62
 
-# Rolling window sizes for feature engineering
-ROLLING_WINDOWS = [5, 10, 20]
+# === Prop prediction blend weight ===
+# Weight given to the player's L10 rolling average when blending with the raw
+# model prediction: pred = (1 - BLEND_L10_WEIGHT) * model + BLEND_L10_WEIGHT * L10.
+#
+# Derived 2026-08-10 by pooling all 112,422 picks across all 6 stats from
+# scripts/phase1_calibration_audit.py --season 2025-26 (data/diagnostics/
+# per_pick_log.csv) and grid-searching L10 weight in [0.0, 1.0] step 0.05 for
+# the value minimizing pooled Brier score. Result: 0.40 (Brier 0.24568),
+# beating every ratio previously hardcoded ad hoc across the codebase:
+#   0%  (unblended, previously used for live regular-season picks): 0.24709
+#   50% (previously used for live playoff picks):                   0.24581
+#   65% (previously used by backtest/dashboard scripts):            0.24643
+#
+# Per-stat optimal weights vary meaningfully (PRA 0.15 - FG3M 0.65 — see
+# data/diagnostics/blend_audit.csv) — this single value is a pooled compromise,
+# not independently optimal for every stat. Re-derive by re-running
+# phase1_calibration_audit.py whenever the season/models change meaningfully.
+BLEND_L10_WEIGHT = 0.40

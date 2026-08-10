@@ -32,15 +32,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import warnings
 warnings.filterwarnings("ignore")
 
-import numpy as np
 import pandas as pd
 
 SEASONS = ['2024-25', '2023-24', '2022-23', '2021-22']
 THRESHOLDS = [0.55, 0.60, 0.65, 0.70]
 
 # ── Baseline PRED_MULT (df15f00) ──────────────────────────────────────────────
-
-import src.playoffs.adjustments as adj_mod
 
 BASELINE_PRED_MULT = {
     'STAR': {

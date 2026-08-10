@@ -14,6 +14,7 @@ import numpy as np
 
 
 def add_rolling_features(df: pd.DataFrame, windows: list[int] = [5, 10, 20]) -> pd.DataFrame:
+    """Add L5/L10/L20 shift(1)-guarded rolling means for each core box-score stat."""
     stat_cols = ['pts', 'reb', 'ast', 'stl', 'blk', 'fg3m',
                  'pra', 'pts_reb', 'reb_ast', 'pts_ast',
                  'min', 'fga', 'fg3a', 'fta', 'tov', 'pf']
@@ -32,6 +33,7 @@ def add_rolling_features(df: pd.DataFrame, windows: list[int] = [5, 10, 20]) -> 
 
 
 def add_hit_rate_features(df: pd.DataFrame, windows: list[int] = [5, 10]) -> pd.DataFrame:
+    """Add rolling frequency (L5/L10) of clearing common prop-line thresholds per stat."""
     thresholds = {
         'pts': [15.5, 19.5, 24.5, 29.5],
         'reb': [4.5, 6.5, 8.5, 10.5],
@@ -57,6 +59,7 @@ def add_hit_rate_features(df: pd.DataFrame, windows: list[int] = [5, 10]) -> pd.
 
 
 def add_trend_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add (L5 - L10) / L10 — positive means recent form is trending up."""
     stat_cols = ['pts', 'reb', 'ast', 'fg3m', 'pra', 'min']
     for stat in stat_cols:
         l5_col = f'{stat}_L5'
@@ -67,6 +70,7 @@ def add_trend_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_consistency_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add rolling L10 stdev and coefficient of variation (std/mean) per stat."""
     stat_cols = ['pts', 'reb', 'ast', 'fg3m', 'pra', 'reb_ast', 'min']
     df = df.sort_values(['player_id', 'game_date']).copy()
 
@@ -83,6 +87,7 @@ def add_consistency_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_minutes_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add L3/std-L10 minutes and a low-minutes-game count (DNP/minute-cut risk signal)."""
     df = df.sort_values(['player_id', 'game_date']).copy()
     shifted_min = df.groupby('player_id')['min'].shift(1)
 
@@ -101,6 +106,7 @@ def add_minutes_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_player_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Run the full player-level feature pipeline: rolling, hit-rate, trend, consistency, minutes."""
     print("  Building rolling averages...")
     df = add_rolling_features(df)
     print("  Building hit-rate features...")

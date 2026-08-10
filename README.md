@@ -10,33 +10,45 @@ End-to-end NBA player props prediction system: data ingestion → feature engine
 
 **3. Model training** — `HistGradientBoostingRegressor` per stat (PTS, REB, AST, FG3M, PRA, REB_AST). Trained on 2019–2024 (5 seasons, 59,950 rows), validated on 2024-25, tested on 2025-26. Key hyperparameters: `max_depth=3`, `min_samples_leaf=30`, `l2_regularization=5.0`, `max_features=0.6`. Feature selection drops inter-correlated features (r > 0.92) and keeps the top 40 by target correlation.
 
-**4. Probability calibration** — predictions are blended 65% L10-baseline / 35% model, then mapped to P(over line) via a Gaussian CDF using the player's rolling standard deviation. A minimum-minutes filter (min_L10 ≥ 20) removes garbage-time noise before confidence scoring.
+**4. Probability calibration** — predictions are blended 40% L10-baseline / 60% model (`config.settings.BLEND_L10_WEIGHT`), then mapped to P(over line) via a Gaussian CDF using the player's rolling standard deviation. A minimum-minutes filter (min_L10 ≥ 20) removes garbage-time noise before confidence scoring. The 40% weight is a single value unified across every prediction path in the codebase (previously three different, undocumented ratios — 0%, 50%, and 65% — were hardcoded independently in different scripts). It was derived empirically: pooling all 112,422 picks across all 6 stats from a full calibration audit and grid-searching L10 weight in [0.0, 1.0] for the value minimizing pooled Brier score (see `config/settings.py`'s `BLEND_L10_WEIGHT` comment and `data/diagnostics/blend_audit.csv` for the full derivation, including per-stat optimal weights, which vary from 0.15 to 0.65 — this single pooled value is a compromise across stats, not independently optimal for each one).
 
 **5. Live picks** — auto-fetches today's NBA schedule and team rosters from NBA.com, builds current-form features for each player, and outputs two SAFE Flex cards. No manual player ID input required.
 
-**6. Backtest** — held-out 2024-25 season. Hit rates reported per stat at multiple confidence thresholds. Composite markets (PRA, REB_AST) use summed component model predictions rather than a single composite model.
+**6. Backtest** — held-out 2025-26 season. Hit rates reported per stat at multiple confidence thresholds. Composite markets (PRA, REB_AST) use summed component model predictions rather than a single composite model.
 
 ## Backtest Results — 2025-26 Season (held-out test set)
 
 | Stat    | Threshold | Picks  | Hit Rate |
 |---------|-----------|-------:|---------:|
-| PTS     | P ≥ 55%   |  4,829 | 54.1%    |
-| PTS     | P ≥ 65%   |  1,200 | 60.8%    |
-| PTS     | P ≥ 75%   |    193 | 65.3%    |
-| REB     | P ≥ 55%   |  4,491 | 55.8%    |
-| REB     | P ≥ 65%   |  1,193 | 62.1%    |
-| REB     | P ≥ 75%   |    335 | 65.7%    |
-| AST     | P ≥ 55%   |  5,322 | 53.4%    |
-| AST     | P ≥ 65%   |  1,359 | 60.9%    |
-| AST     | P ≥ 75%   |    330 | 63.3%    |
-| PRA     | P ≥ 55%   |  4,563 | 55.2%    |
-| PRA     | P ≥ 65%   |    932 | 60.6%    |
-| REB_AST | P ≥ 65%   |  3,290 | 58.1%    |
-| REB_AST | P ≥ 70%   |  2,165 | 61.1%    |
+| PTS     | P ≥ 55%   |  4,237 | 56.3%    |
+| PTS     | P ≥ 60%   |  1,336 | 61.4%    |
+| PTS     | P ≥ 65%   |    348 | 64.4%    |
+| PTS     | P ≥ 70%   |     88 | 69.3%    |
+| PTS     | P ≥ 75%   |     20 | 75.0%    |
+| REB     | P ≥ 55%   |  4,196 | 56.6%    |
+| REB     | P ≥ 60%   |  1,457 | 60.5%    |
+| REB     | P ≥ 65%   |    523 | 64.2%    |
+| REB     | P ≥ 70%   |    193 | 64.8%    |
+| REB     | P ≥ 75%   |     87 | 65.5%    |
+| AST     | P ≥ 55%   |  5,058 | 55.7%    |
+| AST     | P ≥ 60%   |  1,789 | 60.4%    |
+| AST     | P ≥ 65%   |    641 | 64.4%    |
+| AST     | P ≥ 70%   |    254 | 63.8%    |
+| AST     | P ≥ 75%   |    111 | 67.6%    |
+| PRA     | P ≥ 55%   |  4,262 | 58.2%    |
+| PRA     | P ≥ 60%   |  1,206 | 62.7%    |
+| PRA     | P ≥ 65%   |    299 | 57.9%    |
+| PRA     | P ≥ 70%   |     61 | 57.4%    |
+| PRA     | P ≥ 75%   |     17 | 52.9%    |
+| REB_AST | P ≥ 55%   |  4,647 | 57.3%    |
+| REB_AST | P ≥ 60%   |  1,487 | 62.1%    |
+| REB_AST | P ≥ 65%   |    425 | 64.5%    |
+| REB_AST | P ≥ 70%   |    129 | 69.0%    |
+| REB_AST | P ≥ 75%   |     27 | 74.1%    |
 
-FG3M excluded from daily picks: hit rates don't scale with confidence (≤58.6% even at P ≥ 75%).
+FG3M excluded from daily picks: hit rate stays flat around 53-56% through P ≥ 70% before a small-sample jump at P ≥ 75% (n=87) — doesn't scale with confidence the way the other stats do.
 
-Calibration is monotonic across all kept stats — higher confidence thresholds consistently produce higher hit rates. Daily picks use stat-specific floors: REB/AST ≥ 60%, PRA/REB_AST ≥ 65%, PTS ≥ 70%.
+Calibration is monotonic for PTS, REB, and REB_AST — higher confidence thresholds consistently produce higher hit rates. AST is monotonic through P ≥ 65% with a small dip at P ≥ 70% (n=254) before recovering at P ≥ 75%. **PRA is the exception**: it peaks at P ≥ 60% (62.7%) and *declines* at higher thresholds, down to 52.9% at P ≥ 75% (n=17) — a direct consequence of the unified 40% blend weight being well above PRA's own independently-optimal weight (0.15, see `blend_audit.csv`). Daily picks use stat-specific floors: REB/AST ≥ 60%, PRA/REB_AST ≥ 65%, PTS ≥ 70%.
 
 ## Dashboard
 

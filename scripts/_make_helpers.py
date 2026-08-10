@@ -33,32 +33,52 @@ def _db_freshness():
     return row[0], row[1], po
 
 
-def cmd_freshness():
+def _freshness_report() -> dict:
+    """
+    Compute DB/features-parquet staleness once, shared by cmd_freshness()/cmd_doctor()/
+    cmd_preflight(). Playoffs/play-in get a looser staleness threshold (7d) than
+    regular season (1d) since games are sparser in the postseason.
+    """
     from src.utils.season import detect_phase
-    print()
-    print("================================================================")
-    print("  FRESHNESS CHECK")
-    print("================================================================")
-    max_d, total, po = _db_freshness()
-    today = date.today().isoformat()
-    gap = (date.fromisoformat(today) - date.fromisoformat(max_d)).days
+    import pandas as pd
+
     phase = detect_phase()
     stale_threshold = 7 if phase in ("playoffs", "play-in") else 1
-    marker = "OK" if gap <= stale_threshold else "STALE"
-    print(f"  DB max game date : {max_d}  (gap: {gap}d)  [{marker}]")
-    print(f"  {CURRENT_SEASON} rows     : {total:,}  (Playoffs: {po:,})")
+    today = date.today().isoformat()
 
-    import pandas as pd
+    max_d, total, po = _db_freshness()
+    gap = (date.fromisoformat(today) - date.fromisoformat(max_d)).days
+    marker = "OK" if gap <= stale_threshold else "STALE"
+
     feat = ROOT / "data" / "processed" / "features.parquet"
     if feat.exists():
         df = pd.read_parquet(feat)
         fmax = str(df["game_date"].max())[:10]
         fgap = (date.fromisoformat(today) - date.fromisoformat(fmax)).days
         fmark = "OK" if fgap <= stale_threshold else "STALE"
-        print(f"  features.parquet : {fmax}  (gap: {fgap}d)  [{fmark}]")
+    else:
+        fmax, fgap, fmark = None, 999, None
+
+    return {
+        "phase": phase, "stale_threshold": stale_threshold, "today": today,
+        "max_d": max_d, "total": total, "po": po, "gap": gap, "marker": marker,
+        "feat_exists": feat.exists(), "fmax": fmax, "fgap": fgap, "fmark": fmark,
+    }
+
+
+def cmd_freshness():
+    print()
+    print("================================================================")
+    print("  FRESHNESS CHECK")
+    print("================================================================")
+    r = _freshness_report()
+    print(f"  DB max game date : {r['max_d']}  (gap: {r['gap']}d)  [{r['marker']}]")
+    print(f"  {CURRENT_SEASON} rows     : {r['total']:,}  (Playoffs: {r['po']:,})")
+
+    if r["feat_exists"]:
+        print(f"  features.parquet : {r['fmax']}  (gap: {r['fgap']}d)  [{r['fmark']}]")
     else:
         print("  features.parquet : NOT FOUND — run: make train")
-        fgap = 999
 
     mdir = ROOT / "data" / "processed" / "models"
     if mdir.exists():
@@ -71,7 +91,7 @@ def cmd_freshness():
             ).days
             print(f"  oldest model     : {oldest.name}  ({age_d}d old)")
 
-    sys.exit(1 if gap > stale_threshold else 0)
+    sys.exit(1 if r["gap"] > r["stale_threshold"] else 0)
 
 
 def cmd_doctor():
@@ -83,28 +103,16 @@ def cmd_doctor():
 
     # --- Data freshness ---
     print("\n  --- Data freshness ---")
-    from src.utils.season import detect_phase as _detect_phase
-    phase = _detect_phase()
-    stale_threshold = 7 if phase in ("playoffs", "play-in") else 1
-    max_d, total, po = _db_freshness()
-    today = date.today().isoformat()
-    gap = (date.fromisoformat(today) - date.fromisoformat(max_d)).days
-    marker = "OK" if gap <= stale_threshold else "STALE"
-    if gap > stale_threshold:
+    r = _freshness_report()
+    if r["gap"] > r["stale_threshold"]:
         ok = False
-    print(f"  DB max date      : {max_d}  (gap: {gap}d)  [{marker}]")
-    print(f"  {CURRENT_SEASON} rows     : {total:,}  Playoffs: {po:,}")
+    print(f"  DB max date      : {r['max_d']}  (gap: {r['gap']}d)  [{r['marker']}]")
+    print(f"  {CURRENT_SEASON} rows     : {r['total']:,}  Playoffs: {r['po']:,}")
 
-    import pandas as pd
-    feat = ROOT / "data" / "processed" / "features.parquet"
-    if feat.exists():
-        df = pd.read_parquet(feat)
-        fmax = str(df["game_date"].max())[:10]
-        fgap = (date.fromisoformat(today) - date.fromisoformat(fmax)).days
-        fmark = "OK" if fgap <= stale_threshold else "STALE"
-        if fgap > stale_threshold:
+    if r["feat_exists"]:
+        if r["fgap"] > r["stale_threshold"]:
             ok = False
-        print(f"  features.parquet : {fmax}  (gap: {fgap}d)  [{fmark}]")
+        print(f"  features.parquet : {r['fmax']}  (gap: {r['fgap']}d)  [{r['fmark']}]")
     else:
         print("  features.parquet : NOT FOUND")
         ok = False

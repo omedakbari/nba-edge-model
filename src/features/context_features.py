@@ -7,6 +7,7 @@ import numpy as np
 
 
 def add_context_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add days_rest, is_b2b, season_game_num, and game_month."""
     df = df.sort_values(['player_id', 'game_date']).copy()
 
     df['prev_game_date'] = df.groupby('player_id')['game_date'].shift(1)

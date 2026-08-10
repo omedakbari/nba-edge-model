@@ -42,7 +42,7 @@ import pandas as pd
 from scipy import stats as scipy_stats
 
 from config.settings import DB_PATH
-from src.models.team_ratings import TeamRatingEngine, _load_team_games
+from src.models.team_ratings import _load_team_games
 
 SEASONS = ['2021-22', '2022-23', '2023-24', '2024-25']
 LEAN_THRESHOLD   = 3.5   # pts gap to qualify as a "lean"

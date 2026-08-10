@@ -3,7 +3,8 @@ Playoff Backtest Harness — chronological replay of historical playoff games.
 
 Key design decisions (all derived from 2024-25 data analysis):
   - Synthetic line = L10 × PLAYOFF_LINE_RATIO[stat] (approximates real market lines)
-  - Playoff blend = 65% L10 + 35% model (canonical spec)
+  - Playoff blend = config.settings.BLEND_L10_WEIGHT (unified value, currently
+    40% L10 / 60% model — empirically derived, see config/settings.py)
   - Per-stat elevation ratios (not PTS-only) — separate ratios for PTS/REB/AST/PRA/RA
   - Stdev multipliers EXPAND for all tiers (actual playoff variance > L10 variance)
   - No leakage: rolling windows computed from data strictly before each game
@@ -26,7 +27,7 @@ from scipy import stats as scipy_stats
 
 warnings.filterwarnings("ignore")
 
-from config.settings import DB_PATH, PROCESSED_DIR, CURRENT_SEASON
+from config.settings import DB_PATH, PROCESSED_DIR, CURRENT_SEASON, BLEND_L10_WEIGHT
 from src.playoffs.adjustments import PRED_MULT as PRED_MULT_PLAYOFF
 
 
@@ -39,9 +40,10 @@ COMPOSITE = {'pra': ['pts', 'reb', 'ast'], 'reb_ast': ['reb', 'ast']}
 MIN_L10_MINUTES = 20.0
 MIN_L10_GAMES   = 5     # need at least 5 reg-season games for a valid L10
 
-# Playoff blend weight — canonical spec: 65% L10 / 35% model
-PLAYOFF_BLEND_L10  = 0.65
-PLAYOFF_BLEND_MODEL = 0.35
+# Playoff blend weight — unified with the rest of the codebase, see
+# config/settings.py's BLEND_L10_WEIGHT for the empirical derivation.
+PLAYOFF_BLEND_L10  = BLEND_L10_WEIGHT
+PLAYOFF_BLEND_MODEL = 1 - BLEND_L10_WEIGHT
 
 # Synthetic line ratios: playoff actual median / reg-season L10.
 # These approximate what the market (PrizePicks) would set as the line.
@@ -351,9 +353,15 @@ def load_model(stat: str) -> Optional[dict]:
 
 def predict_blended(features_row: pd.Series, stat: str, l10_mean: float) -> Optional[float]:
     """
-    65% L10 + 35% model output (canonical playoff spec).
+    Unified L10/model blend output (config.settings.BLEND_L10_WEIGHT).
     For composite stats: sum the component model predictions.
-    Returns None if model is unavailable or features are missing.
+    Returns None only if the model file itself is unavailable — NaN feature
+    values are passed straight to the model (HistGradientBoostingRegressor has
+    native NaN support and was trained without any feature-NaN filtering; see
+    player_props.py). Previously this fell back to pure-L10 (dropping the model
+    contribution entirely) for any row missing even one feature — which silently
+    changed the effective blend to 100% L10 for ~21% of playoff rows (Game 1s,
+    which have no series_L3 history yet) instead of the intended blend.
     """
     components = COMPOSITE.get(stat)
     if components:
@@ -363,8 +371,6 @@ def predict_blended(features_row: pd.Series, stat: str, l10_mean: float) -> Opti
             if m is None:
                 return None
             cols = [f for f in m['feature_cols'] if f in features_row.index]
-            if features_row[cols].isna().any():
-                return None
             total += float(m['model'].predict(features_row[cols].values.reshape(1, -1))[0])
         raw_model = total
     else:
@@ -372,8 +378,6 @@ def predict_blended(features_row: pd.Series, stat: str, l10_mean: float) -> Opti
         if m is None:
             return None
         cols = [f for f in m['feature_cols'] if f in features_row.index]
-        if features_row[cols].isna().any():
-            return None
         raw_model = float(m['model'].predict(features_row[cols].values.reshape(1, -1))[0])
 
     return PLAYOFF_BLEND_L10 * l10_mean + PLAYOFF_BLEND_MODEL * raw_model
@@ -384,7 +388,7 @@ def predict_l10_only(l10_mean: float) -> float:
 
 
 def predict_model_only(features_row: pd.Series, stat: str) -> Optional[float]:
-    """Raw model output, no blend."""
+    """Raw model output, no blend. See predict_blended() for the NaN-handling note."""
     components = COMPOSITE.get(stat)
     if components:
         total = 0.0
@@ -393,8 +397,6 @@ def predict_model_only(features_row: pd.Series, stat: str) -> Optional[float]:
             if m is None:
                 return None
             cols = [f for f in m['feature_cols'] if f in features_row.index]
-            if features_row[cols].isna().any():
-                return None
             total += float(m['model'].predict(features_row[cols].values.reshape(1, -1))[0])
         return total
     else:
@@ -402,8 +404,6 @@ def predict_model_only(features_row: pd.Series, stat: str) -> Optional[float]:
         if m is None:
             return None
         cols = [f for f in m['feature_cols'] if f in features_row.index]
-        if features_row[cols].isna().any():
-            return None
         return float(m['model'].predict(features_row[cols].values.reshape(1, -1))[0])
 
 
@@ -609,7 +609,7 @@ def run_playoff_backtest(
                 tier_std_mult = star_std_mult_override
             adj_std = l10_std_raw * tier_std_mult
 
-            # Blended prediction: 50/50 L10 + model
+            # Blended prediction: unified L10/model blend (BLEND_L10_WEIGHT)
             pred_blended = predict_blended(feat_row, stat, l10_mean)
             pred_l10 = predict_l10_only(l10_mean)
             pred_model = predict_model_only(feat_row, stat)

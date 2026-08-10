@@ -1,3 +1,19 @@
+"""
+NBA Edge Model — Streamlit dashboard.
+
+Four pages: Overview (DB/model summary), Backtest Results (hit rates by
+confidence threshold), Calibration (predicted-vs-actual reliability curves),
+Player Lookup (per-player recent form + season trend chart).
+
+Runs its own lightweight backtest against the 2024-25 season for display
+purposes — this is a separate, simplified reimplementation of
+src/models/edge_finder.py's backtest_props(), not a shared call into it
+(see run_backtest() below and CODE_REVIEW_FINDINGS.md for the tradeoffs).
+
+Usage:
+    streamlit run dashboard/app.py
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -5,16 +21,20 @@ import plotly.graph_objects as go
 from pathlib import Path
 import pickle
 import sqlite3
+import sys
 from scipy.stats import norm
 
 # ---------------------------------------------------------------------------
 # CONFIG
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+from config.settings import BLEND_L10_WEIGHT
+
 DB_PATH = PROJECT_ROOT / "data" / "nba_edge.db"
 FEATURES_PATH = PROJECT_ROOT / "data" / "processed" / "features.parquet"
 MODELS_DIR = PROJECT_ROOT / "data" / "processed" / "models"
-BLEND_WEIGHT = 0.65
+BLEND_WEIGHT = BLEND_L10_WEIGHT  # unified value — see config/settings.py
 
 STAT_LABELS = {"pts": "Points", "reb": "Rebounds", "ast": "Assists"}
 CALIBRATED_STATS = ["pts", "reb", "ast"]
@@ -25,6 +45,7 @@ CALIBRATED_STATS = ["pts", "reb", "ast"]
 # ---------------------------------------------------------------------------
 @st.cache_data
 def load_features():
+    """Load the engineered feature dataset, or None if it hasn't been built yet."""
     if not FEATURES_PATH.exists():
         return None
     return pd.read_parquet(FEATURES_PATH)
@@ -87,6 +108,7 @@ def load_models():
 
 @st.cache_data
 def load_player_names():
+    """Return {player_id: full_name} for every player in the DB."""
     if not DB_PATH.exists():
         return {}
     conn = sqlite3.connect(str(DB_PATH))
@@ -97,6 +119,7 @@ def load_player_names():
 
 @st.cache_data
 def get_db_summary():
+    """Per-season game/player counts, plus the total row count."""
     if not DB_PATH.exists():
         return None
     conn = sqlite3.connect(str(DB_PATH))
@@ -128,23 +151,6 @@ def get_db_diagnostics():
         info["total_rows"] = pd.read_sql(
             "SELECT COUNT(*) as n FROM game_logs", conn
         ).iloc[0]["n"]
-
-        # LeBron check
-        lebron = pd.read_sql(
-            "SELECT player_id, full_name FROM players WHERE full_name LIKE '%LeBron%'",
-            conn,
-        )
-        info["lebron_in_players"] = len(lebron) > 0
-        if len(lebron) > 0:
-            pid = lebron.iloc[0]["player_id"]
-            lebron_games = pd.read_sql(
-                "SELECT COUNT(*) as n FROM game_logs WHERE player_id=? AND season='2024-25'",
-                conn,
-                params=(int(pid),),
-            ).iloc[0]["n"]
-            info["lebron_2024_25_games"] = lebron_games
-        else:
-            info["lebron_2024_25_games"] = 0
     except Exception as e:
         info["error"] = str(e)
     conn.close()
@@ -189,11 +195,13 @@ def run_backtest(stat, threshold=0.55):
 
     X_test = test[available].copy()
 
-    # Drop any non-numeric columns, then fill NaN with per-column median
+    # Drop any non-numeric columns. Leave NaN as-is (do not impute) —
+    # HistGradientBoostingRegressor has native NaN support and was trained
+    # without any feature-NaN filtering/imputation (see player_props.py),
+    # so median-filling here would feed the model a different input
+    # distribution than it was trained and is actually used on.
     X_test = X_test.select_dtypes(include=[np.number])
     available = X_test.columns.tolist()
-    col_medians = X_test.median(numeric_only=True)
-    X_test = X_test.fillna(col_medians)
 
     # If model expects exact feature count, check
     n_expected = getattr(model, "n_features_in_", len(available))
@@ -325,19 +333,6 @@ if page == "Overview":
         d1, d2 = st.columns(2)
         d1.metric("Players in DB", diag.get("total_players", "?"))
         d2.metric("Players with 2024-25 Data", diag.get("players_2024_25", "?"))
-
-        lebron_status = "Yes" if diag.get("lebron_in_players") else "No"
-        lebron_games = diag.get("lebron_2024_25_games", 0)
-        st.markdown(
-            f"**LeBron James in players table:** {lebron_status} · "
-            f"**2024-25 game logs:** {lebron_games}"
-        )
-        if not diag.get("lebron_in_players"):
-            st.info(
-                "LeBron is not in your database. The original data pull only grabbed "
-                "~100-150 players per season. A broader pull would add more players. "
-                "Run: python scripts/pull_season_data.py --backfill"
-            )
 
     # Methodology
     st.subheader("Methodology")

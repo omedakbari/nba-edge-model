@@ -83,7 +83,7 @@ def moneyline_to_implied_prob(ml: int | str | None) -> Optional[float]:
 
 def implied_prob_to_moneyline(p: float) -> int:
     """Convert probability to American moneyline integer."""
-    p = float(np.clip(p, 0.01, 0.99)) if 'np' in dir() else max(0.01, min(0.99, p))
+    p = max(0.01, min(0.99, p))
     if p >= 0.5:
         return -round(p / (1 - p) * 100)
     else:

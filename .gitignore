@@ -54,3 +54,7 @@ logs/
 
 # Claude Code settings
 .claude/
+AUDIT_REPORT.md
+gpt_middleman_prompt.md
+CALIBRATION_DIAGNOSIS.md
+CODE_REVIEW_FINDINGS.md

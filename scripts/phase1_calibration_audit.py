@@ -27,14 +27,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import numpy as np
 import pandas as pd
-import pickle
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from scipy import stats as scipy_stats
 from sklearn.metrics import brier_score_loss, log_loss
 
 from config.settings import PROCESSED_DIR
+from src.utils.probability import prob_over, load_model
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -62,14 +61,6 @@ BUCKET_EDGES = [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 1.01]
 BUCKET_LABELS = ['50-55', '55-60', '60-65', '65-70', '70-75', '75+']
 
 
-# ── Model helpers ─────────────────────────────────────────────────────────────
-
-def load_model(stat: str) -> dict:
-    path = PROCESSED_DIR / "models" / f"{stat}_model.pkl"
-    with open(path, 'rb') as f:
-        return pickle.load(f)
-
-
 def fill_series_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Fill series_L3 features with L10 for non-playoff rows — exactly as
@@ -91,34 +82,30 @@ def fill_series_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def predict_raw(df: pd.DataFrame, stat: str, model_cache: dict) -> pd.Series:
-    """Pure model prediction — no L10 blend."""
+    """
+    Pure model prediction — no L10 blend.
+
+    HistGradientBoostingRegressor has native NaN support and was trained
+    without any feature-NaN filtering (player_props.py only drops rows with
+    NaN target, never NaN features) — so predictions are computed directly
+    on the full feature matrix here too, NaNs included. Dropping/requiring
+    notna() on features before predicting would silently shrink the
+    evaluated population to whatever subset happens to have every one of
+    the model's ~40 selected features populated, which is a different
+    (and biased) population from what the model was trained and is used on.
+    """
     components = COMPOSITE_STATS.get(stat)
     if components:
         preds = pd.Series(0.0, index=df.index)
         for c in components:
             m = model_cache[c]
             cols = [col for col in m['feature_cols'] if col in df.columns]
-            valid = df[cols].notna().all(axis=1)
-            raw = pd.Series(np.nan, index=df.index)
-            if valid.sum() > 0:
-                raw[valid] = m['model'].predict(df.loc[valid, cols])
-            preds = preds + raw
-        preds[preds == 0.0] = np.nan  # zero means all components were NaN
+            preds = preds + pd.Series(m['model'].predict(df[cols]), index=df.index)
     else:
         m = model_cache[stat]
         cols = [col for col in m['feature_cols'] if col in df.columns]
-        valid = df[cols].notna().all(axis=1)
-        preds = pd.Series(np.nan, index=df.index)
-        if valid.sum() > 0:
-            preds[valid] = m['model'].predict(df.loc[valid, cols])
+        preds = pd.Series(m['model'].predict(df[cols]), index=df.index)
     return preds
-
-
-def prob_over(pred: float, line: float, std: float) -> float:
-    if std <= 0 or np.isnan(std):
-        std = max(abs(pred) * 0.2, 1.0)
-    z = (line - pred) / std
-    return float(np.clip(1 - scipy_stats.norm.cdf(z), 0.01, 0.99))
 
 
 # ── Reliability diagram ───────────────────────────────────────────────────────
@@ -258,6 +245,7 @@ def run_audit(season: str = '2024-25', min_minutes: int = 20) -> None:
 
     all_rows = []
     calibration_stats = []  # per (stat, blend_mode)
+    blend_audit_rows = []   # per stat: optimal_l10_weight + correlation/Brier context
 
     for stat in TARGET_STATS:
         l10_col  = f'{stat}_L10'
@@ -453,11 +441,7 @@ def run_audit(season: str = '2024-25', min_minutes: int = 20) -> None:
         # Append blend audit to list
         blend_audit_row['corr_l10'] = round(corr_l10, 4)
         blend_audit_row['corr_model'] = round(corr_model, 4)
-        locals().setdefault('blend_audit_rows', []).append(blend_audit_row)
-
-    # Collect blend audit rows from local scope workaround
-    blend_audit_rows = [r for r in calibration_stats
-                        if r['blend'] == 'blend65']  # one row per stat
+        blend_audit_rows.append(blend_audit_row)
 
     # ── Save outputs ──────────────────────────────────────────────────────────
 
@@ -466,6 +450,12 @@ def run_audit(season: str = '2024-25', min_minutes: int = 20) -> None:
     df_log = pd.DataFrame(all_rows)
     df_log.to_csv(log_path, index=False)
     print(f"\n\n  Saved per-pick log: {log_path}  ({len(df_log):,} rows)")
+
+    # Blend audit — per-stat optimal L10 weight (Brier-minimizing grid search)
+    blend_audit_path = out_dir / "blend_audit.csv"
+    df_blend_audit = pd.DataFrame(blend_audit_rows)
+    df_blend_audit.to_csv(blend_audit_path, index=False)
+    print(f"  Saved blend audit: {blend_audit_path}")
 
     # Calibration summary
     cal_path = out_dir / "calibration_summary.csv"

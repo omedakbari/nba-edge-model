@@ -52,7 +52,7 @@ import pandas as pd
 
 from config.settings import DB_PATH, CURRENT_SEASON
 from src.models.team_ratings import TeamRatingEngine
-from src.data.espn_odds import fetch_odds, moneyline_to_implied_prob
+from src.data.espn_odds import fetch_odds
 
 PICKS_DIR = Path(__file__).parent.parent / 'data' / 'team_picks'
 

@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 
 from src.backtest.playoff_backtest import run_playoff_backtest, STATS
+from config.settings import BLEND_L10_WEIGHT
 
 
 # ── Formatting helpers ────────────────────────────────────────────────────────
@@ -221,7 +222,7 @@ def section_residuals(df: pd.DataFrame) -> str:
 
 def section_blend_comparison(df: pd.DataFrame) -> str:
     """Compare L10-only, model-only, and blended predictions."""
-    lines = ["## 5. Blend Comparison: L10 vs Model vs 65/35 Blend\n"]
+    lines = [f"## 5. Blend Comparison: L10 vs Model vs {BLEND_L10_WEIGHT:.0%}/{1-BLEND_L10_WEIGHT:.0%} Blend\n"]
 
     lines.append("| Stat | L10 MAE | Model MAE | Blend MAE | Best | N |")
     lines.append("| --- | --- | --- | --- | --- | --- |")
@@ -333,7 +334,7 @@ def main():
 
     print(f"\n{'='*70}")
     print(f"  PLAYOFF BACKTEST — {', '.join(args.seasons)}")
-    print(f"  Synthetic lines | 65/35 blend (L10/model) | Per-stat elevation | Expanded stdev")
+    print(f"  Synthetic lines | {BLEND_L10_WEIGHT:.0%}/{1-BLEND_L10_WEIGHT:.0%} blend (L10/model) | Per-stat elevation | Expanded stdev")
     print(f"{'='*70}\n")
 
     df = run_playoff_backtest(seasons=args.seasons, verbose=True)
@@ -377,7 +378,7 @@ def main():
         f"# Playoff Backtest Report\n\n**Seasons:** {', '.join(args.seasons)}  \n"
         f"**Total eligible player-games:** {len(df):,}  \n"
         f"**Line proxy:** Synthetic market line (L10 × stat ratio)  \n"
-        f"**Prediction:** 65% L10 + 35% model (with per-stat elevation)  \n"
+        f"**Prediction:** {BLEND_L10_WEIGHT:.0%} L10 + {1-BLEND_L10_WEIGHT:.0%} model (with per-stat elevation)  \n"
         f"**Defensive tier:** Live — `team_stats` populated with regular-season DRTG for 2021-22 through 2025-26 "
         f"(150 rows, 5 seasons × 30 teams). Top-10/bot-10 DRTG classification active.  \n",
         section_hit_rates(df),

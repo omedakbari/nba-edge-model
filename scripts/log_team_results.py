@@ -38,7 +38,7 @@ warnings.filterwarnings("ignore")
 
 import pandas as pd
 
-from src.data.espn_odds import fetch_odds, moneyline_to_implied_prob
+from src.data.espn_odds import fetch_odds
 
 PICKS_DIR    = Path(__file__).parent.parent / 'data' / 'team_picks'
 RESULTS_LOG  = PICKS_DIR / 'results_log.csv'

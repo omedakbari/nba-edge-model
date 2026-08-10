@@ -34,7 +34,7 @@ class TestDatabase:
         conn = sqlite3.connect(str(DB_PATH))
         seasons = pd.read_sql("SELECT DISTINCT season FROM game_logs", conn)['season'].tolist()
         conn.close()
-        expected = ['2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25']
+        expected = ['2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25', '2025-26']
         for s in expected:
             assert s in seasons, f"Season {s} missing from database"
 
@@ -67,17 +67,42 @@ class TestFeatures:
         assert len(engineered) >= 50, f"Expected 50+ engineered features, got {len(engineered)}"
 
     def test_no_data_leakage_rolling(self):
-        """Verify that rolling features don't include the current game's stats."""
-        df = pd.read_parquet(PROCESSED_DIR / 'features.parquet')
-        # For a player's first game in the dataset, L5 should be NaN
-        # (because there's no prior data to compute from)
-        player_ids = df['player_id'].unique()[:5]
-        for pid in player_ids:
-            player_df = df[df['player_id'] == pid].sort_values('game_date')
-            # First few rows should have NaN in rolling features
-            # (we dropped some, but early rows in each season should show the pattern)
-            # Just verify the column exists and has some NaN values overall
-            assert player_df['pts_L10'].isna().sum() >= 0  # Basic sanity
+        """
+        Verify rolling features never include the current game's own stats.
+
+        NOTE: features.parquet itself can't be used for this — build_feature_dataset()
+        drops every row with a NaN pts_L10/reb_L10/ast_L10 before saving, so a player's
+        leakage-prone first game (which is exactly what a leakage test needs to inspect)
+        is never present in the saved file. Instead, call the actual production
+        add_rolling_features() directly on a small synthetic game log, matching how
+        src/features/pipeline.py invokes it.
+        """
+        from src.features.player_features import add_rolling_features
+
+        stat_cols = ['pts', 'reb', 'ast', 'stl', 'blk', 'fg3m',
+                     'pra', 'pts_reb', 'reb_ast', 'pts_ast',
+                     'min', 'fga', 'fg3a', 'fta', 'tov', 'pf']
+        n_games = 4
+        raw = pd.DataFrame({
+            'player_id': [1] * n_games,
+            'game_date': pd.date_range('2024-01-01', periods=n_games, freq='3D'),
+            **{stat: [10.0, 20.0, 30.0, 999.0] for stat in stat_cols},
+        })
+
+        out = add_rolling_features(raw)
+
+        # First game: no prior data exists yet, so every rolling feature must be NaN.
+        assert pd.isna(out.iloc[0]['pts_L5']), (
+            "First game's pts_L5 should be NaN (no prior games) — leakage guard broken"
+        )
+
+        # Fourth game: L5 must be the mean of the *prior* 3 games (10, 20, 30) = 20.0.
+        # If the current game's own stat (999) leaked into its own rolling window,
+        # this would instead be ~264.75 — the two are unmistakably different.
+        assert out.iloc[3]['pts_L5'] == pytest.approx(20.0), (
+            f"pts_L5 on the 4th game = {out.iloc[3]['pts_L5']}, expected 20.0 "
+            f"(mean of prior 3 games only) — the game's own value appears to have leaked in"
+        )
 
     def test_combo_stats_correct(self):
         df = pd.read_parquet(PROCESSED_DIR / 'features.parquet').head(100)

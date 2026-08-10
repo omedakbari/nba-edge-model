@@ -14,7 +14,6 @@ Usage:
 """
 
 import sys
-import time
 import argparse
 from pathlib import Path
 

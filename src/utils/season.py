@@ -85,6 +85,7 @@ def phase_flags(phase: str) -> list:
 
 
 def phase_label(phase: str) -> str:
+    """Human-readable, uppercased label for a phase string (for print headers)."""
     return {
         "playoffs": "PLAYOFFS",
         "play-in": "PLAY-IN",

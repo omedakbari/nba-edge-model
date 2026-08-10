@@ -15,7 +15,7 @@ import numpy as np
 import pickle
 from scipy import stats as scipy_stats
 
-from config.settings import PROCESSED_DIR
+from config.settings import PROCESSED_DIR, BLEND_L10_WEIGHT
 
 
 # Composite stats: sum predictions from component models instead of using a
@@ -52,29 +52,35 @@ def backtest_props(stat: str, line_offset: float = 0.0) -> pd.DataFrame:
 
     components = COMPOSITE_STATS.get(stat)
     if components:
-        # Load each component model, intersect valid rows, sum predictions.
+        # Load each component model, sum predictions. HistGradientBoostingRegressor
+        # has native NaN support and was trained without any feature-NaN filtering
+        # (see player_props.py: only rows with NaN target are dropped, never rows
+        # with NaN features) — do not drop or impute rows here either, or this
+        # backtest silently evaluates a different, biased population than the one
+        # the model was actually trained and is actually used on.
         component_models = {c: load_model(c) for c in components}
-        valid = pd.Series(True, index=df_test.index)
-        for m_data in component_models.values():
-            valid &= df_test[m_data['feature_cols']].notna().all(axis=1)
-        df_test = df_test[valid].copy()
 
-        df_test[f'{stat}_pred'] = 0.0
+        df_test[f'{stat}_pred_raw'] = 0.0
         for m_data in component_models.values():
             preds = m_data['model'].predict(df_test[m_data['feature_cols']])
-            df_test[f'{stat}_pred'] += preds
+            df_test[f'{stat}_pred_raw'] += preds
     else:
         model_data = load_model(stat)
         model = model_data['model']
         feature_cols = model_data['feature_cols']
 
-        valid = df_test[feature_cols].notna().all(axis=1)
-        df_test = df_test[valid].copy()
-
-        df_test[f'{stat}_pred'] = model.predict(df_test[feature_cols])
+        df_test[f'{stat}_pred_raw'] = model.predict(df_test[feature_cols])
 
     l10_col = f'{stat}_L10'
     df_test['line'] = df_test[l10_col] + line_offset
+
+    # Unified L10/model blend (config.BLEND_L10_WEIGHT) — see config/settings.py
+    # for the empirical derivation. Previously this backtest used 0% L10 (pure
+    # raw model), a third, undocumented ratio alongside the 50% and 65% used
+    # elsewhere in the codebase.
+    df_test[f'{stat}_pred'] = (
+        (1 - BLEND_L10_WEIGHT) * df_test[f'{stat}_pred_raw'] + BLEND_L10_WEIGHT * df_test[l10_col]
+    )
 
     std_col = f'{stat}_std_L10'
     df_test['est_std'] = df_test[std_col].fillna(df_test[f'{stat}_pred'] * 0.2) if std_col in df_test.columns else df_test[f'{stat}_pred'] * 0.2

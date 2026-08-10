@@ -28,9 +28,8 @@ warnings.filterwarnings("ignore")
 
 import numpy as np
 import pandas as pd
-from scipy import stats as scipy_stats
 
-from config.settings import DB_PATH, PROCESSED_DIR
+from config.settings import DB_PATH
 from src.playoffs.adjustments import (
     apply_playoff_adjustments,
     load_playoff_elevation_ratios,
@@ -38,6 +37,7 @@ from src.playoffs.adjustments import (
     should_suppress,
     get_player_tier,
 )
+from src.utils.probability import prob_over
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -52,13 +52,6 @@ COMPOSITE_STATS = {
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
-
-def prob_over(pred: float, line: float, std: float) -> float:
-    if std <= 0 or np.isnan(std):
-        std = max(abs(pred) * 0.2, 1.0)
-    z = (line - pred) / std
-    return float(np.clip(1 - scipy_stats.norm.cdf(z), 0.01, 0.99))
-
 
 def load_playoff_games(conn: sqlite3.Connection, seasons: list[str],
                         min_minutes: float = None) -> pd.DataFrame:
