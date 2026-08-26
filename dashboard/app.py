@@ -36,6 +36,9 @@ FEATURES_PATH = PROJECT_ROOT / "data" / "processed" / "features.parquet"
 MODELS_DIR = PROJECT_ROOT / "data" / "processed" / "models"
 BLEND_WEIGHT = BLEND_L10_WEIGHT  # unified value — see config/settings.py
 
+TEAM_PICKS_DIR = PROJECT_ROOT / "data" / "team_picks"
+TEAM_RESULTS_LOG = TEAM_PICKS_DIR / "results_log.csv"
+
 STAT_LABELS = {"pts": "Points", "reb": "Rebounds", "ast": "Assists"}
 CALIBRATED_STATS = ["pts", "reb", "ast"]
 
@@ -115,6 +118,38 @@ def load_player_names():
     players = pd.read_sql("SELECT player_id, full_name FROM players", conn)
     conn.close()
     return dict(zip(players["player_id"], players["full_name"]))
+
+
+@st.cache_data
+def load_team_results():
+    """Load graded team-picks results log, or None if it doesn't exist yet."""
+    if not TEAM_RESULTS_LOG.exists():
+        return None
+    df = pd.read_csv(TEAM_RESULTS_LOG)
+    for col in ['market_spread', 'model_spread', 'actual_margin', 'sp_edge', 'home_ml_edge',
+                'model_wp', 'ml_pl', 'over_under', 'model_total', 'actual_total',
+                'spread_clv', 'total_clv']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    return df
+
+
+@st.cache_data
+def get_game_odds_summary():
+    """Snapshot counts by market_state from game_odds, or None if the table is empty/missing."""
+    if not DB_PATH.exists():
+        return None
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        df = pd.read_sql(
+            "SELECT market_state, COUNT(*) as n, MIN(game_date) as first_date, "
+            "MAX(game_date) as last_date FROM game_odds GROUP BY market_state",
+            conn,
+        )
+    except Exception:
+        df = pd.DataFrame()
+    conn.close()
+    return df if not df.empty else None
 
 
 @st.cache_data
@@ -273,14 +308,102 @@ st.set_page_config(
 st.sidebar.title("NBA Edge Model")
 page = st.sidebar.radio(
     "Navigate",
-    ["Overview", "Backtest Results", "Calibration", "Player Lookup"],
+    ["Game Props", "Overview", "Backtest Results", "Calibration", "Player Lookup"],
 )
+
+
+# ---------------------------------------------------------------------------
+# PAGE: GAME PROPS
+# ---------------------------------------------------------------------------
+if page == "Game Props":
+    st.title("Game Props")
+    st.markdown(
+        "Spread / moneyline / total picks vs. live DraftKings lines, via the "
+        "team power-rating model in `src/models/team_ratings.py`. See "
+        "`scripts/generate_todays_team_picks.py` for the daily pick generator."
+    )
+
+    odds_summary = get_game_odds_summary()
+    results_df = load_team_results()
+
+    if odds_summary is not None:
+        st.subheader("Market-Line Snapshots")
+        st.dataframe(
+            odds_summary.rename(columns={
+                "market_state": "Snapshot", "n": "Games Captured",
+                "first_date": "First Date", "last_date": "Last Date",
+            }),
+            width="stretch", hide_index=True,
+        )
+
+    if results_df is None or results_df.empty:
+        st.info(
+            "No graded picks yet. Market-line history and results accumulate "
+            "going forward — run `make game-picks` to generate today's picks, "
+            "`make capture-closing-odds` near tip-off, and "
+            "`python scripts/log_team_results.py` the next day to grade them."
+        )
+    else:
+        graded = results_df[results_df['spread_result'].notna()]
+
+        def _record(sub, col):
+            wins = (sub[col] == 'WIN').sum()
+            losses = (sub[col] == 'LOSS').sum()
+            total = wins + losses
+            return wins, losses, (wins / total if total > 0 else None)
+
+        c1, c2, c3 = st.columns(3)
+        sp_df = graded[graded['spread_result'].isin(['WIN', 'LOSS'])]
+        if not sp_df.empty:
+            w, l, pct = _record(sp_df, 'spread_result')
+            c1.metric("ATS Record", f"{w}-{l}", f"{pct:.1%}" if pct is not None else None)
+        ml_df = graded[graded['ml_result'].isin(['WIN', 'LOSS'])] if 'ml_result' in graded.columns else pd.DataFrame()
+        if not ml_df.empty:
+            w, l, pct = _record(ml_df, 'ml_result')
+            c2.metric("ML Record", f"{w}-{l}", f"{pct:.1%}" if pct is not None else None)
+        ou_df = graded[graded['ou_result'].isin(['WIN', 'LOSS'])] if 'ou_result' in graded.columns else pd.DataFrame()
+        if not ou_df.empty:
+            w, l, pct = _record(ou_df, 'ou_result')
+            c3.metric("O/U Record", f"{w}-{l}", f"{pct:.1%}" if pct is not None else None)
+
+        if 'spread_clv' in graded.columns and graded['spread_clv'].notna().any():
+            st.subheader("Closing-Line Value")
+            st.caption(
+                "Positive = we beat the closing line (the standard sharp-bettor signal "
+                "of real edge, independent of any single game's outcome). Only populated "
+                "for games with a captured closing snapshot."
+            )
+            cc1, cc2 = st.columns(2)
+            clv_sp = graded['spread_clv'].dropna()
+            cc1.metric("Avg Spread CLV", f"{clv_sp.mean():+.2f} pts", f"n={len(clv_sp)}")
+            if 'total_clv' in graded.columns and graded['total_clv'].notna().any():
+                clv_tot = graded['total_clv'].dropna()
+                cc2.metric("Avg Total CLV", f"{clv_tot.mean():+.2f} pts", f"n={len(clv_tot)}")
+
+        st.subheader("Recent Graded Picks")
+        display_cols = [c for c in [
+            'game_date', 'home', 'away', 'tier', 'spread_result', 'ml_result',
+            'ou_result', 'spread_clv', 'total_clv',
+        ] if c in graded.columns]
+        st.dataframe(
+            graded[display_cols].sort_values('game_date', ascending=False).head(30),
+            width="stretch", hide_index=True,
+        )
+
+    st.subheader("Current Limitations")
+    st.markdown("""
+- No multi-week backtested ROI/CLV number yet — market-line capture started
+  with this feature; LEAN/STRONG thresholds are hand-set, not yet empirically
+  calibrated against real market data.
+- Totals (O/U) model is a formula (ORTG/DRTG/pace blend), not a trained model.
+- No injury/lineup-news awareness — always verify injury reports before betting.
+    """)
 
 
 # ---------------------------------------------------------------------------
 # PAGE: OVERVIEW
 # ---------------------------------------------------------------------------
-if page == "Overview":
+elif page == "Overview":
     st.title("NBA Edge Model")
     st.markdown(
         "End-to-end NBA player props prediction: data ingestion → feature engineering "

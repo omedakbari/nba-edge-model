@@ -135,6 +135,54 @@ def _load_team_games(
     return df
 
 
+# ── Shared HCA helpers ──────────────────────────────────────────────────────
+# Module-level so both TeamRatingEngine and scripts/backtest_team_model.py's
+# lightweight _InlineEngine can share one implementation instead of each
+# maintaining its own (the backtest's copy previously never applied per-team
+# or playoff HCA — see CODE_REVIEW_FINDINGS.md finding #2).
+
+def _past_seasons(season: str, n: int) -> list[str]:
+    """Return the N seasons immediately before `season`."""
+    try:
+        idx = _ALL_SEASONS.index(season)
+    except ValueError:
+        idx = len(_ALL_SEASONS)
+    return _ALL_SEASONS[max(0, idx - n):idx]
+
+
+def compute_team_hca(
+    conn: sqlite3.Connection, season: str, hist_n: int = HCA_HIST_N
+) -> dict[str, float]:
+    """
+    Per-team home-court advantage from the `hist_n` seasons before `season`.
+
+    Method: HCA_i = (avg_home_margin_i - avg_road_margin_i) / 2
+    Margins are from each team's perspective, so this cleanly isolates
+    venue effect from team quality.
+
+    Returns {team_abbr: hca_pts}. A team is simply absent (caller falls back
+    to HOME_COURT_ADJ) if fewer than HCA_MIN_SPLIT home or away games found.
+    """
+    past = _past_seasons(season, hist_n)
+    if not past:
+        return {}
+
+    hist = _load_team_games(conn, past, ['Regular Season'])
+    if hist.empty:
+        return {}
+
+    hca: dict[str, float] = {}
+    for team, grp in hist.groupby('team'):
+        home_g = grp[grp['is_home'] == 1]['margin']
+        away_g = grp[grp['is_home'] == 0]['margin']
+        if len(home_g) < HCA_MIN_SPLIT or len(away_g) < HCA_MIN_SPLIT:
+            continue
+        raw = float((home_g.mean() - away_g.mean()) / 2)
+        hca[team] = float(np.clip(raw, HCA_CAP_LO, HCA_CAP_HI))
+
+    return hca
+
+
 # ── Rating Engine ─────────────────────────────────────────────────────────────
 
 class TeamRatingEngine:
@@ -185,41 +233,11 @@ class TeamRatingEngine:
 
     def _get_past_seasons(self, n: int) -> list[str]:
         """Return the N seasons immediately before self.season."""
-        try:
-            idx = _ALL_SEASONS.index(self.season)
-        except ValueError:
-            idx = len(_ALL_SEASONS)
-        return _ALL_SEASONS[max(0, idx - n):idx]
+        return _past_seasons(self.season, n)
 
     def _load_team_hca(self) -> dict[str, float]:
-        """
-        Per-team home-court advantage from last HCA_HIST_N regular seasons.
-
-        Method: HCA_i = (avg_home_margin_i - avg_road_margin_i) / 2
-        Margins are from each team's perspective, so this cleanly isolates
-        venue effect from team quality.
-
-        Returns {team_abbr: hca_pts}. Falls back to HOME_COURT_ADJ per team
-        if fewer than HCA_MIN_SPLIT home or away games found.
-        """
-        past = self._get_past_seasons(HCA_HIST_N)
-        if not past:
-            return {}
-
-        hist = _load_team_games(self.conn, past, ['Regular Season'])
-        if hist.empty:
-            return {}
-
-        hca: dict[str, float] = {}
-        for team, grp in hist.groupby('team'):
-            home_g = grp[grp['is_home'] == 1]['margin']
-            away_g = grp[grp['is_home'] == 0]['margin']
-            if len(home_g) < HCA_MIN_SPLIT or len(away_g) < HCA_MIN_SPLIT:
-                continue
-            raw = float((home_g.mean() - away_g.mean()) / 2)
-            hca[team] = float(np.clip(raw, HCA_CAP_LO, HCA_CAP_HI))
-
-        return hca
+        """Per-team home-court advantage from historical seasons. See compute_team_hca()."""
+        return compute_team_hca(self.conn, self.season)
 
     def _compute_srs(self) -> dict[str, float]:
         """

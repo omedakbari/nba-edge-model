@@ -53,6 +53,7 @@ import pandas as pd
 from config.settings import DB_PATH, CURRENT_SEASON
 from src.models.team_ratings import TeamRatingEngine
 from src.data.espn_odds import fetch_odds
+from src.data.odds_store import persist_odds_snapshot
 
 PICKS_DIR = Path(__file__).parent.parent / 'data' / 'team_picks'
 
@@ -756,6 +757,9 @@ def main():
     # Fetch odds
     print(f"  Fetching ESPN lines for {target_date}...")
     games = fetch_odds(target_date)
+    if games:
+        n_snapshot = persist_odds_snapshot(conn, games, market_state='pick_time')
+        print(f"  Snapshotted {n_snapshot} game line(s) to game_odds (market_state=pick_time)")
     if not games:
         from datetime import timedelta
         next_date = (datetime.strptime(target_date, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')

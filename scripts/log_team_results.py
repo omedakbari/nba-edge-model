@@ -28,6 +28,7 @@ Usage:
 
 import argparse
 import json
+import sqlite3
 import sys
 import warnings
 from pathlib import Path
@@ -38,7 +39,9 @@ warnings.filterwarnings("ignore")
 
 import pandas as pd
 
+from config.settings import DB_PATH
 from src.data.espn_odds import fetch_odds
+from src.data.odds_store import latest_snapshot
 
 PICKS_DIR    = Path(__file__).parent.parent / 'data' / 'team_picks'
 RESULTS_LOG  = PICKS_DIR / 'results_log.csv'
@@ -52,6 +55,9 @@ RESULT_COLS = [
     'actual_winner',   'ml_result',                       # WIN/LOSS/NO_PICK
     'model_wp', 'home_implied', 'away_implied',
     'sp_edge', 'home_ml_edge',
+    'ou_tier', 'ou_direction', 'over_under', 'model_total',
+    'actual_total', 'ou_result',                          # WIN/LOSS/PUSH/NO_PICK/NO_LINE
+    'spread_clv', 'total_clv',                            # None until a closing snapshot exists
     'is_playoffs',
 ]
 
@@ -85,6 +91,49 @@ def grade_spread(pick_side: str | None, market_spread: float | None, actual_marg
         return 'WIN' if home_covered else 'LOSS'
     else:
         return 'WIN' if not home_covered else 'LOSS'
+
+
+def grade_ou(direction: str | None, market_total: float | None, actual_total: float) -> str:
+    """
+    Grade an over/under pick.
+    direction: 'OVER' | 'UNDER' | None (None if ou_tier wasn't STRONG/LEAN)
+    market_total: the O/U line the pick was made against
+    actual_total: home_score + away_score
+    """
+    if direction is None:
+        return 'NO_PICK'
+    if market_total is None:
+        return 'NO_LINE'
+    if actual_total > market_total:
+        actual_side = 'OVER'
+    elif actual_total < market_total:
+        actual_side = 'UNDER'
+    else:
+        return 'PUSH'
+    return 'WIN' if direction == actual_side else 'LOSS'
+
+
+def spread_clv(pick_side: str | None, pick_line: float | None, close_line: float | None) -> float | None:
+    """
+    Closing-line value for a spread pick, signed positive = we beat the close.
+    Home convention: negative = home favored. If we picked home and the line
+    moved more negative by closing (home favored more), we got the better
+    number → positive CLV. Away is the mirror.
+    """
+    if pick_side is None or pick_line is None or close_line is None:
+        return None
+    return round(pick_line - close_line, 2) if pick_side == 'home' else round(close_line - pick_line, 2)
+
+
+def total_clv(direction: str | None, pick_total: float | None, close_total: float | None) -> float | None:
+    """
+    Closing-line value for a total pick. If we picked OVER and the closing
+    total moved up, later bettors need more points to clear the same side —
+    we got the better number → positive CLV. UNDER is the mirror.
+    """
+    if direction is None or pick_total is None or close_total is None:
+        return None
+    return round(close_total - pick_total, 2) if direction == 'OVER' else round(pick_total - close_total, 2)
 
 
 def grade_ml(pick_side: str | None, actual_margin: float) -> str:
@@ -134,6 +183,7 @@ def fetch_final_scores(game_date: str) -> dict[str, dict]:
                 'home_score':  g['home_score'],
                 'away_score':  g['away_score'],
                 'actual_margin': g['home_score'] - g['away_score'],
+                'actual_total': g['home_score'] + g['away_score'],
                 'status': g['status'],
             }
     return result
@@ -168,6 +218,7 @@ def grade_date(game_date: str) -> list[dict] | None:
 
     today = date.today().isoformat()
     results = []
+    conn = sqlite3.connect(str(DB_PATH))
 
     for pick in picks:
         gid = pick.get('game_id', '')
@@ -175,8 +226,10 @@ def grade_date(game_date: str) -> list[dict] | None:
         if score is None:
             # Game not final (in progress or no data)
             actual_margin = None
+            actual_total  = None
         else:
             actual_margin = score['actual_margin']
+            actual_total  = score['actual_total']
 
         sp_result = grade_spread(
             pick.get('spread_pick_side'),
@@ -189,10 +242,34 @@ def grade_date(game_date: str) -> list[dict] | None:
             actual_margin if actual_margin is not None else 0,
         ) if actual_margin is not None else 'PENDING'
 
+        # O/U pick only counts if it actually cleared a tier (ou_direction is set
+        # on every game with a modeled total, regardless of edge size — see
+        # analyze_game() in generate_todays_team_picks.py)
+        ou_tier = pick.get('ou_tier', 'NONE')
+        ou_direction = pick.get('ou_direction') if ou_tier in ('STRONG', 'LEAN') else None
+        ou_result = grade_ou(
+            ou_direction,
+            pick.get('over_under'),
+            actual_total if actual_total is not None else 0,
+        ) if actual_total is not None else 'PENDING'
+
         # Determine which ML we bet and compute payout
         ml_pick_side = pick.get('ml_pick_side')
         ml_odds = pick.get('home_ml') if ml_pick_side == 'home' else pick.get('away_ml')
         ml_pl   = ml_payout(ml_odds, ml_result) if ml_result not in ('PENDING', 'NO_PICK') else 0.0
+
+        # CLV: compare the pick-time line (already saved in the picks JSON) to
+        # the closing snapshot in game_odds, if one was captured. None until
+        # scripts/capture_closing_odds.py has run for this game.
+        close_snap = latest_snapshot(conn, gid, 'closing')
+        sp_clv = spread_clv(
+            pick.get('spread_pick_side'), pick.get('market_spread'),
+            close_snap['spread_home'] if close_snap else None,
+        )
+        tot_clv = total_clv(
+            ou_direction, pick.get('over_under'),
+            close_snap['over_under'] if close_snap else None,
+        )
 
         results.append({
             'grade_date':       today,
@@ -221,9 +298,18 @@ def grade_date(game_date: str) -> list[dict] | None:
             'away_implied':     pick.get('away_implied'),
             'sp_edge':          pick.get('sp_edge'),
             'home_ml_edge':     pick.get('home_ml_edge'),
+            'ou_tier':          ou_tier,
+            'ou_direction':     ou_direction,
+            'over_under':       pick.get('over_under'),
+            'model_total':      pick.get('model_total'),
+            'actual_total':     actual_total,
+            'ou_result':        ou_result,
+            'spread_clv':       sp_clv,
+            'total_clv':        tot_clv,
             'is_playoffs':      pick.get('is_playoffs', False),
         })
 
+    conn.close()
     return results
 
 
@@ -270,9 +356,10 @@ def print_day_summary(results: list[dict], game_date: str) -> None:
 
         sp_str = f"ATS: {r['spread_result']}" if r['spread_result'] != 'NO_PICK' else "ATS: —"
         ml_str = f"ML: {r['ml_result']}" if r['ml_result'] != 'NO_PICK' else "ML: —"
+        ou_str = f"O/U: {r['ou_result']}" if r.get('ou_result') not in ('NO_PICK', None) else "O/U: —"
         tier   = r.get('tier', 'NONE')
         game_s = f"{r['away']} @ {r['home']}"
-        print(f"  {game_s:<20} [{tier:<7}]  {sp_str:<12}  {ml_str:<12}  {status}")
+        print(f"  {game_s:<20} [{tier:<7}]  {sp_str:<12}  {ml_str:<12}  {ou_str:<12}  {status}")
 
     if sp_results:
         wins  = sum(1 for r in sp_results if r['spread_result'] == 'WIN')
@@ -288,6 +375,13 @@ def print_day_summary(results: list[dict], game_date: str) -> None:
               (f"  ({ml_wins/ml_tot:.1%})" if ml_tot > 0 else '') +
               f"  P&L: ${ml_pl:+.0f}/unit")
 
+    ou_results = [r for r in results if r.get('ou_result') not in ('NO_PICK', 'PENDING', 'NO_LINE', None)]
+    if ou_results:
+        ou_wins = sum(1 for r in ou_results if r['ou_result'] == 'WIN')
+        ou_tot  = sum(1 for r in ou_results if r['ou_result'] in ('WIN', 'LOSS'))
+        print(f"  O/U record:  {ou_wins}-{ou_tot - ou_wins}" +
+              (f"  ({ou_wins/ou_tot:.1%})" if ou_tot > 0 else ''))
+
 
 def print_full_report() -> None:
     """Print cumulative performance report from all logged results."""
@@ -298,7 +392,8 @@ def print_full_report() -> None:
     df = pd.read_csv(RESULTS_LOG)
     # Convert types
     for col in ['market_spread', 'model_spread', 'actual_margin', 'sp_edge',
-                'home_ml_edge', 'model_wp', 'ml_pl']:
+                'home_ml_edge', 'model_wp', 'ml_pl',
+                'over_under', 'model_total', 'actual_total', 'spread_clv', 'total_clv']:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
@@ -327,6 +422,21 @@ def print_full_report() -> None:
     if not ml_df.empty:
         ml_pl = df['ml_pl'].sum() if 'ml_pl' in df.columns else 0.0
         print(f"  ML  (all picks): {_record(ml_df, 'ml_result')}  P&L: ${ml_pl:+.0f}/unit ($100 units)")
+
+    # Overall O/U
+    if 'ou_result' in df.columns:
+        ou_df = df[df['ou_result'].isin(['WIN', 'LOSS', 'PUSH'])]
+        if not ou_df.empty:
+            print(f"  O/U (all picks): {_record(ou_df, 'ou_result')}")
+
+    # CLV — only populated for games with a captured closing snapshot
+    # (scripts/capture_closing_odds.py). Positive = beat the closing line.
+    if 'spread_clv' in df.columns and df['spread_clv'].notna().any():
+        clv_sp = df['spread_clv'].dropna()
+        print(f"\n  Spread CLV: {clv_sp.mean():+.2f} pts avg  (n={len(clv_sp)} with a closing snapshot)")
+    if 'total_clv' in df.columns and df['total_clv'].notna().any():
+        clv_tot = df['total_clv'].dropna()
+        print(f"  Total CLV:  {clv_tot.mean():+.2f} pts avg  (n={len(clv_tot)} with a closing snapshot)")
 
     # By tier
     for tier in ['STRONG', 'LEAN']:

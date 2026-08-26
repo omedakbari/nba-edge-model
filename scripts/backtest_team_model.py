@@ -42,7 +42,7 @@ import pandas as pd
 from scipy import stats as scipy_stats
 
 from config.settings import DB_PATH
-from src.models.team_ratings import _load_team_games
+from src.models.team_ratings import _load_team_games, compute_team_hca
 
 SEASONS = ['2021-22', '2022-23', '2023-24', '2024-25']
 LEAN_THRESHOLD   = 3.5   # pts gap to qualify as a "lean"
@@ -55,10 +55,15 @@ def predict_game(
     conn: sqlite3.Connection,
     row: pd.Series,
     season_games: pd.DataFrame,
+    team_hca: dict[str, float],
 ) -> dict | None:
     """
     Predict spread for a single game using only games that precede it.
     Returns None if insufficient data (<5 prior games for either team).
+
+    team_hca: precomputed via compute_team_hca(conn, season) — depends only on
+    `season` (past-3-seasons history), not on this game's date, so the caller
+    computes it once per season rather than re-querying the DB per game.
     """
     game_date = str(row['game_date'])[:10]
     season = row['season']
@@ -80,8 +85,9 @@ def predict_game(
 
     # Build lightweight engine from prior data only
     # Instead of full TeamRatingEngine (which hits the DB), use pre-loaded data
-    engine = _InlineEngine(prior, conn, season)
-    pred_spread = engine.predict_spread(home, away, game_date)
+    engine = _InlineEngine(prior, conn, season, team_hca=team_hca)
+    is_playoffs_row = (stype == 'Playoffs')
+    pred_spread = engine.predict_spread(home, away, game_date, is_playoffs=is_playoffs_row)
     pred_wp     = engine.win_prob(pred_spread)
 
     actual_margin = int(row['margin'])   # home margin (positive = home won)
@@ -108,13 +114,27 @@ class _InlineEngine:
     """
     Lightweight version of TeamRatingEngine that works from a pre-filtered
     DataFrame (avoids re-querying the DB for every game in the backtest).
+
+    Applies the same per-team and playoff HCA as the real TeamRatingEngine
+    (via the shared compute_team_hca() helper) — a prior version of this
+    class always used the flat HOME_COURT_ADJ regardless of playoff mode or
+    team, which meant any playoff backtest numbers it produced didn't match
+    production behavior (see CODE_REVIEW_FINDINGS.md finding #2).
     """
     from src.models.team_ratings import HOME_COURT_ADJ, PLAYOFF_HCA, REST_BONUS, B2B_PENALTY
     from src.models.team_ratings import SEASON_WEIGHT, FORM_WEIGHT, L10_MIN_GAMES, PACE_BASELINE
 
-    def __init__(self, prior_games: pd.DataFrame, conn: sqlite3.Connection, season: str):
+    def __init__(
+        self, prior_games: pd.DataFrame, conn: sqlite3.Connection, season: str,
+        team_hca: dict[str, float] | None = None,
+    ):
         self._games = prior_games
         self._season_ratings = self._load_season_ratings(conn, season)
+        # Precomputed by the caller when available (see predict_game()) since
+        # this depends only on `season`, not on prior_games/game_date — the
+        # same value for every game in a season's backtest. Falls back to
+        # computing it here for standalone use.
+        self._team_hca = team_hca if team_hca is not None else compute_team_hca(conn, season)
         self._form = self._compute_form(prior_games)
         self._ratings = self._build_ratings()
 
@@ -180,11 +200,11 @@ class _InlineEngine:
             return REST_BONUS
         return REST_BONUS * 1.5
 
-    def predict_spread(self, home, away, game_date=None):
-        from src.models.team_ratings import HOME_COURT_ADJ
+    def predict_spread(self, home, away, game_date=None, is_playoffs=False):
         hr = self._ratings.get(home, 0.0)
         ar = self._ratings.get(away, 0.0)
-        s = (hr - ar) + HOME_COURT_ADJ
+        hca = self.PLAYOFF_HCA if is_playoffs else self._team_hca.get(home, self.HOME_COURT_ADJ)
+        s = (hr - ar) + hca
         if game_date:
             s += self._rest_adj(home, game_date) - self._rest_adj(away, game_date)
         return round(s, 2)
@@ -304,11 +324,14 @@ def run_backtest(seasons: list[str], season_types: list[str] | None = None) -> p
             print(" no data")
             continue
 
+        # Computed once per season (depends only on season, not per-game date)
+        team_hca = compute_team_hca(conn, season)
+
         # Only process one row per game (home team row)
         home_rows = season_games[season_games['is_home'] == 1]
         count = 0
         for _, row in home_rows.iterrows():
-            result = predict_game(conn, row, season_games)
+            result = predict_game(conn, row, season_games, team_hca)
             if result:
                 all_results.append(result)
                 count += 1

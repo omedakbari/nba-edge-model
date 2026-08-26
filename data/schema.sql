@@ -84,6 +84,27 @@ CREATE TABLE IF NOT EXISTS team_stats (
     UNIQUE(team_abbr, season)
 );
 
+-- Game odds: append-only market-line snapshots (spread/total/moneyline).
+-- One row per game per capture. market_state distinguishes when the snapshot
+-- was taken ('pick_time' = when picks were generated, 'closing' = near tip-off),
+-- which is what makes closing-line-value (CLV) tracking possible. Source:
+-- src/data/espn_odds.py fetch_odds() via src/data/odds_store.py.
+CREATE TABLE IF NOT EXISTS game_odds (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_id       TEXT NOT NULL,          -- ESPN event id (fetch_odds()['game_id'])
+    game_date     TEXT NOT NULL,
+    home_abbr     TEXT NOT NULL,
+    away_abbr     TEXT NOT NULL,
+    captured_at   TEXT NOT NULL,          -- ISO timestamp of this fetch
+    market_state  TEXT NOT NULL,          -- 'pick_time' | 'closing'
+    spread_home   REAL,
+    over_under    REAL,
+    home_ml       INTEGER,
+    away_ml       INTEGER,
+    odds_provider TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_game_odds_game ON game_odds(game_id, market_state);
+
 -- Ingestion log: track what we've already pulled (for incremental updates)
 CREATE TABLE IF NOT EXISTS ingestion_log (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
