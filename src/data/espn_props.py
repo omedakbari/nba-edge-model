@@ -22,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 from src.data.quote_diagnostics import timestamp_evidence, quote_coverage, print_quote_coverage
 
 import requests
+from src.data.errors import SourceError
 
 CORE = "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba"
 ODDS_URL = CORE + "/events/{eid}/competitions/{eid}/odds"
@@ -292,6 +293,8 @@ def fetch_book_props(target_date: str, workers: int = 2) -> dict:
         try:
             j = _get(session, f"{CORE}/athletes/{aid}")
             names[aid] = (j or {}).get('fullName')
-        except Blocked:
-            pass
+            if not names[aid]:
+                raise SourceError('Missing fullName', source=f'ESPN athlete {aid}', kind='schema')
+        except Blocked as exc:
+            raise SourceError(str(exc), source=f'ESPN athlete {aid}') from exc
     return {(names[aid], stat): v for (aid, stat), v in cons.items() if names.get(aid)}

@@ -678,16 +678,18 @@ def fetch_injury_report() -> dict:
     Returns {normalized_player_name: status_string}
     e.g. {'anthony edwards': 'Day-To-Day', 'giannis antetokounmpo': 'Out'}
     """
+    from src.data.errors import SourceError
     try:
         r = requests.get(
             'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries',
             headers={'User-Agent': 'Mozilla/5.0'}, timeout=8,
         )
-        if r.status_code != 200:
-            return {}
+        r.raise_for_status()
         data = r.json()
-    except Exception:
-        return {}
+        if not isinstance(data, dict) or not isinstance(data.get('injuries'), list):
+            raise ValueError('Missing injuries array')
+    except (requests.RequestException, ValueError) as exc:
+        raise SourceError(str(exc), source='ESPN injuries') from exc
 
     from config.settings import PROJECT_ROOT
     from src.utils.slate import utc_now, revision_path

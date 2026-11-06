@@ -67,6 +67,9 @@ def refreshed_today(season: str = CURRENT_SEASON) -> bool:
         return False
 
 
+STEP_RESULTS = []
+
+
 # ── Runner ────────────────────────────────────────────────────────────────────
 
 def run(script_args: list[str], label: str = '') -> int:
@@ -76,7 +79,13 @@ def run(script_args: list[str], label: str = '') -> int:
         print(f"  {label}")
         print(f"{'─'*64}")
     cmd = [sys.executable] + [str(a) for a in script_args]
-    rc = subprocess.run(cmd, cwd=str(ROOT)).returncode
+    try:
+        rc = subprocess.run(cmd, cwd=str(ROOT)).returncode
+    except OSError as exc:
+        STEP_RESULTS.append((label or str(script_args[0]), 1))
+        print(f'  Could not start step: {exc}')
+        raise SystemExit(1) from exc
+    STEP_RESULTS.append((label or str(script_args[0]), rc))
     if rc:
         raise SystemExit(rc)
     return rc
@@ -155,7 +164,7 @@ def cmd_picks(args):
         )
         if rc != 0:
             _print_refresh_failed()
-            return
+            return rc
 
     # Explicit app lines/template opt into the legacy pick'em card workflow.
     pickem = (getattr(args, 'pickem', False) or bool(extra_lines) or
@@ -216,7 +225,7 @@ def cmd_daily(_args):
         rc = run(['scripts/update_data.py'] + refresh_flags, 'Refreshing data')
         if rc != 0:
             _print_refresh_failed()
-            return
+            return rc
 
     run(
         ['scripts/find_bets.py'] + flags + ['--season', season, '--save'],
@@ -379,7 +388,9 @@ def main():
         parser.print_help()
         return
 
-    {
+    STEP_RESULTS.clear()
+    try:
+        result = {
         'picks':   cmd_picks,
         'grade':   cmd_grade,
         'daily':   cmd_daily,
@@ -387,8 +398,20 @@ def main():
         'status':  cmd_status,
         'ratings': cmd_ratings,
         'bets':    cmd_bets,
-    }[args.command](args)
+        }[args.command](args)
+        return int(result or 0)
+    except SystemExit as exc:
+        return int(exc.code or 0)
+    except Exception as exc:
+        print(f'  Command failed: {type(exc).__name__}: {exc}')
+        return 1
+    finally:
+        print('\n  STEP STATUS SUMMARY')
+        for label, code in STEP_RESULTS:
+            print(f"  {'OK' if code == 0 else 'FAILED'} (exit {code}) — {label}")
+        if any(code for _, code in STEP_RESULTS):
+            print('  Workflow incomplete; remaining steps were not run.')
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

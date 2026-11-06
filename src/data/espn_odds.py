@@ -21,6 +21,7 @@ Usage:
 import time
 import warnings
 from datetime import date, datetime, timezone
+from src.data.errors import SourceError
 import math
 from src.utils.slate import slate_today
 from typing import Optional
@@ -147,12 +148,14 @@ def fetch_odds(target_date: str | None = None, retries: int = 2) -> list[dict]:
             resp.raise_for_status()
             data = resp.json()
             break
-        except requests.RequestException as e:
+        except (requests.RequestException, ValueError) as e:
             if attempt < retries:
                 time.sleep(2)
                 continue
-            return []
+            raise SourceError(str(e), source=ESPN_SCOREBOARD) from e
 
+    if not isinstance(data, dict) or not isinstance(data.get('events'), list):
+        raise SourceError('Missing events array', source=ESPN_SCOREBOARD, kind='schema')
     events = data.get('events', [])
     games = []
 

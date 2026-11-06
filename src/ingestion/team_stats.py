@@ -30,12 +30,14 @@ import time
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from nba_api.stats.endpoints import leaguedashteamstats
 from nba_api.stats.static import teams as static_teams
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from src.data.errors import SourceError
 from config.settings import DB_PATH, NBA_API_DELAY, BACKFILL_SEASONS, CURRENT_SEASON
 
 
@@ -65,8 +67,7 @@ def fetch_team_stats(season: str) -> pd.DataFrame:
     ).get_data_frames()[0]
 
     if raw.empty:
-        print(f"    WARNING: empty response for {season}")
-        return pd.DataFrame()
+        raise SourceError(f"Empty team stats for {season}", source="NBA team stats", kind="empty")
 
     abbr_map = _team_abbr_map()
     raw['team_abbr'] = raw['TEAM_ID'].map(abbr_map)
@@ -85,7 +86,26 @@ def fetch_team_stats(season: str) -> pd.DataFrame:
         'reb_rate':  raw['DREB_PCT'].round(4),
         'ast_rate':  raw['AST_PCT'].round(4),
     })
+    validate_team_stats(out, season)
     return out
+
+
+def validate_team_stats(df, season):
+    """Require all active NBA franchises (30 today), even on early-season dates.
+
+    Before all franchises have played, a full-league aggregate is explicitly
+    incomplete; this collector never silently accepts a partial league.
+    """
+    expected = set(_team_abbr_map().values())
+    required = {"team_abbr", "season", "pace", "off_rtg", "def_rtg", "net_rtg", "reb_rate", "ast_rate"}
+    if df.empty or not required.issubset(df.columns):
+        raise SourceError("Empty or missing team-stat columns", source="NBA team stats", kind="incomplete")
+    actual = set(df.team_abbr)
+    if actual != expected or len(df) != len(expected) or not df.season.eq(season).all():
+        raise SourceError(f"Incomplete {season}: expected {len(expected)} teams, got {len(df)}; missing {sorted(expected-actual)}", source="NBA team stats", kind="incomplete")
+    numeric = df[list(required - {"team_abbr", "season"})].to_numpy(dtype=float)
+    if not np.isfinite(numeric).all() or not df[["pace", "off_rtg", "def_rtg"]].gt(0).all().all():
+        raise SourceError("Invalid numeric team stats", source="NBA team stats", kind="incomplete")
 
 
 def upsert_team_stats(conn: sqlite3.Connection, df: pd.DataFrame) -> int:
@@ -116,32 +136,23 @@ def run(seasons: list[str], dry_run: bool = False) -> None:
     conn = sqlite3.connect(str(DB_PATH)) if not dry_run else None
 
     total_written = 0
-    for season in seasons:
-        print(f"  Fetching {season}...", end='', flush=True)
-        try:
-            df = fetch_team_stats(season)
-        except Exception as e:
-            print(f" ERROR: {e}")
-            continue
-
-        if df.empty:
-            print(f" 0 rows")
-            continue
-
-        if dry_run:
-            print(f" {len(df)} rows (dry-run, not written)")
-            print(df[['team_abbr', 'def_rtg', 'off_rtg', 'net_rtg', 'pace']].sort_values('def_rtg').to_string(index=False))
-        else:
-            n = upsert_team_stats(conn, df)
-            total_written += n
-            drtg_range = f"DRTG [{df.def_rtg.min():.1f}–{df.def_rtg.max():.1f}]"
-            print(f" {n} rows  {drtg_range}")
-
-    if conn:
-        conn.close()
-
-    if not dry_run:
-        print(f"\n  Total rows written: {total_written}")
+    try:
+        for season in seasons:
+            print(f"  Fetching {season}...", end='', flush=True)
+            try:
+                df = fetch_team_stats(season)
+                validate_team_stats(df, season)
+            except Exception as exc:
+                raise SourceError(str(exc), source=f'NBA team stats {season}', kind='incomplete_or_failed') from exc
+            if dry_run:
+                print(f" {len(df)} rows (dry-run, not written)")
+            else:
+                total_written += upsert_team_stats(conn, df)
+                print(f" {len(df)} rows")
+    finally:
+        if conn:
+            conn.close()
+    print(f"\n  Total rows written: {total_written}")
 
 
 def verify(seasons: list[str]) -> None:

@@ -317,11 +317,16 @@ def kalshi_bets(board: list[dict], target_date: str) -> list[dict]:
     ymd = date.fromisoformat(target_date).strftime('%y%b%d').upper()   # e.g. 26OCT21
     for series, stat in KALSHI_SERIES.items():
         try:
-            r = requests.get(f"{KALSHI_API}/markets", params={'series_ticker': series, 'status': 'open',
-                                                              'limit': 1000}, timeout=15)
-            markets = r.json().get('markets', []) if r.status_code == 200 else []
-        except requests.RequestException:
-            markets = []
+            from src.data.http_archive import archived_json
+            from src.data.errors import SourceError
+            record = archived_json(f"{KALSHI_API}/markets",
+                params={'series_ticker': series, 'status': 'open', 'limit': 1000},
+                directory=PROJECT_ROOT / 'data/kalshi_snapshots' / target_date)
+            markets = record['payload'].get('markets')
+            if not isinstance(markets, list):
+                raise SourceError('Missing markets array', source='Kalshi', kind='schema')
+        except SourceError:
+            raise
         for m in markets:
             if ymd not in m.get('event_ticker', '') or m.get('strike_type') != 'greater':
                 continue
