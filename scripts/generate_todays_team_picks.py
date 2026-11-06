@@ -161,20 +161,30 @@ def pick_tier(sp_edge: float | None, ml_edge_val: float | None) -> str:
 
 # ── O/U model ─────────────────────────────────────────────────────────────────
 
-def load_team_scoring_stats(conn: sqlite3.Connection, season: str) -> dict[str, dict]:
+def load_team_scoring_stats(conn: sqlite3.Connection, season: str, *, as_of=None) -> dict[str, dict]:
     """
     Load off_rtg, def_rtg, pace per team from team_stats.
     Returns {team_abbr: {off_rtg, def_rtg, pace}}.
     """
     try:
         df = pd.read_sql(
-            "SELECT team_abbr, off_rtg, def_rtg, pace FROM team_stats WHERE season=?",
+            "SELECT team_abbr, off_rtg, def_rtg, pace, updated_at FROM team_stats WHERE season=?",
             conn, params=(season,)
         )
-    except Exception:
-        return {}
+    except Exception as exc:
+        from src.data.errors import SourceError
+        raise SourceError(str(exc), source='Totals team_stats', kind='schema') from exc
     if df.empty:
         return {}
+    from src.data.context_archive import instant
+    from src.utils.slate import PACIFIC
+    cutoff = instant(as_of or utc_now())
+    def observed(value):
+        stamp = pd.Timestamp(value)
+        if pd.isna(stamp):
+            raise ValueError('Missing team-stat observation time')
+        return stamp.tz_localize(PACIFIC).tz_convert('UTC') if stamp.tzinfo is None else stamp.tz_convert('UTC')
+    df = df[df['updated_at'].map(observed) < cutoff]
     return df.set_index('team_abbr')[['off_rtg', 'def_rtg', 'pace']].to_dict(orient='index')
 
 
@@ -278,10 +288,10 @@ def analyze_game(
     spread_pick_side = None
     spread_pick_team = None
     if sp_edge is not None:
-        if sp_edge > MIN_SPREAD_EDGE:
+        if sp_edge >= MIN_SPREAD_EDGE:
             spread_pick_side = 'home'
             spread_pick_team = home
-        elif sp_edge < -MIN_SPREAD_EDGE:
+        elif sp_edge <= -MIN_SPREAD_EDGE:
             spread_pick_side = 'away'
             spread_pick_team = away
 
@@ -890,7 +900,9 @@ def main():
 
     # Load team ORTG/DRTG/pace for O/U model
     print(f"\n  Loading team scoring stats for O/U model...")
-    team_scoring_stats = load_team_scoring_stats(conn, args.season)
+    from src.utils.slate import PACIFIC
+    totals_cutoff = utc_now() if target_date == slate_today().isoformat() else datetime.fromisoformat(target_date).replace(tzinfo=PACIFIC).isoformat()
+    team_scoring_stats = load_team_scoring_stats(conn, args.season, as_of=totals_cutoff)
     if team_scoring_stats:
         print(f"  O/U model ready: {len(team_scoring_stats)} teams with ORTG/DRTG data")
     else:

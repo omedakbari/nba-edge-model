@@ -1,5 +1,9 @@
 """
-Team Spread / Win-Probability Backtest.
+LEGACY / LEAKY Team Spread / Win-Probability Backtest.
+
+WARNING: the inline engine consumes mutable whole-season aggregates and does
+not reproduce current SRS/prior logic. Its results do not validate production.
+Use scripts/validate_repaired_models.py for versioned temporal research.
 
 Replays historical NBA seasons game by game. For each game, the rating engine
 is built from all prior games in that season (strict no-leakage). We then
@@ -347,6 +351,7 @@ def run_backtest(seasons: list[str], season_types: list[str] | None = None) -> p
 
 
 def main():
+    print("WARNING: LEGACY / LEAKY backtest; mutable whole-season inputs; not production validation.")
     parser = argparse.ArgumentParser(description="Backtest NBA team spread/ML model")
     parser.add_argument('--seasons', nargs='+', default=SEASONS)
     parser.add_argument('--playoffs', action='store_true',

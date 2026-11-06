@@ -188,8 +188,13 @@ def no_vig_consensus(rows: list[tuple], use_current: bool, *, captured_at=None, 
         if (not prov or not aid or line is None or price is None or not math.isfinite(line)
                 or not math.isfinite(price) or price <= 1 or side not in ('over', 'under')):
             continue
-        pairs.setdefault((_eid, aid, stat, prov, line, _u), {}).setdefault(side, []).append(price)
-        verified[(_eid,aid,stat,prov,line,_u,side)]=bool(getattr(row,'side_verified',False))
+        from src.data.context_archive import instant
+        try:
+            update_key = instant(_u).isoformat()
+        except (TypeError, ValueError, AttributeError):
+            update_key = _u  # preserve historical opening rows with absent metadata
+        pairs.setdefault((_eid, aid, stat, prov, line, update_key), {}).setdefault(side, []).append(price)
+        verified[(_eid,aid,stat,prov,line,update_key,side)]=bool(getattr(row,'side_verified',False))
     by_prop: dict = {}
     for (eid, aid, stat, prov, line, updated), sides in pairs.items():
         if 'over' not in sides or 'under' not in sides:

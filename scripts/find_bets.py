@@ -392,7 +392,14 @@ def bet_approval(rec, bet):
     if bet.get('venue') == 'Kalshi':
         evidence['settlement_verified'] = False  # actual fees and market rules need review
     quotes = rec.get('quote', {}).get('paired_quotes', [])
-    evidence['quote_updated_at'] = min((q['updated_at'] for q in quotes if q.get('updated_at')), default=None)
+    from src.data.context_archive import instant
+    updates = []
+    for quote in quotes:
+        try:
+            updates.append(instant(quote['updated_at']))
+        except (KeyError, TypeError, ValueError, AttributeError):
+            pass  # anchor_issues still rejects every malformed constituent pair
+    evidence['quote_updated_at'] = min(updates).isoformat() if updates else None
     result = approval(evidence, bet['p'], bet['dec'], min_ev=E.MIN_EV,
                       margin=rec.get('kea_margin', KEA_MARGIN))
     issues = anchor_issues(rec.get('quote') or {}, utc_now())
