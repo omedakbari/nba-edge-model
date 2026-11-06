@@ -96,7 +96,12 @@ def build_fair_board(target_date: str, season: str, is_playoffs: bool = False,
     print(f"  {len(book)} book prop lines")
     if not book:
         return []
-    injuries = fetch_injury_report() if injury_report is None else injury_report
+    if injury_report is None:
+        from src.utils.slate import PACIFIC
+        cutoff = datetime.fromisoformat(target_date).replace(tzinfo=PACIFIC).isoformat() if target_date != slate_today().isoformat() else None
+        injuries = fetch_injury_report(as_of=cutoff)
+    else:
+        injuries = injury_report
     with sqlite3.connect(f'file:{DB_PATH}?mode=ro', uri=True) as conn:
         features_df = pd.read_sql('SELECT g.*,p.full_name FROM game_logs g JOIN players p USING(player_id) '
                                   'WHERE game_date<?', conn, params=[target_date])

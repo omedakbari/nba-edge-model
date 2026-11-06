@@ -288,6 +288,15 @@ def fetch_book_props(target_date: str, workers: int = 2) -> dict:
                  # not authoritative settlement-side evidence.
                  side_mapping_verified=v.get('side_mapping_verified',False))
 
+    for value in cons.values():
+        for pair in value['paired_quotes']:
+            provider = next((r['provider'] for r in session.quote_provider_evidence
+                             if r['event_id'] == pair['event_id'] and r['provider'].get('name') == pair['book']), {})
+            url = PROPS_URL.format(eid=pair['event_id'], pid=provider.get('id'))
+            evidence = next((r for r in reversed(session.quote_http_evidence) if r['source_url'] == url), {})
+            pair.update(source_url=url, http_date=evidence.get('http_date'),
+                        http_age=evidence.get('age'), http_captured_at=evidence.get('captured_at'))
+
     names: dict = {}
     for aid in {aid for aid, _ in cons}:
         try:

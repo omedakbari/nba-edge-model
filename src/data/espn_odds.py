@@ -156,6 +156,8 @@ def fetch_odds(target_date: str | None = None, retries: int = 2) -> list[dict]:
 
     if not isinstance(data, dict) or not isinstance(data.get('events'), list):
         raise SourceError('Missing events array', source=ESPN_SCOREBOARD, kind='schema')
+    source_capture = datetime.now(timezone.utc).isoformat()
+    source_headers = getattr(resp, 'headers', {})
     events = data.get('events', [])
     games = []
 
@@ -274,6 +276,10 @@ def fetch_odds(target_date: str | None = None, retries: int = 2) -> list[dict]:
             'captured_at': datetime.now(timezone.utc).isoformat(),
             'price_kind': 'scoreboard spread/details; moneyline close node (freshness unverified)',
             'source_url': ESPN_SCOREBOARD,
+            'http_date': source_headers.get('Date'),
+            'http_age': source_headers.get('Age'),
+            'http_captured_at': source_capture,
+            'raw_event': ev,
             'game_time':    status_detail,
             'status':       status,
             'home':         home_abbr,

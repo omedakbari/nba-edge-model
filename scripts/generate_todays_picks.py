@@ -672,13 +672,16 @@ def parse_line_overrides(text: str) -> dict:
 
 # ── Injury report ─────────────────────────────────────────────────────────────
 
-def fetch_injury_report() -> dict:
+def fetch_injury_report(as_of=None) -> dict:
     """
     Fetch NBA injury statuses from ESPN.
     Returns {normalized_player_name: status_string}
     e.g. {'anthony edwards': 'Day-To-Day', 'giannis antetokounmpo': 'Out'}
     """
     from src.data.errors import SourceError
+    from src.data.context_archive import archive, latest
+    if as_of is not None:
+        return _injury_statuses(latest('injuries', 'league', as_of)['payload'])
     try:
         r = requests.get(
             'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries',
@@ -698,6 +701,11 @@ def fetch_injury_report() -> dict:
     revision_path(directory / f'{slate_today().isoformat()}.json').write_text(json.dumps(
         dict(captured_at=utc_now(), source='https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries',
              raw=data), indent=2))
+    archive('injuries', 'league', data, utc_now(), source='https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries')
+    return _injury_statuses(data)
+
+
+def _injury_statuses(data):
     injured = {}
     for team_entry in data.get('injuries', []):
         for inj in team_entry.get('injuries', []):
@@ -914,50 +922,29 @@ def detect_nba_game_type(target_date: str) -> str:
     return 'Regular Season'
 
 
-def get_roster_player_ids(team_id: int, season: str, target_date: str | None = None) -> list[int]:
+def get_roster_player_ids(team_id: int, season: str, target_date: str | None = None, *, as_of=None) -> list[int]:
+    from src.data.context_archive import archive, latest
+    from src.data.errors import SourceError
+    from src.utils.slate import utc_now, PACIFIC
+    day = target_date or slate_today().isoformat()
+    if as_of is not None or day != slate_today().isoformat():
+        cutoff = as_of or datetime.fromisoformat(day).replace(tzinfo=PACIFIC).isoformat()
+        record = latest('nba_roster', team_id, cutoff, season=season)
+        return [int(row['PLAYER_ID']) for row in record['payload']['rows']]
     from nba_api.stats.endpoints import commonteamroster
     time.sleep(NBA_API_DELAY)
+    source = f'https://stats.nba.com/stats/commonteamroster?TeamID={team_id}&Season={season}'
     try:
-        roster = commonteamroster.CommonTeamRoster(team_id=team_id, season=season)
-        df = roster.get_data_frames()[0]
-        return [int(pid) for pid in df['PLAYER_ID'].tolist()]
-    except Exception as e:
-        print(f"  Warning: could not fetch roster for team {team_id}: {e}")
-
-    # API failed — recover from DB using only the team's last 10 game dates.
-    # Scoping to recent games prevents traded/waived players (who played earlier
-    # in the season) from leaking into today's candidate pool.
-    team_abbr = next((a for a, tid in _NBA_TEAM_IDS.items() if tid == team_id), None)
-    if team_abbr:
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            rows = conn.execute(
-                """
-                SELECT DISTINCT player_id FROM game_logs gl
-                WHERE team_abbr = ? AND season = ? AND game_date < ?
-                  AND NOT EXISTS (
-                      SELECT 1 FROM game_logs newer WHERE newer.player_id=gl.player_id
-                      AND newer.game_date>gl.game_date AND newer.game_date < ?
-                  )
-                  AND game_date IN (
-                      SELECT DISTINCT game_date FROM game_logs
-                      WHERE team_abbr = ? AND season = ? AND game_date < ?
-                      ORDER BY game_date DESC
-                      LIMIT 10
-                  )
-                ORDER BY game_date DESC
-                """,
-                (team_abbr, season, target_date or slate_today().isoformat(),
-                 target_date or slate_today().isoformat(), team_abbr, season,
-                 target_date or slate_today().isoformat()),
-            ).fetchall()
-            conn.close()
-            if rows:
-                print(f"  Roster fallback: loaded {len(rows)} player_ids for {team_abbr} from DB (last 10 games)")
-                return [int(r[0]) for r in rows]
-        except Exception as db_e:
-            print(f"  Roster DB fallback also failed for {team_abbr}: {db_e}")
-    return []
+        response = commonteamroster.CommonTeamRoster(team_id=team_id, season=season, timeout=30)
+        frame = response.get_data_frames()[0]
+        if frame.empty or 'PLAYER_ID' not in frame or frame.PLAYER_ID.duplicated().any():
+            raise ValueError('Empty or ambiguous active roster')
+        payload = dict(rows=json.loads(frame.to_json(orient='records')), raw=response.get_dict())
+    except Exception as exc:
+        archive('nba_roster', team_id, {'error': str(exc)}, utc_now(), source=source, season=season, ok=False)
+        raise SourceError(str(exc), source=source) from exc
+    archive('nba_roster', team_id, payload, utc_now(), source=source, season=season)
+    return [int(pid) for pid in frame.PLAYER_ID]
 
 
 def get_todays_player_contexts(target_date: str, season: str) -> list[dict]:

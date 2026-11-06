@@ -59,3 +59,11 @@ AUDIT_REPORT.md
 gpt_middleman_prompt.md
 CALIBRATION_DIAGNOSIS.md
 CODE_REVIEW_FINDINGS.md
+
+# Timestamped live collection artifacts
+data/asof_context/
+data/closing_snapshots/
+data/kalshi_snapshots/
+data/clv_reports/
+data/roster_continuity/
+data/shadow_freshness/

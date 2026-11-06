@@ -52,14 +52,22 @@ def collect(target_date,output_root):
       'nba_scoreboard':f'https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json'}
     with ThreadPoolExecutor(max_workers=3) as pool:
         responses=dict(zip(endpoints,pool.map(fetch_snapshot,endpoints.values())))
-    roster_urls={}
-    for event in responses['scoreboard'].get('payload',{}).get('events',[]):
+    from src.data.context_archive import archive, ESPN_TEAM_IDS
+    for name, record in responses.items():
+        if name == 'injuries' and record['ok']:
+            archive('injuries', 'league', record['payload'], record['captured_at'], source=record['source_url'])
+    roster_urls = ({tid: f'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{tid}/roster'
+                    for tid in ESPN_TEAM_IDS.values()} if all(responses[k]['ok'] for k in ('scoreboard', 'injuries')) else {})
+    for event in responses['scoreboard'].get('payload',{}).get('events',[]) if roster_urls else []:
         for competitor in (event.get('competitions') or [{}])[0].get('competitors',[]):
             team=competitor.get('team',{});tid=team.get('id')
             if tid:
                 roster_urls[str(tid)]=f'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{tid}/roster'
     with ThreadPoolExecutor(max_workers=2) as pool:
         rosters=dict(zip(roster_urls,pool.map(fetch_snapshot,roster_urls.values())))
+    for tid, record in rosters.items():
+        archive('espn_roster', tid, record.get('payload', {'error': record.get('error')}), record['captured_at'],
+                source=record['source_url'], ok=record['ok'])
     report=dict(target_date=target_date,captured_at=utc_now(),responses=responses,rosters=rosters,
                 live_api_ready=all(responses[k]['ok'] for k in ('scoreboard','injuries')),
                 # Neither absence of a response nor a failed lookup proves no slate.
