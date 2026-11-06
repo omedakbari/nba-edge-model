@@ -233,6 +233,7 @@ def analyze_game(
     series_g1_winner: str | None = None,
     series_context: dict | None = None,
     team_scoring_stats: dict | None = None,
+    roster_continuity: dict | None = None,
 ) -> dict:
     """
     Analyze a single game dict from ESPN odds. Returns analysis dict.
@@ -347,6 +348,7 @@ def analyze_game(
         tier = tier_sp if not insufficient_history else 'NONE'
 
     return {
+        'roster_continuity': {team: (roster_continuity or {}).get(team, {'flag': 'UNKNOWN_CONTINUITY'}) for team in (home, away)},
         'diagnostic_ml_pick_side': diagnostic_ml_side,
         'diagnostic_ml_pick_team': diagnostic_ml_team,
         'diagnostic_combined_strength': diagnostic_tier,
@@ -421,6 +423,10 @@ def print_game_block(a: dict) -> None:
               f"({a['away']}: {a['away_games']}, {a['home']}: {a['home_games']}).")
         return
 
+    for team, context in a.get('roster_continuity', {}).items():
+        share = context.get('returning_minutes_share')
+        value = f'{share:.1%}' if share is not None else 'unknown'
+        print(f"  {team} returning minutes: {value}; {context.get('flag') or 'continuity above flag threshold'}; roster {context.get('roster_captured_at', 'unavailable')}")
     if a.get('history_mode') == 'prior-season blend':
         print('  Early season: rating uses prior-season strength blended with current results.')
     if a.get('model_total') is None and min(a.get('home_games', 0), a.get('away_games', 0)) < MIN_GAMES_FOR_PICK:
@@ -890,6 +896,15 @@ def main():
     else:
         print(f"  O/U model unavailable (no team_stats data for {args.season})")
 
+    from src.data.roster_continuity import compute as compute_continuity
+    from config.settings import ROSTER_CONTINUITY_THRESHOLD
+    from src.utils.slate import PACIFIC
+    continuity_cutoff = utc_now() if target_date == slate_today().isoformat() else datetime.fromisoformat(target_date).replace(tzinfo=PACIFIC).isoformat()
+    continuity = compute_continuity(conn, args.season, continuity_cutoff, threshold=ROSTER_CONTINUITY_THRESHOLD, data=Path(__file__).resolve().parents[1]/'data')
+    continuity_dir = Path(__file__).resolve().parents[1]/'data/roster_continuity'
+    continuity_dir.mkdir(parents=True, exist_ok=True)
+    revision_path(continuity_dir/f'{target_date}.json').write_text(json.dumps(dict(as_of=continuity_cutoff,teams=continuity,ratings_adjusted=False),indent=2))
+
     # Analyze each game
     analyses = []
     for g in scheduled:
@@ -904,6 +919,7 @@ def main():
             series_g1_winner=g1w,
             series_context=ctx,
             team_scoring_stats=team_scoring_stats if team_scoring_stats else None,
+            roster_continuity=continuity,
         )
         analyses.append(a)
 

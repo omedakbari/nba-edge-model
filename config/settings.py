@@ -83,3 +83,6 @@ APPEARANCE_RESEARCH_BUNDLE = Path(os.getenv('NBA_APPEARANCE_RESEARCH_BUNDLE', st
 # Shadow diagnostics only; these never change the existing approval/quote gates.
 SHADOW_CAPTURE_MINUTES = float(os.getenv('NBA_SHADOW_CAPTURE_MINUTES', '5'))
 SHADOW_FUTURE_TOLERANCE_SECONDS = float(os.getenv('NBA_SHADOW_FUTURE_TOLERANCE_SECONDS', '60'))
+
+# Diagnostic flag only; never changes team ratings or approval.
+ROSTER_CONTINUITY_THRESHOLD = float(os.getenv('NBA_ROSTER_CONTINUITY_THRESHOLD', '0.60'))
