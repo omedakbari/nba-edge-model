@@ -20,8 +20,8 @@ from src.features.team_features import add_team_features
 from src.features.playoff_features import add_playoff_features
 
 
-def build_feature_dataset(min_minutes: float = 12.0) -> pd.DataFrame:
-    """Load game logs, filter to min_minutes+, and run the full feature-engineering chain."""
+def build_feature_dataset(min_minutes: float | None = None) -> pd.DataFrame:
+    """Build complete-appearance features; min_minutes is explicit legacy compatibility."""
     print("Loading game logs from database...")
     conn = sqlite3.connect(str(DB_PATH))
     df = pd.read_sql("""
@@ -35,8 +35,11 @@ def build_feature_dataset(min_minutes: float = 12.0) -> pd.DataFrame:
 
     print(f"  Loaded {len(df):,} rows")
     df['game_date'] = pd.to_datetime(df['game_date'])
-    df = df[df['min'] >= min_minutes].copy()
-    print(f"  After {min_minutes}+ min filter: {len(df):,} rows")
+    if min_minutes is not None:
+        df = df[df['min'] >= min_minutes].copy()
+        print(f"  Legacy compatibility population: {min_minutes}+ minutes")
+    else:
+        print('  appearance-v2: retain every positive-minute appearance and all bench totals')
 
     print("\n--- Player Features ---")
     df = build_player_features(df)
@@ -58,7 +61,7 @@ def build_feature_dataset(min_minutes: float = 12.0) -> pd.DataFrame:
     return df
 
 
-def save_feature_dataset(df: pd.DataFrame, filename: str = "features.parquet") -> Path:
+def save_feature_dataset(df: pd.DataFrame, filename: str = "features_appearance_v2.parquet") -> Path:
     """Write the feature dataset to data/processed/ as parquet."""
     path = PROCESSED_DIR / filename
     df.to_parquet(path, index=False)
@@ -67,8 +70,12 @@ def save_feature_dataset(df: pd.DataFrame, filename: str = "features.parquet") -
 
 
 if __name__ == "__main__":
-    df = build_feature_dataset()
-    save_feature_dataset(df)
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--legacy', action='store_true', help='explicit compatibility export for old models')
+    args = parser.parse_args()
+    df = build_feature_dataset(min_minutes=12.0 if args.legacy else None)
+    save_feature_dataset(df, 'features.parquet' if args.legacy else 'features_appearance_v2.parquet')
 
     print("\n=== Feature Dataset Summary ===")
     print(f"  Rows: {len(df):,}")

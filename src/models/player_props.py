@@ -294,5 +294,53 @@ def train_all_models() -> dict:
     return results
 
 
+def train_final_models() -> dict:
+    """
+    Production models for live use: pick the iteration count on the latest
+    season, then refit on ALL seasons. Same recipe as the walk-forward models
+    the market blend was calibrated on (scripts/market_blend_research.py), so
+    live model probabilities match what src/models/market_blend.py expects.
+    No held-out test season — out-of-sample accuracy comes from the
+    walk-forward evaluation instead.
+    """
+    df = pd.read_parquet(PROCESSED_DIR / "features.parquet")
+    seasons = sorted(df['season'].unique())
+    val_season, train_seasons = seasons[-1], seasons[:-1]
+    all_feature_cols = get_feature_columns(df)
+    df_train, df_val = df[df['season'].isin(train_seasons)], df[df['season'] == val_season]
+    print(f"  Final models: select iterations on {val_season}, refit on {seasons[0]}..{val_season}")
+
+    models_dir = PROCESSED_DIR / "models"
+    for target in TARGET_STATS:
+        feats = select_features(df_train, target, all_feature_cols, max_features=40, corr_threshold=0.92)
+        tr, va = df_train[df_train[target].notna()], df_val[df_val[target].notna()]
+        model = HistGradientBoostingRegressor(
+            max_depth=3, learning_rate=0.05, min_samples_leaf=30, l2_regularization=5.0,
+            max_features=0.6, validation_fraction=None, early_stopping=False, random_state=42)
+        best_mae, best_iter = float('inf'), 50
+        for n_iter in [50, 100, 150, 200, 250, 300]:
+            model.set_params(max_iter=n_iter).fit(tr[feats], tr[target])
+            mae = mean_absolute_error(va[target], model.predict(va[feats]))
+            if mae < best_mae:
+                best_mae, best_iter = mae, n_iter
+        full = pd.concat([tr, va])
+        model.set_params(max_iter=best_iter).fit(full[feats], full[target])
+        l10_mae = mean_absolute_error(va[target], va[f'{target}_L10'].fillna(va[target].mean()))
+        print(f"  {target.upper():<8} iter={best_iter}  val MAE {best_mae:.3f} (L10 {l10_mae:.3f})"
+              f"  refit rows {len(full):,}")
+        with open(models_dir / f"{target}_model.pkl", 'wb') as f:
+            pickle.dump({
+                'model': model, 'feature_cols': feats, 'target': target,
+                'train_seasons': seasons, 'val_season': val_season, 'test_season': None,
+                'test_mae': best_mae, 'baseline_mae': l10_mae, 'blend_weight': BLEND_WEIGHT,
+                'recipe': 'final_refit_all_seasons',
+            }, f)
+    print(f"  Models saved to {models_dir}/")
+
+
 if __name__ == "__main__":
-    train_all_models()
+    import sys
+    if '--final' in sys.argv:
+        train_final_models()
+    else:
+        train_all_models()

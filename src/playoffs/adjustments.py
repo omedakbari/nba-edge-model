@@ -46,7 +46,7 @@ from config.settings import CURRENT_SEASON as _CURRENT_SEASON
 
 def _default_elev_seasons(current: str = _CURRENT_SEASON) -> list:
     """Return the 3 most recent seasons with playoff data, ending at current season."""
-    all_seasons = ['2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25', '2025-26']
+    all_seasons = ['2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25', '2025-26', '2026-27']
     eligible = [s for s in all_seasons if s <= current]
     return eligible[-3:]
 

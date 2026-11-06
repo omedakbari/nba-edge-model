@@ -20,8 +20,11 @@ Usage:
 
 import time
 import warnings
-from datetime import date, datetime
+from datetime import date, datetime, timezone
+import math
+from src.utils.slate import slate_today
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -48,6 +51,8 @@ ESPN_TO_CANONICAL: dict[str, str] = {
     'NJ':  'BKN',
     'CHA': 'CHA',
     'UTA': 'UTA',
+    'UTAH': 'UTA',
+    'WSH': 'WAS',
     # Most are already correct; add new ones if ESPN changes codes mid-season
 }
 
@@ -63,7 +68,7 @@ def _normalize(abbr: str) -> str:
 
 def moneyline_to_implied_prob(ml: int | str | None) -> Optional[float]:
     """
-    Convert American moneyline odds to implied probability (no vig).
+    Convert American moneyline odds to break-even probability (includes vig).
     Returns None if ml is None or unparseable.
 
     +150 → 0.40   (risk 100 to win 150, P = 100/(150+100))
@@ -74,6 +79,8 @@ def moneyline_to_implied_prob(ml: int | str | None) -> Optional[float]:
     try:
         ml = int(str(ml).replace('+', '').replace(' ', ''))
     except (ValueError, TypeError):
+        return None
+    if abs(ml) < 100:
         return None
     if ml > 0:
         return round(100 / (ml + 100), 4)
@@ -129,7 +136,7 @@ def fetch_odds(target_date: str | None = None, retries: int = 2) -> list[dict]:
           'away_score':  int|None
         }
     """
-    params = {}
+    params = {'dates': slate_today().strftime('%Y%m%d')}
     if target_date:
         d = datetime.strptime(target_date, '%Y-%m-%d')
         params['dates'] = d.strftime('%Y%m%d')
@@ -150,6 +157,14 @@ def fetch_odds(target_date: str | None = None, retries: int = 2) -> list[dict]:
     games = []
 
     for ev in events:
+        if ev.get('date'):
+            try:
+                event_day = datetime.fromisoformat(ev['date'].replace('Z', '+00:00')).astimezone(
+                    ZoneInfo('America/Los_Angeles')).date().isoformat()
+            except (TypeError, ValueError):
+                continue
+            if target_date and event_day != target_date:
+                continue
         comps = ev.get('competitions', [])
         if not comps:
             continue
@@ -166,14 +181,16 @@ def fetch_odds(target_date: str | None = None, retries: int = 2) -> list[dict]:
         away_full = away_comp.get('team', {}).get('displayName', away_abbr)
 
         # Status
-        status_obj = comp.get('status', {}).get('type', {})
-        state = status_obj.get('state', 'pre')   # pre / in / post
+        status_obj = comp.get('status', ev.get('status', {})).get('type', {})
+        state = status_obj.get('state')   # unknown status must not imply pregame
         if state == 'pre':
             status = 'scheduled'
         elif state == 'in':
             status = 'in_progress'
-        else:
+        elif state == 'post':
             status = 'final'
+        else:
+            status = 'unknown'
 
         # Scores (if available)
         home_score = None
@@ -204,7 +221,7 @@ def fetch_odds(target_date: str | None = None, retries: int = 2) -> list[dict]:
         # "CHA -5.5" → team CHA has -5.5, meaning CHA is favored by 5.5
         spread_val  = None
         spread_team = None
-        if details_str and details_str.strip() not in ('', 'N/A', 'EVEN', 'PK', 'Even'):
+        if details_str and details_str.strip() not in ('', 'N/A'):
             parts = details_str.strip().split()
             if len(parts) == 2:
                 try:
@@ -220,7 +237,7 @@ def fetch_odds(target_date: str | None = None, retries: int = 2) -> list[dict]:
         # If spread_team is home, spread is already home_spread
         # If spread_team is away, home_spread = -spread_val
         home_spread = None
-        if spread_val is not None and spread_team is not None:
+        if spread_val is not None and math.isfinite(spread_val) and spread_team in (home_abbr, away_abbr):
             if spread_team == home_abbr:
                 home_spread = spread_val
             else:
@@ -247,7 +264,13 @@ def fetch_odds(target_date: str | None = None, retries: int = 2) -> list[dict]:
 
         games.append({
             'game_id':      str(ev.get('id', '')),
-            'game_date':    ev.get('date', '')[:10],
+            'game_date':    target_date or (datetime.fromisoformat(ev['date'].replace('Z', '+00:00'))
+                                             .astimezone(ZoneInfo('America/Los_Angeles')).date().isoformat()
+                                             if ev.get('date') else slate_today().isoformat()),
+            'start_time': ev.get('date'),
+            'captured_at': datetime.now(timezone.utc).isoformat(),
+            'price_kind': 'scoreboard spread/details; moneyline close node (freshness unverified)',
+            'source_url': ESPN_SCOREBOARD,
             'game_time':    status_detail,
             'status':       status,
             'home':         home_abbr,

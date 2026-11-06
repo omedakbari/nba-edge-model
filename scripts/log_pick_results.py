@@ -27,6 +27,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from src.utils.slate import slate_today
 from config.settings import DB_PATH
 
 PICKS_DIR = Path(__file__).parent.parent / "data" / "picks"
@@ -36,6 +37,7 @@ PICKS_DIR = Path(__file__).parent.parent / "data" / "picks"
 STAT_COLUMN = {
     'pts': 'pts', 'reb': 'reb', 'ast': 'ast',
     'fg3m': 'fg3m', 'pra': 'pra', 'reb_ast': 'reb_ast',
+    'pts_reb': 'pts_reb', 'pts_ast': 'pts_ast',
 }
 
 
@@ -94,8 +96,11 @@ def fetch_actuals_from_db(conn: sqlite3.Connection,
     Returns {player_id: {stat_key: value, 'min': value, 'played': bool}}.
     """
     placeholders = ','.join('?' * len(player_ids))
+    columns = {r[1] for r in conn.execute('PRAGMA table_info(game_logs)')}
+    identity_cols = [c for c in ('game_id', 'team_abbr', 'opp_abbr') if c in columns]
+    identity_sql = ''.join(', ' + c for c in identity_cols)
     rows = conn.execute(f"""
-        SELECT player_id, min, pts, reb, ast, fg3m, pra, reb_ast
+        SELECT player_id, min, pts, reb, ast, fg3m, pra, reb_ast {identity_sql}
         FROM game_logs
         WHERE player_id IN ({placeholders})
           AND game_date = ?
@@ -104,12 +109,16 @@ def fetch_actuals_from_db(conn: sqlite3.Connection,
 
     result = {}
     for row in rows:
-        pid, minutes, pts, reb, ast, fg3m, pra, reb_ast = row
+        pid, minutes, pts, reb, ast, fg3m, pra, reb_ast = row[:8]
+        if pid in result:
+            raise ValueError(f'Ambiguous game results for player {pid} on {game_date}')
         result[pid] = {
+            **dict(zip(identity_cols, row[8:])),
             'min': minutes,
             'played': minutes is not None and minutes > 0,
             'pts': pts, 'reb': reb, 'ast': ast,
             'fg3m': fg3m, 'pra': pra, 'reb_ast': reb_ast,
+            'pts_reb': pts + reb, 'pts_ast': pts + ast,
         }
     return result
 
@@ -149,10 +158,15 @@ def fetch_actuals_from_api(player_ids: list[int],
             reb  = int(r.get('REB', 0))
             ast  = int(r.get('AST', 0))
             fg3m = int(r.get('FG3M', 0))
+            from src.ingestion.game_logs import parse_matchup
+            team, opp, _home = parse_matchup(str(r['MATCHUP']))
             result[pid] = {
+                'team_abbr': team, 'opp_abbr': opp,
+                'game_id': str(r.get('Game_ID', r.get('GAME_ID', ''))),
                 'min': minutes, 'played': minutes > 0,
                 'pts': pts, 'reb': reb, 'ast': ast, 'fg3m': fg3m,
                 'pra': pts + reb + ast, 'reb_ast': reb + ast,
+                'pts_reb': pts + reb, 'pts_ast': pts + ast,
             }
         except Exception as e:
             print(f"  Warning: API error for player {pid}: {e}")
@@ -160,6 +174,16 @@ def fetch_actuals_from_api(player_ids: list[int],
 
 
 # ── Grading ────────────────────────────────────────────────────────────────────
+
+def actual_mapping_matches(pick, actual):
+    """Compare identity before grading; ESPN and NBA game IDs are separate namespaces."""
+    if pick.get('game_id') or actual.get('team_abbr') or actual.get('opp_abbr'):
+        if (pick.get('team'), pick.get('opp')) != (actual.get('team_abbr'), actual.get('opp_abbr')):
+            return False
+    expected, found = str(pick.get('game_id') or ''), str(actual.get('game_id') or '')
+    if expected and found and len(expected) == len(found) and expected != found:
+        return False
+    return True
 
 def prob_bucket(prob: float) -> str:
     if prob >= 0.70: return '70+'
@@ -173,6 +197,8 @@ def grade_pick(actual: float | None, line: float, direction: str) -> tuple[str, 
     Returns (result, hit) where result ∈ {'hit', 'miss', 'push', 'void'}
     and hit ∈ {1, 0, None}.
     """
+    if direction not in ('OVER', 'UNDER'):
+        raise ValueError(f'Invalid prop direction: {direction}')
     if actual is None:
         return 'void', None
     if actual == line:
@@ -185,7 +211,7 @@ def grade_pick(actual: float | None, line: float, direction: str) -> tuple[str, 
 
 # ── Main grading flow ──────────────────────────────────────────────────────────
 
-def grade_date(date_str: str, overwrite: bool = False) -> None:
+def grade_date(date_str: str, overwrite: bool = False, market: bool = False) -> None:
     from datetime import datetime as _dt
     try:
         _dt.strptime(date_str, "%Y-%m-%d")
@@ -193,10 +219,12 @@ def grade_date(date_str: str, overwrite: bool = False) -> None:
         print(f"  Invalid date format: {date_str!r}. Expected YYYY-MM-DD.")
         return
 
-    picks_path = PICKS_DIR / f"{date_str}.json"
+    picks_dir = PICKS_DIR.parent / 'market_picks' if market else PICKS_DIR
+    picks_path = picks_dir / f"{date_str}.json"
     if not picks_path.exists():
         print(f"  No picks file found: {picks_path}")
-        print(f"  Run first: python scripts/generate_todays_picks.py --date {date_str} --save")
+        script = 'find_bets.py' if market else 'generate_todays_picks.py'
+        print(f"  Run first: python scripts/{script} --date {date_str} --save")
         return
 
     try:
@@ -248,7 +276,7 @@ def grade_date(date_str: str, overwrite: bool = False) -> None:
                 conn.commit()
                 print(f"  Note: cleared {total_existing} void-only rows for {date_str} "
                       f"— re-grading with current DB.")
-            else:
+            elif total_existing >= len(picks):
                 print(f"  {total_existing} picks already graded for {date_str} "
                       f"({gradeable_existing} with real outcomes). "
                       f"Use --overwrite to re-grade.")
@@ -294,8 +322,13 @@ def grade_date(date_str: str, overwrite: bool = False) -> None:
         direction = pick['direction']
 
         player_data = actuals.get(pid)
-        if player_data is None:
-            actual_value = None  # player not found in any source
+        if player_data and not actual_mapping_matches(pick, player_data):
+            print(f'  Pending: result matchup differs from saved forecast for {pick["player_name"]}')
+            skipped += 1
+            continue
+        if player_data is None or (player_data.get('played') and player_data.get(stat_key) is None):
+            skipped += 1
+            continue  # unavailable result is pending, never evidence of a DNP
         elif not player_data['played']:
             actual_value = None  # DNP — will grade as void
         else:
@@ -353,12 +386,13 @@ def grade_date(date_str: str, overwrite: bool = False) -> None:
     hits   = sum(1 for p in picks if _lookup_result(actuals, p) == 'hit')
     misses = sum(1 for p in picks if _lookup_result(actuals, p) == 'miss')
     voids  = sum(1 for p in picks if _lookup_result(actuals, p) == 'void')
+    pending = sum(1 for p in picks if _lookup_result(actuals, p) == 'pending')
     gradeable = hits + misses
     hit_rate = hits / gradeable if gradeable else float('nan')
 
     print(f"\n  ── {date_str} Results ──────────────────────────────────────")
     print(f"  Picks graded: {graded}  |  Skipped: {skipped}")
-    print(f"  Hit: {hits}  |  Miss: {misses}  |  Void/DNP: {voids}")
+    print(f"  Hit: {hits}  |  Miss: {misses}  |  Void/DNP: {voids}  |  Pending: {pending}")
     if gradeable:
         print(f"  Hit rate: {hit_rate:.1%}  ({hits}/{gradeable})")
 
@@ -367,9 +401,9 @@ def grade_date(date_str: str, overwrite: bool = False) -> None:
         actual_value = None
         if player_data and player_data['played']:
             actual_value = player_data.get(pick['stat_key'])
-        result, _ = grade_pick(actual_value, pick['line'], pick['direction'])
+        result = _lookup_result(actuals, pick)
         icon = {'hit': '✅', 'miss': '❌', 'push': '➖', 'void': '⚫'}.get(result, '?')
-        actual_str = f"{actual_value:.0f}" if actual_value is not None else "DNP"
+        actual_str = f"{actual_value:.0f}" if actual_value is not None else ("PENDING" if result == 'pending' else "DNP")
         print(f"  {icon} {pick['player_name']:25s} {pick['stat']:>7} "
               f"{pick['direction']:>5}  line={pick['line']:.1f}  "
               f"actual={actual_str:>4}  [{pick['card']}]")
@@ -379,7 +413,9 @@ def grade_date(date_str: str, overwrite: bool = False) -> None:
 
 def _lookup_result(actuals: dict, pick: dict) -> str:
     player_data = actuals.get(pick['player_id'])
-    if player_data is None or not player_data['played']:
+    if player_data is None or (player_data.get('played') and player_data.get(pick['stat_key']) is None):
+        return 'pending'
+    if not player_data['played']:
         actual_value = None
     else:
         actual_value = player_data.get(pick['stat_key'])
@@ -617,6 +653,7 @@ def main() -> None:
                         help='Re-grade picks even if already graded')
     parser.add_argument('--report',    action='store_true',
                         help='Show calibration report across all graded dates')
+    parser.add_argument('--market', action='store_true', help='Grade saved market-price candidates')
     parser.add_argument('--from',     dest='from_date', help='Report start date YYYY-MM-DD')
     parser.add_argument('--to',       dest='to_date',   help='Report end date YYYY-MM-DD')
     args = parser.parse_args()
@@ -630,7 +667,7 @@ def main() -> None:
         sys.exit(1)
 
     print(f"\n  Grading picks for {args.date}...")
-    grade_date(args.date, overwrite=args.overwrite)
+    grade_date(args.date, overwrite=args.overwrite, market=args.market)
 
 
 if __name__ == "__main__":

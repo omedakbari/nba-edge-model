@@ -37,6 +37,7 @@ dashboard/app_before_claude_fix.py
 # Generated picks (contain model predictions — keep private)
 data/picks/
 data/team_picks/
+data/market_picks/
 
 # Runtime outputs / diagnostics
 data/diagnostics/

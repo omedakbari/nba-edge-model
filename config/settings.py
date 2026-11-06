@@ -30,6 +30,7 @@ NBA_API_DELAY = 0.6
 
 # Seasons to backfill (most recent first)
 BACKFILL_SEASONS = [
+    "2026-27",
     "2025-26",
     "2024-25",
     "2023-24",
@@ -40,7 +41,7 @@ BACKFILL_SEASONS = [
 ]
 
 # Current season (update this at season start)
-CURRENT_SEASON = "2025-26"
+CURRENT_SEASON = "2026-27"
 
 # === Model Settings (Phase 2 — placeholder) ===
 SAFE_FLOOR_LOW_VAR = 0.58
@@ -65,3 +66,16 @@ SAFE_FLOOR_HIGH_VAR = 0.62
 # not independently optimal for every stat. Re-derive by re-running
 # phase1_calibration_audit.py whenever the season/models change meaningfully.
 BLEND_L10_WEIGHT = 0.40
+
+# Opening-season priors: recent history may cross the offseason. These are
+# conservative defaults, not independently backtested calibration parameters.
+MIN_PROP_HISTORY_GAMES = 10
+PROP_HISTORY_DAYS = 365
+PROP_PRIOR_SIGNAL_WEIGHT = 0.5
+TEAM_PRIOR_GAMES = 20.0
+TEAM_PRIOR_RETENTION = 0.8
+
+# Explicitly versioned daily research model; probabilities remain unapproved.
+# Override only with a trusted local appearance-v2 training artifact.
+APPEARANCE_RESEARCH_BUNDLE = Path(os.getenv('NBA_APPEARANCE_RESEARCH_BUNDLE', str(
+    DATA_DIR / 'audits/2026-10-25/followup/2026-10-25T215941.947988_0000/appearance_v2_research.pkl')))

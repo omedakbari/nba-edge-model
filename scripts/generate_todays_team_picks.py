@@ -50,10 +50,12 @@ warnings.filterwarnings("ignore")
 import numpy as np
 import pandas as pd
 
+from src.utils.slate import slate_today
 from config.settings import DB_PATH, CURRENT_SEASON
 from src.models.team_ratings import TeamRatingEngine
 from src.data.espn_odds import fetch_odds
 from src.data.odds_store import persist_odds_snapshot
+from src.utils.slate import revision_path, utc_now, slate_today
 
 PICKS_DIR = Path(__file__).parent.parent / 'data' / 'team_picks'
 
@@ -309,19 +311,64 @@ def analyze_game(
     else:
         series_momentum_pts = 0.0
 
+    # O/U stays disabled with fewer than ten current-season games: the
+    # scoring formula has no validated opening-season prior.
+    counts_for_total = engine._games.groupby('team')['game_id'].nunique()
+    totals_ready = min(counts_for_total.get(home, 0), counts_for_total.get(away, 0)) >= MIN_GAMES_FOR_PICK
+
     # O/U model: predict total and compare against market line
     model_total = None
     ou_edge_val = None
     ou_direction = None
     ou_tier = 'NONE'
-    if team_scoring_stats:
+    if team_scoring_stats and totals_ready:
         model_total = predict_game_total(home, away, team_scoring_stats, is_playoffs)
         if model_total is not None and over_under is not None:
             ou_edge_val = round(model_total - float(over_under), 1)
             ou_direction = 'OVER' if ou_edge_val > 0 else 'UNDER'
             ou_tier = ou_pick_tier(ou_edge_val)
 
+    counts = engine._games.groupby('team')['game_id'].nunique()
+    home_games, away_games = int(counts.get(home, 0)), int(counts.get(away, 0))
+    has_history = getattr(engine, 'has_rating_history', None)
+    insufficient_history = (not all(has_history(t) for t in (home, away)) if has_history
+                            else min(home_games, away_games) < MIN_GAMES_FOR_PICK)
+    if insufficient_history:
+        tier = ou_tier = 'NONE'
+        spread_pick_side = spread_pick_team = ml_pick_side = ml_pick_team = None
+        ou_direction = None
+        sp_edge = home_ml_edge = away_ml_edge = None
+        model_spread = model_wp = model_total = ou_edge_val = None
+
+    diagnostic_ml_side, diagnostic_ml_team = ml_pick_side, ml_pick_team
+    diagnostic_tier = tier
+    if not getattr(engine, 'probability_validated', False):
+        ml_pick_side = ml_pick_team = None
+        tier = tier_sp if not insufficient_history else 'NONE'
+
     return {
+        'diagnostic_ml_pick_side': diagnostic_ml_side,
+        'diagnostic_ml_pick_team': diagnostic_ml_team,
+        'diagnostic_combined_strength': diagnostic_tier,
+        'expected_home_margin': model_spread,
+        'fair_home_handicap': -model_spread if model_spread is not None else None,
+        'fair_away_handicap': model_spread,
+        'ats_strength': tier_sp if not insufficient_history else 'NONE',
+        'ml_strength': tier_ml if not insufficient_history else 'NONE',
+        'probability_validated': bool(getattr(engine, 'probability_validated', False)),
+        'approved': False,
+        'stake_pct': 0.0,
+        'approval_reasons': ['SRS/prior probability calibration unvalidated',
+                             'injury/role review required', 'quote freshness unverified'],
+        'home_no_vig': home_implied / (home_implied + away_implied) if home_implied and away_implied else None,
+        'away_no_vig': away_implied / (home_implied + away_implied) if home_implied and away_implied else None,
+        'captured_at': game.get('captured_at'),
+        'start_time': game.get('start_time'),
+        'price_kind': game.get('price_kind', 'unknown'),
+        'insufficient_history': insufficient_history,
+        'history_mode': 'prior-season blend' if min(home_games, away_games) < MIN_GAMES_FOR_PICK and not insufficient_history else 'current',
+        'home_games': home_games,
+        'away_games': away_games,
         'game_id':           game['game_id'],
         'game_date':         game_date,
         'status':            game['status'],
@@ -369,6 +416,15 @@ def print_game_block(a: dict) -> None:
     print(f"\n  {'─'*62}")
     print(f"  {a['away_full']:<28} @  {a['home_full']}{status_tag}")
     print(f"  {'─'*62}")
+    if a.get('insufficient_history'):
+        print(f"  — PASS: need {MIN_GAMES_FOR_PICK} current-season games or sufficient prior-season history "
+              f"({a['away']}: {a['away_games']}, {a['home']}: {a['home_games']}).")
+        return
+
+    if a.get('history_mode') == 'prior-season blend':
+        print('  Early season: rating uses prior-season strength blended with current results.')
+    if a.get('model_total') is None and min(a.get('home_games', 0), a.get('away_games', 0)) < MIN_GAMES_FOR_PICK:
+        print('  O/U: PASS — insufficient current-season scoring sample.')
 
     # Series context (playoff mode)
     sc = a.get('series_context')
@@ -391,13 +447,17 @@ def print_game_block(a: dict) -> None:
     # Ratings and model spread
     print(f"  Model ratings: {a['away']} {a['away_rating']:+.1f}  |  "
           f"{a['home']} {a['home_rating']:+.1f}")
-    print(f"  Model spread (home): {_spread_str(a['model_spread'])}  "
-          f"Model P(home win): {_pct(a['model_wp'])}")
+    print(f"  Expected home margin: {_spread_str(a['model_spread'])}  "
+          f"P(home win), UNVALIDATED: {_pct(a['model_wp'])}")
+    print(f"  Fair handicaps: {a['home']} {-a['model_spread']:+.1f} / "
+          f"{a['away']} {a['model_spread']:+.1f}")
+    print(f"  Diagnostic strength: ATS {a.get('ats_strength', 'unknown')} / "
+          f"ML {a.get('ml_strength', 'unknown')}. Approval: REVIEW; stake $0.")
 
     # Market
     if a['market_spread'] is not None:
-        mkt_str = a.get('market_spread_str', '')
-        print(f"  Market spread:       {_spread_str(a['market_spread'])}  ({mkt_str})  "
+        print(f"  Market handicaps: {a['home']} {_spread_str(a['market_spread'])} / "
+              f"{a['away']} {_spread_str(-a['market_spread'])}  "
               f"O/U: {a['over_under'] or 'N/A'}")
         print(f"  Market ML:  {a['home']} {american_to_display(a['home_ml'])}  |  "
               f"{a['away']} {american_to_display(a['away_ml'])}  "
@@ -412,7 +472,7 @@ def print_game_block(a: dict) -> None:
     if a['home_ml_edge'] is not None:
         ml_e = a['home_ml_edge']
         ml_dir = f"{a['home']} model={_pct(a['model_wp'])} vs mkt={_pct(a['home_implied'])}"
-        print(f"  ML edge:    {ml_e:+.1%}  ({ml_dir})")
+        print(f"  ML edge vs paired no-vig: {ml_e:+.1%}; printed implied probabilities include vig.")
 
     # Recommendation
     tier = a['tier']
@@ -441,12 +501,12 @@ def print_game_block(a: dict) -> None:
         if a['market_spread'] is None and a['home_ml'] is None:
             print(f"\n  ⚠ SKIPPED  (no line data available)")
         elif a['sp_edge'] is not None:
-            print(f"\n  — PASS  (model {_spread_str(a['model_spread'])} vs mkt {_spread_str(a['market_spread'])}, "
+            print(f"\n  — PASS  ({a['home']} fair handicap {_spread_str(-a['model_spread'])} vs market {_spread_str(a['market_spread'])}, "
                   f"gap {a['sp_edge']:+.1f}, below {MIN_SPREAD_EDGE}pt threshold)")
         else:
             ml_e = a['home_ml_edge']
             ml_str = f"ML edge {ml_e:+.1%}" if ml_e is not None else "below threshold"
-            print(f"\n  — PASS  (model {_spread_str(a['model_spread'])} vs mkt {_spread_str(a['market_spread'])}, "
+            print(f"\n  — PASS  ({a['home']} fair handicap {_spread_str(-a['model_spread'])} vs market {_spread_str(a['market_spread'])}, "
                   f"{ml_str})")
 
     # O/U recommendation (shown for any game with a modeled total)
@@ -531,12 +591,12 @@ def print_header(target_date: str, season: str, is_playoffs: bool, is_play_in: b
 def print_footer(is_playoffs: bool, is_play_in: bool = False) -> None:
     print(f"\n  {'='*76}")
     print(f"  CAVEATS")
-    print(f"  Spread/ML edge = model spread vs opening DraftKings line (not closing line).")
+    print(f"  Lines: ESPN scoreboard snapshot; opening/current freshness is not guaranteed.")
     print(f"  Model: SRS opponent-adj rating + L10 form + per-team HCA (historical) + rest/B2B.")
-    print(f"  Directional accuracy: 68.2% (prior model backtest — recalibration pending w/ SRS).")
-    print(f"  Win-probability calibrated (Platt scaling). Note: WIN_PROB_SCALE needs recal w/ SRS.")
+    print(f"  SRS + opening-season prior probabilities are UNVALIDATED; approval and sizing disabled.")
+    print(f"  Historical accuracy from other rating systems does not validate this model.")
     print(f"  O/U model: ORTG/DRTG/pace blend — directional signal, not calibrated vs closing lines.")
-    print(f"  O/U picks are supplementary; combine with spread/ML signal for highest confidence.")
+    print(f"  Strength labels describe model-market disagreement, not confidence or approval.")
     if is_play_in:
         print(f"  Play-In mode: standard HCA (2.5 pts), no series momentum.")
     elif is_playoffs:
@@ -549,14 +609,15 @@ def print_footer(is_playoffs: bool, is_play_in: bool = False) -> None:
 
 def save_picks(analyses: list[dict], target_date: str) -> Path:
     PICKS_DIR.mkdir(parents=True, exist_ok=True)
-    path = PICKS_DIR / f"{target_date}.json"
+    path = revision_path(PICKS_DIR / f"{target_date}.json")
     # Serialize (strip non-JSON-friendly types)
     records = []
     for a in analyses:
         r = {k: (float(v) if isinstance(v, (np.floating, np.integer)) else v)
              for k, v in a.items() if v is not None}
         records.append(r)
-    path.write_text(json.dumps({'date': target_date, 'picks': records}, indent=2))
+    path.write_text(json.dumps({'date': target_date, 'generated_at': utc_now(),
+                                'picks': records}, indent=2))
     return path
 
 
@@ -665,7 +726,7 @@ def derive_series_context(
 
 def main():
     parser = argparse.ArgumentParser(description="Generate daily NBA spread/ML picks")
-    parser.add_argument('--date',     default=date.today().isoformat(),
+    parser.add_argument('--date',     default=slate_today().isoformat(),
                         help='Target date YYYY-MM-DD (default: today)')
     parser.add_argument('--season',   default=CURRENT_SEASON,
                         help='NBA season string (default: current)')
@@ -728,8 +789,10 @@ def main():
         include_playoffs=include_in_form,
     )
     ratings_df = engine.all_ratings()
-    teams_with_data = len(ratings_df[ratings_df['games'] >= MIN_GAMES_FOR_PICK])
-    print(f"  Ratings ready: {teams_with_data} teams with >= {MIN_GAMES_FOR_PICK} games")
+    teams_with_data = (sum(engine.has_rating_history(t) for t in ratings_df['team'])
+                       if hasattr(engine, 'has_rating_history') else
+                       len(ratings_df[ratings_df['games'] >= MIN_GAMES_FOR_PICK]))
+    print(f"  Ratings ready: {teams_with_data} teams with current-season or prior-season history")
     if args.show_ratings:
         print(f"\n  {'─'*72}")
         print(f"  TEAM RATINGS  (SRS=opponent-adj season, HCA=per-team home advantage)")
@@ -774,9 +837,9 @@ def main():
 
     scheduled = [g for g in games if g['status'] == 'scheduled']
     if not scheduled:
-        print(f"  All {len(games)} games already finished — grading instead of picking.")
-        # Still show analysis for review
-        scheduled = games
+        print(f"  No upcoming games on {target_date} — no pregame team picks.")
+        conn.close()
+        return []
 
     print(f"  {len(scheduled)} game(s) to analyze")
 

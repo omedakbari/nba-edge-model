@@ -91,6 +91,22 @@ Python 3.12 · scikit-learn · pandas · SQLite · nba_api · scipy · Streamlit
 
 ## How to Run
 
+The default CLI uses live sportsbook prices, with no Sleeper account, screenshots,
+or manual app lines required:
+
+```bash
+python scripts/run_daily.py            # archive live evidence, then run the daily workflow
+python nba.py picks --props-only --quick # scan props using refreshed model data
+python nba.py bets --reuse --price "Nikola Jokic PTS over 24.5 -110"
+python nba.py grade                    # grade saved market candidates after games
+```
+
+Market candidates and prices are saved in `data/market_picks/YYYY-MM-DD.json`;
+the fair-probability board is in `data/fair/YYYY-MM-DD.json`. These are model
+candidates, not placed wagers. Automatic sportsbook coverage depends on the
+books ESPN exposes; `--price` accepts odds from any app. Opening-season spread/ML ratings blend prior-season strength (regressed 20% toward league average) with current results using a 20-game prior. Teams need ten current-season games or twenty prior-season games. Totals retain the ten-current-game requirement. Player props require ten appearances with 12+ minutes in the last 365 days, including prior seasons. Their model signal starts at half strength relative to market consensus and rises to full strength over ten current-season appearances. These prior weights are conservative defaults, not newly validated calibration parameters. Unavailable grading results remain pending rather than becoming DNPs. The older pick'em card workflow
+remains available with `python nba.py picks --pickem`.
+
 **Game props:**
 
 ```bash
@@ -143,3 +159,22 @@ python -m src.models.edge_finder
 ## License
 
 MIT
+
+### Combined player + game stack screen
+
+`nba picks` (market mode) and `nba daily` now finish with a combined screen,
+written to `data/prop_stacks/DATE.json`. Run it separately after generating both
+scans with `python scripts/build_prop_stacks.py`. It ranks saved player props
+and game moneylines by estimated hit probability (at least 70%) while requiring
+at least 4% estimated expected return. It considers two- and three-leg stacks
+from different games at the same named sportsbook, excluding overlapping teams.
+These thresholds are policy defaults, not validated measures of safety.
+
+Spread and total scans continue in the team pipeline; they cannot enter stacks
+until calibrated hit probabilities and executable prices exist. Stack payout
+products are indicative only. Approval stays disabled pending validated joint
+probability evidence and an executable combined quote. No qualifying stack means
+PASS, never forced legs. This report reads saved scans rather than refreshing
+quotes; rerun the market scans and review current prices before using its output.
+
+Daily workflow changes, research-model limitations, quote-quality rules, bulk corrections and supplemental bookmaker setup are documented in [Daily upgrades — November 2](docs/DAILY_UPGRADES_2026-11-02.md).

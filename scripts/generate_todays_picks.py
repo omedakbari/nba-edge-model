@@ -32,6 +32,7 @@ import requests
 
 warnings.filterwarnings("ignore")
 
+from src.utils.slate import slate_today
 from config.settings import PROCESSED_DIR, DB_PATH, NBA_API_DELAY, CURRENT_SEASON, BLEND_L10_WEIGHT
 from src.playoffs.adjustments import (
     load_playoff_elevation_ratios,
@@ -137,6 +138,12 @@ EDGE_BUFFER_GAP: dict[str, float] = {
     'reb':     2.0,
 }
 MIN_EDGE_PROB = 0.65   # override: include even if gap < threshold at this confidence
+
+# Market-anchored mode (default): final P = sportsbook no-vig consensus moved to the
+# pick'em line, nudged by the model (src/models/market_blend.py). Validated
+# out-of-sample on 2025-26: legs with P >= 0.56 hit 60.5% (n=7,624) vs ~54.2%
+# pick'em breakeven; the model alone was ~5x overconfident against real lines.
+MARKET_MIN_PROB = 0.56
 
 # ── Direction exposure (item 6) ────────────────────────────────────────────────
 MAX_UNDERS_5LEG    = 4     # max unders on a 5-leg card
@@ -682,6 +689,13 @@ def fetch_injury_report() -> dict:
     except Exception:
         return {}
 
+    from config.settings import PROJECT_ROOT
+    from src.utils.slate import utc_now, revision_path
+    directory = PROJECT_ROOT / 'data/injury_snapshots'
+    directory.mkdir(parents=True, exist_ok=True)
+    revision_path(directory / f'{slate_today().isoformat()}.json').write_text(json.dumps(
+        dict(captured_at=utc_now(), source='https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries',
+             raw=data), indent=2))
     injured = {}
     for team_entry in data.get('injuries', []):
         for inj in team_entry.get('injuries', []):
@@ -720,7 +734,7 @@ def _games_from_espn(target_date: str) -> list[dict]:
     espn_games = fetch_odds(target_date)
     result = []
     for g in espn_games:
-        if g.get('status') == 'final':
+        if g.get('status') != 'scheduled':
             continue
         home_abbr = g['home']
         away_abbr = g['away']
@@ -739,7 +753,7 @@ def _games_from_espn(target_date: str) -> list[dict]:
     return result
 
 
-def _games_from_sleeper() -> list[dict]:
+def _games_from_sleeper(target_date: str | None = None) -> list[dict]:
     """Build game list from Sleeper game-picker API. Last-resort fallback."""
     try:
         r = requests.get(
@@ -761,6 +775,8 @@ def _games_from_sleeper() -> list[dict]:
         start = g.get('start_time', 0)
         if not (isinstance(start, (int, float)) and now_ms <= start <= limit_ms):
             continue
+        if target_date and datetime.fromtimestamp(start / 1000).date().isoformat() != target_date:
+            continue
         m = g.get('metadata', {})
         away_abbr = (m.get('away_team', {}).get('team', '') or '').upper()
         home_abbr = (m.get('home_team', {}).get('team', '') or '').upper()
@@ -781,13 +797,12 @@ def _games_from_sleeper() -> list[dict]:
     return result
 
 
-def get_todays_games(target_date: str) -> list[dict]:
+def get_todays_games(target_date: str, allow_sleeper: bool = False) -> list[dict]:
     """Fetch scheduled games for target_date ('YYYY-MM-DD').
 
     Primary: NBA.com ScoreboardV3.
     Fallback 1: ESPN scoreboard (canonical abbrs + static team ID map).
-    Fallback 2: Sleeper game-picker (within next 30 hours).
-    Raises a loud warning if all three return empty so the pipeline never silently skips a real slate.
+    Optional fallback: Sleeper game-picker, only when explicitly enabled.
     """
     from nba_api.stats.endpoints import scoreboardv3
 
@@ -796,6 +811,7 @@ def get_todays_games(target_date: str) -> list[dict]:
 
     time.sleep(NBA_API_DELAY)
     nba_games: list[dict] = []
+    nba_schedule_found = False
     try:
         board = scoreboardv3.ScoreboardV3(game_date=nba_date, league_id='00')
         dfs = board.get_data_frames()
@@ -803,11 +819,14 @@ def get_todays_games(target_date: str) -> list[dict]:
         teams_df = dfs[2]   # two rows per game (gameId, teamId, teamTricode, …)
 
         if not games_df.empty:
+            nba_schedule_found = True
             team_lookup: dict[tuple[str, str], int] = {}
             for _, row in teams_df.iterrows():
                 team_lookup[(str(row['gameId']), str(row['teamTricode']))] = int(row['teamId'])
 
             for _, row in games_df.iterrows():
+                if int(row.get('gameStatus', 1)) != 1:
+                    continue
                 game_id = str(row['gameId'])
                 game_code = row.get('gameCode', '')
                 try:
@@ -832,7 +851,7 @@ def get_todays_games(target_date: str) -> list[dict]:
     except Exception as e:
         print(f"  Error fetching NBA.com schedule: {e}")
 
-    if nba_games:
+    if nba_schedule_found:
         return nba_games
 
     print("  *** NBA.com returned 0 games — trying ESPN schedule fallback... ***")
@@ -841,13 +860,14 @@ def get_todays_games(target_date: str) -> list[dict]:
         print(f"  ESPN fallback found {len(espn_games)} game(s).")
         return espn_games
 
-    print("  *** ESPN returned 0 games — trying Sleeper game-picker fallback... ***")
-    sleeper_games = _games_from_sleeper()
-    if sleeper_games:
-        print(f"  Sleeper fallback found {len(sleeper_games)} game(s).")
-        return sleeper_games
+    if allow_sleeper:
+        print("  *** ESPN returned 0 games — trying Sleeper game-picker fallback... ***")
+        sleeper_games = _games_from_sleeper(target_date)
+        if sleeper_games:
+            print(f"  Sleeper fallback found {len(sleeper_games)} game(s).")
+            return sleeper_games
 
-    print("  *** WARNING: All 3 schedule sources (NBA.com, ESPN, Sleeper) returned empty. ***")
+    print("  *** WARNING: No upcoming games found from schedule sources. ***")
     print("  *** If games are scheduled today, check network/API connectivity. ***")
     return []
 
@@ -892,7 +912,7 @@ def detect_nba_game_type(target_date: str) -> str:
     return 'Regular Season'
 
 
-def get_roster_player_ids(team_id: int, season: str) -> list[int]:
+def get_roster_player_ids(team_id: int, season: str, target_date: str | None = None) -> list[int]:
     from nba_api.stats.endpoints import commonteamroster
     time.sleep(NBA_API_DELAY)
     try:
@@ -911,17 +931,23 @@ def get_roster_player_ids(team_id: int, season: str) -> list[int]:
             conn = sqlite3.connect(str(DB_PATH))
             rows = conn.execute(
                 """
-                SELECT DISTINCT player_id FROM game_logs
-                WHERE team_abbr = ? AND season = ?
+                SELECT DISTINCT player_id FROM game_logs gl
+                WHERE team_abbr = ? AND season = ? AND game_date < ?
+                  AND NOT EXISTS (
+                      SELECT 1 FROM game_logs newer WHERE newer.player_id=gl.player_id
+                      AND newer.game_date>gl.game_date AND newer.game_date < ?
+                  )
                   AND game_date IN (
                       SELECT DISTINCT game_date FROM game_logs
-                      WHERE team_abbr = ? AND season = ?
+                      WHERE team_abbr = ? AND season = ? AND game_date < ?
                       ORDER BY game_date DESC
                       LIMIT 10
                   )
                 ORDER BY game_date DESC
                 """,
-                (team_abbr, season, team_abbr, season),
+                (team_abbr, season, target_date or slate_today().isoformat(),
+                 target_date or slate_today().isoformat(), team_abbr, season,
+                 target_date or slate_today().isoformat()),
             ).fetchall()
             conn.close()
             if rows:
@@ -943,8 +969,8 @@ def get_todays_player_contexts(target_date: str, season: str) -> list[dict]:
     for game in games:
         label = f"{game['away_abbr']} @ {game['home_abbr']}"
         print(f"    {label}...", end="", flush=True)
-        home_ids = get_roster_player_ids(game['home_team_id'], season)
-        away_ids = get_roster_player_ids(game['away_team_id'], season)
+        home_ids = get_roster_player_ids(game['home_team_id'], season, target_date)
+        away_ids = get_roster_player_ids(game['away_team_id'], season, target_date)
         for pid in home_ids:
             contexts.append({
                 'player_id': pid,
@@ -1018,11 +1044,46 @@ def get_team_pace(team_abbr: str, before_date: str, window: int = DEF_WINDOW) ->
 
 # ── Feature construction ───────────────────────────────────────────────────────
 
+def current_player_features(player_ids, target_date):
+    """Compute today's rolling features using every eligible game through yesterday.
+
+    Stored feature rows are shifted for their historical game; copying the last
+    row omits that game's actuals. A placeholder prediction row advances the window.
+    """
+    from src.features.player_features import build_player_features
+    if not player_ids:
+        return {}
+    placeholders = ','.join('?' for _ in player_ids)
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        history = pd.read_sql(
+            f"SELECT * FROM game_logs WHERE player_id IN ({placeholders}) "
+            "AND game_date < ? AND min >= 12 ORDER BY player_id, game_date",
+            conn, params=list(player_ids) + [target_date])
+    if history.empty:
+        return {}
+    history['game_date'] = pd.to_datetime(history['game_date'])
+    # Twenty past observations cover the largest rolling window.
+    history = history.groupby('player_id', group_keys=False).tail(20)
+    future = history.sort_values('game_date').groupby('player_id').tail(1).copy()
+    future['game_date'] = pd.to_datetime(target_date)
+    raw_columns = set(history.columns)
+    calculated = build_player_features(pd.concat([history, future], ignore_index=True))
+    engineered = [c for c in calculated if c not in raw_columns]
+    return calculated[calculated['game_date'] == pd.to_datetime(target_date)].set_index(
+        'player_id')[engineered].to_dict(orient='index')
+
+
 def build_todays_features(features_df: pd.DataFrame,
                            player_contexts: list[dict],
                            target_date: str,
                            is_playoffs: bool = False,
                            season: str | None = None) -> pd.DataFrame:
+    # A player assigned to two teams/games is an ambiguous roster fallback,
+    # never a last-row-wins join.
+    context_keys = [(c['player_id'], c['team_abbr'], c['opp_abbr'], c['is_home'])
+                    for c in player_contexts]
+    if len({k[0] for k in context_keys}) != len(context_keys):
+        raise ValueError('Ambiguous or duplicate player roster contexts')
     features_df = features_df.copy()
     features_df['game_date'] = pd.to_datetime(features_df['game_date'])
     target_dt = pd.to_datetime(target_date)
@@ -1031,10 +1092,11 @@ def build_todays_features(features_df: pd.DataFrame,
         features_df[features_df['game_date'] < target_dt]
         .sort_values('game_date')
         .groupby('player_id')
-        .last()
+        .tail(1)
         .reset_index()
     )
     recent_map = recent_df.set_index('player_id').to_dict(orient='index')
+    current = current_player_features(sorted({c['player_id'] for c in player_contexts}), target_date)
 
     # Pre-index playoff game logs for series context lookups (only needed in playoff mode).
     # Scoped to the current season so prior-year matchups against the same opponent don't
@@ -1058,6 +1120,9 @@ def build_todays_features(features_df: pd.DataFrame,
         if pid not in recent_map:
             continue
         row = dict(recent_map[pid])
+        if pid not in current:
+            continue
+        row.update(current[pid])
         row['player_id'] = pid
 
         min_l10 = row.get('min_L10') or 0
@@ -1081,6 +1146,19 @@ def build_todays_features(features_df: pd.DataFrame,
         row['opp_abbr'] = ctx['opp_abbr']
         row['team_abbr'] = ctx['team_abbr']
         row['game_date'] = target_dt
+        row['game_id'] = str(ctx.get('game_id', ''))
+        row['is_playoff'] = int(is_playoffs)
+        if not is_playoffs:
+            row['playoff_round'] = 0
+            row['series_game_num'] = 1
+            row['series_team_wins'] = row['series_opp_wins'] = 0
+        if season:
+            row['season'] = season
+            with sqlite3.connect(str(DB_PATH)) as conn:
+                row['season_game_num'] = 1 + conn.execute(
+                    'SELECT COUNT(DISTINCT game_id) FROM game_logs '
+                    'WHERE player_id=? AND season=? AND game_date<? AND min>=12',
+                    (pid, season, target_date)).fetchone()[0]
 
         opp = ctx['opp_abbr']
         if opp not in def_cache:
@@ -1090,7 +1168,11 @@ def build_todays_features(features_df: pd.DataFrame,
         team = ctx['team_abbr']
         if team not in pace_cache:
             pace_cache[team] = get_team_pace(team, target_date)
-        row.update(pace_cache[team])
+        # Training pace_L15 belongs to the opponent; own_pace_L15 is separate.
+        if opp not in pace_cache:
+            pace_cache[opp] = get_team_pace(opp, target_date)
+        row.update(pace_cache[opp])
+        row.update({f'own_{k}': v for k, v in pace_cache[team].items()})
 
         # Playoff round from game_id (position 7: 1=R1, 2=CSF, 3=CF, 4=Finals).
         # ESPN/Sleeper fallbacks return their own event IDs (not NBA format) so
@@ -1237,22 +1319,28 @@ def predict_stat_raw(df: pd.DataFrame, stat: str,
             return model_cache[s]
         return load_model(s)
 
+    def required_columns(model):
+        missing = set(model['feature_cols']) - set(df.columns)
+        if missing:
+            raise ValueError(f'Missing inference features: {sorted(missing)}')
+        return model['feature_cols']
+
     components = COMPOSITE_STATS.get(stat)
     if components:
         models = {c: _get(c) for c in components}
         valid = pd.Series(True, index=df.index)
         for m in models.values():
-            cols = [c for c in m['feature_cols'] if c in df.columns]
+            cols = required_columns(m)
             valid &= df[cols].notna().all(axis=1)
         preds = pd.Series(0.0, index=df.index)
         if valid.sum() > 0:
             for m in models.values():
-                cols = [c for c in m['feature_cols'] if c in df.columns]
+                cols = required_columns(m)
                 preds.loc[valid] += m['model'].predict(df.loc[valid, cols])
         preds[~valid] = np.nan
     else:
         m = _get(stat)
-        cols = [c for c in m['feature_cols'] if c in df.columns]
+        cols = required_columns(m)
         valid = df[cols].notna().all(axis=1)
         preds = pd.Series(np.nan, index=df.index)
         if valid.sum() > 0:
@@ -1316,7 +1404,8 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
                      playoff_ratios: dict | None = None,
                      line_source: str = 'sleeper',
                      override_keys: set | None = None,
-                     rotation_tight_teams: set | None = None) -> pd.DataFrame:
+                     rotation_tight_teams: set | None = None,
+                     book_props: dict | None = None) -> pd.DataFrame:
     """
     Score every (player, stat) pair. Returns OVER and UNDER candidates.
 
@@ -1337,8 +1426,16 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
     rotation_tight_teams: set of team abbrs where last game had fewer active
       players than playoff average — added as annotation to playoff_note.
 
+    book_props: {(normalized name, stat): {'line', 'p_over', 'n_books'}} from
+      src.data.espn_props.fetch_book_props. When given (market-anchored mode),
+      a leg's prob is the market+model blend at the pick'em line, legs with no
+      book line are dropped, and MARKET_MIN_PROB replaces the model-only floors.
+      None = legacy model-only probabilities.
+
     Returns a DataFrame with a 'direction' column: 'OVER' or 'UNDER'.
     """
+    from src.models import market_blend
+    market_mode = book_props is not None
     using_real_lines = bool(pp_lines)
     rows = []
 
@@ -1431,6 +1528,15 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
             # ──────────────────────────────────────────────────────────────────
 
             p_over = prob_over(float(pred), float(line), std_float)
+            model_p_over = p_over
+            mkt_p_over = np.nan
+            book = None
+            if market_mode:
+                book = book_props.get((norm_name, stat))
+                if book is None or not market_blend.has_params(stat):
+                    continue   # no sharp reference → no trustworthy probability
+                mkt_p_over = market_blend.shift_line(stat, book['line'], book['p_over'], float(line))
+                p_over = market_blend.blend(stat, mkt_p_over, model_p_over)
             p_under = 1.0 - p_over
 
             # Round-progressive floor: later rounds require higher confidence.
@@ -1444,6 +1550,9 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
                 # Stat×tier override (e.g. STAR PTS requires P≥70%: non-monotone below)
                 stat_tier_key = (tier, stat)
                 min_p = max(min_p, STAT_TIER_MIN_PROB_PLAYOFFS.get(stat_tier_key, 0.0))
+
+            if market_mode:
+                min_p = MARKET_MIN_PROB
 
             is_dtd = bool(inj_flag)
             final_std = std_float if not np.isnan(std_float) else max(abs(float(pred)) * 0.2, 1.0)
@@ -1466,11 +1575,18 @@ def build_candidates(df: pd.DataFrame, pp_lines: dict,
                 'injury_flag':  inj_status,
                 'playoff_note': playoff_note,
                 'is_dtd':       is_dtd,
+                'model_p_over': round(float(model_p_over), 4),
+                'mkt_p_over':   round(float(mkt_p_over), 4) if market_mode else np.nan,
+                'book_line':    book['line'] if book else np.nan,
+                'book_p_over':  book['p_over'] if book else np.nan,
+                'n_books':      book['n_books'] if book else 0,
             }
 
             buf_gap = EDGE_BUFFER_GAP.get(stat, 0.0)
-            over_edge_ok  = (float(pred) - float(line) >= buf_gap) or (p_over  >= MIN_EDGE_PROB)
-            under_edge_ok = (float(line) - float(pred) >= buf_gap) or (p_under >= MIN_EDGE_PROB)
+            # Model-gap buffer is a model-only heuristic; in market mode the blend
+            # already discounts model disagreement, so the probability floor suffices.
+            over_edge_ok  = market_mode or (float(pred) - float(line) >= buf_gap) or (p_over  >= MIN_EDGE_PROB)
+            under_edge_ok = market_mode or (float(line) - float(pred) >= buf_gap) or (p_under >= MIN_EDGE_PROB)
 
             if p_over >= min_p and over_edge_ok:
                 rows.append({**base, 'direction': 'OVER', 'prob': p_over})
@@ -1672,7 +1788,7 @@ def print_sleeper_template(candidates: pd.DataFrame, top_n: int = 15) -> None:
         entries.append(f"{row['player_name']} {stat_label} ___")
         if len(entries) >= top_n:
             break
-    today = date.today().isoformat()
+    today = slate_today().isoformat()
     print(f"\n  {'─' * 72}")
     print(f"  SLEEPER SCREENSHOT TEMPLATE  —  top {len(entries)} props")
     print(f"  Paste into ChatGPT with your Sleeper screenshots.")
@@ -1706,6 +1822,11 @@ def print_card(card: list[dict], label: str, is_playoffs: bool = False) -> None:
 
 
 # ── Live re-pricing ────────────────────────────────────────────────────────────
+
+def _book_p_over_at_line(row) -> float:
+    """Book no-vig P(over book_line) for a market-anchored candidate row."""
+    return float(row['book_p_over'])
+
 
 def reprice_candidates(
     candidates: pd.DataFrame,
@@ -1743,6 +1864,13 @@ def reprice_candidates(
 
         if line_moved:
             new_p_over = prob_over(pred, new_line, std)
+            market_leg = not pd.isna(row.get('book_line', np.nan))
+            if market_leg:
+                # Market-anchored leg: re-anchor the book line to the new pick'em line
+                from src.models import market_blend
+                mkt = market_blend.shift_line(stat, float(row['book_line']),
+                                              _book_p_over_at_line(row), new_line)
+                new_p_over = market_blend.blend(stat, mkt, new_p_over)
             new_prob   = new_p_over if direction == 'OVER' else (1.0 - new_p_over)
 
             # Whole-number → half-number UNDER: push protection disappears.
@@ -1754,13 +1882,16 @@ def reprice_candidates(
             )
 
             buf_gap = EDGE_BUFFER_GAP.get(stat, 0.0)
-            if direction == 'OVER':
+            if market_leg:
+                still_edgy = True
+            elif direction == 'OVER':
                 still_edgy = (pred - new_line >= buf_gap) or (new_prob >= MIN_EDGE_PROB)
             else:
                 still_edgy = (new_line - pred >= buf_gap) or (new_prob >= MIN_EDGE_PROB)
 
+            floor = MARKET_MIN_PROB if market_leg else min_prob_map.get(stat, 0.57)
             still_playable = (
-                new_prob >= min_prob_map.get(stat, 0.57) and
+                new_prob >= floor and
                 still_edgy and
                 not is_wth_under
             )
@@ -1891,7 +2022,7 @@ def save_picks(card1: list[dict], card2: list[dict], date_str: str,
     payload = {
         'date':         date_str,
         'season':       season,
-        'generated_at': datetime.utcnow().isoformat() + 'Z',
+        'generated_at': __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat(),
         'line_source':  line_source,
         'is_playoffs':  is_playoffs and not is_play_in,
         'is_play_in':   is_play_in,
@@ -1907,7 +2038,7 @@ def save_picks(card1: list[dict], card2: list[dict], date_str: str,
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate daily SAFE Flex picks (live schedule + real PP lines)")
-    parser.add_argument('--date', default=date.today().isoformat(),
+    parser.add_argument('--date', default=slate_today().isoformat(),
                         help='Game date YYYY-MM-DD (default: today)')
     parser.add_argument('--season', default=CURRENT_SEASON,
                         help=f'NBA season string (default: {CURRENT_SEASON})')
@@ -1927,6 +2058,9 @@ def main() -> None:
                         help='Path to a text file of verified Sleeper lines, one per line: '
                              '"Jalen Green PTS 19.5". Blank lines and #-comments are ignored. '
                              '--lines overrides any duplicate entries in the file.')
+    parser.add_argument('--model-only', action='store_true',
+                        help='Legacy model-only probabilities (no sportsbook anchor). '
+                             'Not validated against real lines — ~5x overconfident.')
     parser.add_argument('--template', action='store_true',
                         help='Print a fill-in-the-blank prop template to paste into ChatGPT '
                              'alongside Sleeper screenshots')
@@ -1984,9 +2118,23 @@ def main() -> None:
             is_playoffs = True
             is_play_in  = True
         elif db_phase == 'offseason':
-            print(f"\n  ERROR: No games found in the last 14 days — season appears to be over.")
-            print(f"  Check your --date argument or wait for the season to begin.")
-            sys.exit(1)
+            # No recent DB games: either the season hasn't started (opening week,
+            # preseason) or it's over. Today's schedule tells us which.
+            # NBA game_id prefix: 001 = preseason, 002 = regular season.
+            todays = get_todays_games(args.date)
+            prefixes = {str(g.get('game_id', ''))[:3] for g in todays}
+            if '002' in prefixes:
+                print(f"\n  SEASON OPENING: regular-season games today but none in the DB's last 14 days.")
+                print(f"  Running regular-season mode; rolling features carry over from last season.")
+            elif '001' in prefixes:
+                print(f"\n  PRESEASON: no picks. Minutes are unpredictable (stars play ~15-20 min or sit),")
+                print(f"  books post only milestone ladders (no O/U lines to anchor to), and the model")
+                print(f"  has never seen a preseason game. Picks resume on opening night.")
+                sys.exit(0)
+            else:
+                print(f"\n  ERROR: No games found in the last 14 days and none scheduled today.")
+                print(f"  Check your --date argument or wait for the season to begin.")
+                sys.exit(1)
 
     # Auto-correct Play-In vs Playoffs from the NBA schedule API when a playoff flag is active,
     # to catch the mislabeling bug (e.g. passing --playoffs on a Play-In game night).
@@ -2092,6 +2240,17 @@ def main() -> None:
     dtd_count = sum(1 for s in injury_report.values() if 'day' in s.lower() or 'doubt' in s.lower())
     print(f"  {out_count} players OUT  |  {dtd_count} Day-To-Day/Doubtful")
 
+    book_props = None
+    if not getattr(args, 'model_only', False):
+        from src.data.espn_props import fetch_book_props
+        print(f"  Fetching sportsbook player props (ESPN / DraftKings)...")
+        raw_book = fetch_book_props(args.date)
+        book_props = {(normalize_name(n), st): v for (n, st), v in raw_book.items()}
+        print(f"  {len(book_props)} book prop lines  (market-anchored mode; --model-only to disable)")
+        if not book_props:
+            print("  *** No sportsbook props found — market-anchored mode will produce no legs. ***")
+            print("  *** Books may not have posted yet; retry closer to tip, or use --model-only (not validated). ***")
+
     print(f"\n  Loading features...")
     features_df = pd.read_parquet(feature_path)
     db_latest = pd.to_datetime(features_df['game_date']).max()
@@ -2156,7 +2315,8 @@ def main() -> None:
                                   playoff_ratios=playoff_ratios if is_playoffs else None,
                                   line_source=line_source_str,
                                   override_keys=override_keys,
-                                  rotation_tight_teams=rotation_tight_teams if is_playoffs else None)
+                                  rotation_tight_teams=rotation_tight_teams if is_playoffs else None,
+                                  book_props=book_props)
 
     if candidates.empty:
         if pp_lines:
@@ -2186,7 +2346,10 @@ def main() -> None:
                 key = (normalize_name(row['player_name']), row['stat_key'])
                 if key in saved_lines:
                     cands_patched.at[i, 'line'] = saved_lines[key]['line']
-                    cands_patched.at[i, 'prob'] = saved_lines[key]['prob']
+                    # Saved probs from a different probability method (e.g. pre-market-
+                    # anchoring files) must not overwrite freshly computed ones.
+                    if book_props is None:
+                        cands_patched.at[i, 'prob'] = saved_lines[key]['prob']
             candidates, movement_report = reprice_candidates(
                 cands_patched, pp_lines, is_playoffs=is_playoffs,
             )
@@ -2313,10 +2476,14 @@ def main() -> None:
         else:
             src_label = "PP line"
         print(f"  {src_label} = line used for edge calc  |  Model = blended prediction")
-    thresholds = STAT_MIN_PROB_PLAYOFFS if is_playoffs else STAT_MIN_PROB
-    thresholds_str = "  |  ".join(f"{s.upper()} >= {round(v*100)}%" for s, v in thresholds.items())
-    print(f"  THRESHOLDS  {thresholds_str}")
-    if is_playoffs:
+    if book_props is not None:
+        print(f"  P = sportsbook no-vig consensus at the pick'em line, nudged by the model")
+        print(f"  THRESHOLD   all stats >= {round(MARKET_MIN_PROB*100)}%  (market-anchored; pick'em breakeven ~54%)")
+    else:
+        thresholds = STAT_MIN_PROB_PLAYOFFS if is_playoffs else STAT_MIN_PROB
+        thresholds_str = "  |  ".join(f"{s.upper()} >= {round(v*100)}%" for s, v in thresholds.items())
+        print(f"  THRESHOLDS  {thresholds_str}   (MODEL-ONLY — not validated against real lines)")
+    if is_playoffs and book_props is None:
         tier_str = "  |  ".join(f"{t} >= {round(v*100)}%" for t, v in TIER_MIN_PROB_PLAYOFFS.items())
         print(f"  TIER GATES  {tier_str}")
         if STAT_TIER_MIN_PROB_PLAYOFFS:
@@ -2329,7 +2496,8 @@ def main() -> None:
     if strict_mode:
         print(f"  {'─' * 72}")
         print(f"  Only manual Sleeper overrides are actionable. Proxy lines are informational only.")
-        print(f"  To add real app lines: nba picks --playoffs --lines \"Name STAT line, ...\"")
+        phase_flag = ' --play-in' if is_play_in else ' --playoffs' if is_playoffs else ''
+        print(f"  To add real app lines: nba picks{phase_flag} --lines \"Name STAT line, ...\"")
     print(f"{'=' * 76}\n")
 
     if args.save:

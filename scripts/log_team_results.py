@@ -5,7 +5,7 @@ After games finish, fetches final scores from ESPN and grades the picks
 saved by generate_todays_team_picks.py.
 
 Grading rules:
-  Spread: home_margin > market_spread → home covered (standard convention:
+  Spread: home_margin > -market_spread → home covered (standard convention:
           market_spread = -5.5 means home needed to win by 5.5+)
           Grade is from the perspective of the pick (home or away side).
   ML:     pick the winning team → win.
@@ -39,6 +39,7 @@ warnings.filterwarnings("ignore")
 
 import pandas as pd
 
+from src.utils.slate import slate_today
 from config.settings import DB_PATH
 from src.data.espn_odds import fetch_odds
 from src.data.odds_store import latest_snapshot
@@ -73,6 +74,8 @@ def grade_spread(pick_side: str | None, market_spread: float | None, actual_marg
     """
     if pick_side is None:
         return 'NO_PICK'
+    if pick_side not in ('home', 'away'):
+        raise ValueError(f'Invalid spread side: {pick_side}')
     if market_spread is None:
         return 'NO_LINE'
 
@@ -216,7 +219,7 @@ def grade_date(game_date: str) -> list[dict] | None:
         print(f"  ⚠️  No final scores available for {game_date}. Games may not have finished yet.")
         return None
 
-    today = date.today().isoformat()
+    today = slate_today().isoformat()
     results = []
     conn = sqlite3.connect(str(DB_PATH))
 
@@ -503,7 +506,7 @@ def main():
     else:
         # Default: yesterday
         from datetime import timedelta
-        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        yesterday = (slate_today() - timedelta(days=1)).isoformat()
         dates = [yesterday]
         print(f"  No date specified — grading yesterday's picks ({yesterday})")
 

@@ -13,8 +13,9 @@ Design:
     Margins are home-court-neutralized before averaging.
   - Per-team HCA: historical home-road split from last 3 seasons. DEN, MIL, OKC
     significantly above 2.5pt league average; WAS, SAC, GSW below.
-  - Combined: 0.65 * SRS + 0.35 * L10 form. Falls back to NET_RTG when
-    insufficient current-season games (cold start < SRS_MIN_GAMES).
+  - Combined: 0.65 * SRS + 0.35 * L10 form. Current-season strength is
+    shrunk toward prior-season NET_RTG (regressed 20% toward average), with
+    a 20-game prior to avoid opening-week one-game outliers.
 
 Predicted spread (from home team perspective):
     model_spread = home_rating - away_rating + team_hca[home_team]
@@ -39,6 +40,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats
+from config.settings import TEAM_PRIOR_GAMES, TEAM_PRIOR_RETENTION
 
 warnings.filterwarnings("ignore")
 
@@ -61,6 +63,9 @@ SPREAD_STD      = 11.0  # historical NBA spread std-dev (points) — for P(cover
 # Fitted value 0.664 minimizes Brier score: 0.2186 → 0.2147.
 # Effect: raw 70% → calibrated 63.7%, raw 80% → calibrated 71.5%.
 WIN_PROB_SCALE  = 0.664
+# Legacy scale predates SRS and the opening-season prior. Retain the diagnostic
+# estimate for reproducibility, but it is not validated for betting decisions.
+PROBABILITY_VALIDATED = False
 
 # ── SRS / HCA tuning ──────────────────────────────────────────────────────────
 
@@ -73,7 +78,7 @@ HCA_CAP_HI      = 5.5  # per-team HCA ceiling (pts) — prevent outlier inflatio
 
 # All known seasons in chronological order (extend as new seasons are added)
 _ALL_SEASONS = [
-    '2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25', '2025-26',
+    '2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25', '2025-26', '2026-27',
 ]
 
 
@@ -198,16 +203,24 @@ class TeamRatingEngine:
                           False for regular-season predictions (default).
     """
 
+    probability_validated = PROBABILITY_VALIDATED
+
     def __init__(
         self,
         conn: sqlite3.Connection,
         season: str,
         through_date: str | None = None,
         include_playoffs: bool = False,
+        as_of: str | None = None,
+        aggregate_mode: str = 'snapshot',
     ):
         self.conn = conn
         self.season = season
         self.through_date = through_date
+        self.as_of = as_of
+        if aggregate_mode not in ('snapshot', 'game_logs'):
+            raise ValueError('Unknown aggregate mode')
+        self.aggregate_mode = aggregate_mode
 
         stypes = ['Regular Season', 'Playoffs', 'PlayIn'] if include_playoffs else ['Regular Season']
 
@@ -225,6 +238,13 @@ class TeamRatingEngine:
 
         # Rolling L10 form
         self._form = self._compute_form()
+
+        # Previous-season strength supplies an opening-week prior. Require
+        # actual prior-season game history rather than trusting a missing rating.
+        prior_seasons = self._get_past_seasons(1)
+        self._prior_ratings = self._load_season_ratings(prior_seasons[0]) if prior_seasons else {}
+        prior_games = _load_team_games(conn, prior_seasons, ['Regular Season'], through_date) if prior_seasons else pd.DataFrame()
+        self._prior_counts = prior_games.groupby('team')['game_id'].nunique().to_dict() if not prior_games.empty else {}
 
         # Combined ratings dict: team → adjusted points rating
         self._ratings = self._build_combined_ratings()
@@ -291,10 +311,33 @@ class TeamRatingEngine:
         Scale from per-100-poss to points-per-game using average pace.
         Returns {team_abbr: net_rtg_per_game}.
         """
+        if getattr(self, 'aggregate_mode', 'snapshot') == 'game_logs':
+            # Versioned cold-start alternative, reconstructible at every date.
+            # Mean scoring margin is in points/game; it is not represented as
+            # an archived official NET_RTG snapshot.
+            games = _load_team_games(self.conn, [season], ['Regular Season'], self.through_date)
+            return games.groupby('team')['margin'].mean().to_dict()
         df = pd.read_sql(
-            "SELECT team_abbr, net_rtg, pace FROM team_stats WHERE season=?",
+            "SELECT team_abbr, net_rtg, pace, updated_at FROM team_stats WHERE season=?",
             self.conn, params=(season,)
         )
+        # team_stats is a mutable season aggregate, not an as-of history. A
+        # historical run must not consume a later current-season snapshot.
+        if self.through_date and season == self.season and not df.empty:
+            from src.utils.slate import PACIFIC, slate_today
+            if getattr(self, 'as_of', None):
+                cutoff = pd.Timestamp(self.as_of)
+                if cutoff.tzinfo is None:
+                    raise ValueError('as_of requires an explicit timezone')
+            elif self.through_date == slate_today().isoformat():
+                cutoff = pd.Timestamp.now(tz='UTC')
+            else:
+                cutoff = pd.Timestamp(self.through_date, tz=PACIFIC)
+            def instant(value):
+                t = pd.Timestamp(value)
+                return t.tz_localize(PACIFIC).tz_convert('UTC') if t.tzinfo is None else t.tz_convert('UTC')
+            updated = df['updated_at'].map(instant)
+            df = df[updated < cutoff]
         if df.empty:
             return {}
         df['net_rtg_pg'] = df['net_rtg'] * (df['pace'] / PACE_BASELINE)
@@ -332,13 +375,13 @@ class TeamRatingEngine:
         Blend SRS (opponent-adjusted full-season) with L10 form.
 
         Primary path (>= SRS_MIN_GAMES): SEASON_WEIGHT * srs + FORM_WEIGHT * L10
-        Cold-start (<SRS_MIN_GAMES): falls back to net_rtg + L10 blend,
-        matching the old behavior so early-season predictions aren't disrupted.
+        Cold-start current signal uses net_rtg + L10 blend. The result is
+        shrunk toward prior-season strength with a 20-game prior.
 
         Returns {team_abbr: combined_rating} in points-per-game units.
         """
         all_teams = (set(self._srs.keys()) | set(self._season_ratings.keys())
-                     | set(self._form.keys()))
+                     | set(self._form.keys()) | set(self._prior_ratings.keys()))
         ratings: dict[str, float] = {}
 
         for team in all_teams:
@@ -366,7 +409,17 @@ class TeamRatingEngine:
             else:
                 ratings[team] = primary
 
+        for team in ratings:
+            if self._prior_counts.get(team, 0) >= TEAM_PRIOR_GAMES and team in self._prior_ratings:
+                n = self._games.loc[self._games['team'] == team, 'game_id'].nunique()
+                weight = n / (n + TEAM_PRIOR_GAMES)
+                ratings[team] = weight * ratings[team] + (1 - weight) * TEAM_PRIOR_RETENTION * self._prior_ratings[team]
         return ratings
+
+    def has_rating_history(self, team):
+        current = self._games.loc[self._games['team'] == team, 'game_id'].nunique()
+        return current >= SRS_MIN_GAMES or (self._prior_counts.get(team, 0) >= TEAM_PRIOR_GAMES
+                                          and team in self._prior_ratings)
 
     # ── Rest / B2B adjustment ─────────────────────────────────────────────────
 
@@ -466,7 +519,7 @@ class TeamRatingEngine:
         series_context: dict | None = None,
     ) -> float:
         """
-        Return calibrated model P(home team wins).
+        Return UNVALIDATED legacy-scaled diagnostic P(home team wins).
         Step 1: raw logistic from spread.
         Step 2: Platt-style scaling to correct over-confidence (fitted from backtest).
         """

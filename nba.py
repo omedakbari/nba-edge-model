@@ -3,12 +3,12 @@ NBA Edge Model — unified daily CLI.
 
 After shell setup (see below), all workflows reduce to one short command:
 
-    nba daily                         grade yesterday + today's picks + screenshot template
+    nba daily                         grade yesterday + market-price props + team picks
     nba picks                         today's full workflow: refresh + props + team picks
     nba picks --quick                 skip data refresh (reuse today's cached data)
     nba picks --team-only             team spread/ML picks only
     nba picks --props-only            player props only
-    nba picks --template              print ChatGPT screenshot template for top props
+    nba picks --pickem --template     optional app-line screenshot workflow
     nba picks --lines-file [FILE]     load verified Sleeper lines (auto-resolves today's date if no FILE given)
     nba picks --playoffs              force playoffs mode (auto-detected, but can override)
     nba grade                         grade yesterday's picks
@@ -30,27 +30,39 @@ import subprocess
 import sys
 import textwrap
 import warnings
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 warnings.filterwarnings('ignore')
 
-from config.settings import DB_PATH, CURRENT_SEASON
+from src.utils.slate import slate_today
+from config.settings import DB_PATH, CURRENT_SEASON, PROCESSED_DIR
 from src.utils.season import detect_phase
 
 
 def refreshed_today(season: str = CURRENT_SEASON) -> bool:
-    """Return True if team_stats was already updated today — avoids redundant API calls."""
-    today = date.today().isoformat()
+    """Skip refresh only when today's team stats also have rebuilt features."""
+    today = slate_today().isoformat()
     try:
         conn = sqlite3.connect(str(DB_PATH))
         row = conn.execute(
             "SELECT MAX(updated_at) FROM team_stats WHERE season = ?", (season,)
         ).fetchone()
         conn.close()
-        return bool(row and row[0] and row[0][:10] >= today)
+        if not (row and row[0]):
+            return False
+        from src.utils.slate import PACIFIC
+        updated = datetime.fromisoformat(row[0].replace('Z', '+00:00'))
+        if updated.tzinfo is None:
+            updated = updated.replace(tzinfo=PACIFIC)  # legacy team_stats used localtime
+        if updated.astimezone(PACIFIC).date().isoformat() != today:
+            return False
+        features = PROCESSED_DIR / 'features_appearance_v2.parquet'
+        # A failed feature build leaves today's team_stats beside yesterday's
+        # parquet. That partial refresh must be retried rather than skipped.
+        return features.exists() and features.stat().st_mtime >= updated.timestamp()
     except Exception:
         return False
 
@@ -64,15 +76,20 @@ def run(script_args: list[str], label: str = '') -> int:
         print(f"  {label}")
         print(f"{'─'*64}")
     cmd = [sys.executable] + [str(a) for a in script_args]
-    return subprocess.run(cmd, cwd=str(ROOT)).returncode
+    rc = subprocess.run(cmd, cwd=str(ROOT)).returncode
+    if rc:
+        raise SystemExit(rc)
+    return rc
 
 
 def _flags(phase: str) -> list[str]:
-    return {'playoffs': ['--playoffs'], 'play-in': ['--play-in'], 'regular': []}[phase]
+    from src.utils.season import phase_flags
+    return phase_flags(phase)
 
 
 def _label(phase: str) -> str:
-    return {'playoffs': 'PLAYOFFS', 'play-in': 'PLAY-IN', 'regular': 'REGULAR SEASON'}[phase]
+    from src.utils.season import phase_label
+    return phase_label(phase)
 
 
 def _print_refresh_failed() -> None:
@@ -96,7 +113,7 @@ def cmd_picks(args):
     elif getattr(args, 'play_in', False):
         phase = 'play-in'
     flags  = _flags(phase)
-    today  = date.today().isoformat()
+    today  = slate_today().isoformat()
 
     # --debug-pp / --debug-sleeper: dump raw line data for given players and exit.
     # Skips all other workflow steps — purely diagnostic.
@@ -140,14 +157,18 @@ def cmd_picks(args):
             _print_refresh_failed()
             return
 
-    # Step 2 — Player props
+    # Explicit app lines/template opt into the legacy pick'em card workflow.
+    pickem = (getattr(args, 'pickem', False) or bool(extra_lines) or
+              bool(extra_lines_file) or bool(extra_template))
+    # Step 2 — Player props at actual sportsbook prices by default.
     if not args.team_only:
-        run(
-            ['scripts/generate_todays_picks.py'] + flags
-            + extra_lines + extra_lines_file + extra_template
-            + ['--season', season, '--save'],
-            'STEP 2 — Player props picks'
-        )
+        if pickem:
+            run(['scripts/generate_todays_picks.py'] + flags
+                + extra_lines + extra_lines_file + extra_template
+                + ['--season', season, '--save'], 'STEP 2 — Verified pick\'em cards')
+        else:
+            run(['scripts/find_bets.py'] + flags + ['--season', season, '--save'],
+                'STEP 2 — Player props at market prices')
 
     # Step 3 — Team spread / ML picks
     if not args.props_only:
@@ -156,13 +177,18 @@ def cmd_picks(args):
             'STEP 3 — Team spread / ML picks'
         )
 
+    if not pickem:
+        run(['scripts/build_prop_stacks.py'], 'STEP 4 — Player + game prop stack screen')
+
 
 def cmd_grade(args):
-    grade_date = args.date or (date.today() - timedelta(days=1)).isoformat()
+    grade_date = args.date or (slate_today() - timedelta(days=1)).isoformat()
     print(f"\n{'='*64}")
     print(f"  GRADING  |  {grade_date}")
     print(f"{'='*64}")
     props_cmd = ['scripts/log_pick_results.py', '--date', grade_date]
+    if not getattr(args, 'pickem', False):
+        props_cmd.append('--market')
     if args.overwrite:
         props_cmd.append('--overwrite')
     run(props_cmd, 'Player props results')
@@ -170,8 +196,8 @@ def cmd_grade(args):
 
 
 def cmd_daily(_args):
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
-    today     = date.today().isoformat()
+    yesterday = (slate_today() - timedelta(days=1)).isoformat()
+    today     = slate_today().isoformat()
     season    = CURRENT_SEASON
     phase     = detect_phase(season)
     flags     = _flags(phase)
@@ -180,7 +206,7 @@ def cmd_daily(_args):
     print(f"  DAILY  |  grade {yesterday}  →  picks {today}  |  {_label(phase)}")
     print(f"{'='*64}")
 
-    run(['scripts/log_pick_results.py', '--date', yesterday], 'Props — yesterday')
+    run(['scripts/log_pick_results.py', '--date', yesterday, '--market'], 'Market props — yesterday')
     run(['scripts/log_team_results.py',  '--date', yesterday], 'Team picks — yesterday')
 
     if refreshed_today(season):
@@ -193,13 +219,31 @@ def cmd_daily(_args):
             return
 
     run(
-        ['scripts/generate_todays_picks.py'] + flags + ['--template', '--season', season, '--save'],
-        'Player props — scouting board + template'
+        ['scripts/find_bets.py'] + flags + ['--season', season, '--save'],
+        'Player props — market prices and EV'
     )
     run(
         ['scripts/generate_todays_team_picks.py'] + flags + ['--season', season, '--save'],
         'Team spread / ML picks'
     )
+
+    run(['scripts/build_prop_stacks.py'], 'Player + game prop stack screen')
+
+
+def cmd_bets(args):
+    """+EV finder: fair probability per prop, priced at Kalshi / sportsbook / anything you type."""
+    cmd = ['scripts/find_bets.py', '--bankroll', str(args.bankroll), '--min-ev', str(args.min_ev)]
+    if not args.price and not args.entry:
+        cmd.append('--save')
+    if args.reuse:
+        cmd.append('--reuse-board')
+    for s in args.price or []:
+        cmd += ['--price', s]
+    for s in args.entry or []:
+        cmd += ['--entry', s]
+    if args.payout:
+        cmd += ['--payout', str(args.payout)]
+    run(cmd, '+EV BET FINDER')
 
 
 def cmd_refresh(_args):
@@ -212,7 +256,7 @@ def cmd_refresh(_args):
 
 def cmd_status(_args):
     print(f"\n{'='*64}")
-    print(f"  STATUS  |  {date.today().isoformat()}")
+    print(f"  STATUS  |  {slate_today().isoformat()}")
     print(f"{'='*64}")
     run(['scripts/log_team_results.py', '--report'], 'Team picks — cumulative report')
     run(['scripts/log_pick_results.py', '--report'],  'Props — calibration report')
@@ -221,7 +265,7 @@ def cmd_status(_args):
 def cmd_ratings(_args):
     season = CURRENT_SEASON
     phase  = detect_phase(season)
-    today  = date.today().isoformat()
+    today  = slate_today().isoformat()
 
     conn = sqlite3.connect(str(DB_PATH))
     from src.models.team_ratings import TeamRatingEngine
@@ -257,21 +301,24 @@ def main():
               nba picks --quick                       skip data refresh (faster, use cached data)
               nba picks --team-only                   team spread/ML picks only
               nba picks --props-only                  player props only
-              nba picks --props-only --quick          scouting board + screenshot checklist
-              nba picks --props-only --quick --template
-                                                      also print the ChatGPT fill-in template
-              nba picks --props-only --quick --lines-file data/sleeper_lines/2026-04-29.txt
-                                                      load verified lines from a file
+              nba picks --props-only --quick          scan player props at market prices
+              nba picks --pickem --template           optional verified pick'em card workflow
               nba grade                               grade yesterday's picks
-              nba grade 2026-04-20                    grade a specific date
+              nba grade --date 2026-04-20             grade a specific date
               nba refresh                             force data refresh
               nba status                              cumulative performance reports
               nba ratings                             current team power ratings
+              nba bets                                +EV bets at Kalshi + sportsbook prices
+              nba bets --reuse --price "Jalen Brunson PTS over 26.5 x1.85"
+                                                      price-check any app (-115, 1.87, x1.85, 52c)
+              nba bets --reuse --entry "A PTS over 20.5 x1.8; B REB under 8.5 x1.9"
+                                                      price a whole pick'em entry
 
             Daily workflow:
-              1. nba daily                                  grade yesterday + scouting board + template
-              2. Send screenshots to Claude → get lines file saved to data/sleeper_lines/YYYY-MM-DD.txt
-              3. nba picks --props-only --quick --lines-file  build verified card (auto-resolves today's file)
+              1. nba daily                              refresh data + market props + team picks
+              2. nba bets --reuse --price "Name PTS over 24.5 -110"
+                                                        compare a price from any app
+              3. nba grade                              grade saved market candidates after games
         """),
     )
 
@@ -280,6 +327,8 @@ def main():
     p = subs.add_parser('picks', help="Today's full picks workflow")
     p.add_argument('--quick',      action='store_true',
                    help='Skip data refresh (use today\'s cached data)')
+    p.add_argument('--pickem', action='store_true',
+                   help='Opt into the app-line/card workflow (default: sportsbook prices)')
     p.add_argument('--team-only', '--teams-only', action='store_true', dest='team_only',
                    help='Team spread/ML picks only (skip player props)')
     p.add_argument('--props-only', action='store_true', dest='props_only',
@@ -309,8 +358,17 @@ def main():
                    help='Date to grade (default: yesterday)')
     p.add_argument('--overwrite', action='store_true',
                    help='Re-grade picks even if already graded')
+    p.add_argument('--pickem', action='store_true', help='Grade optional pick\'em cards instead of market props')
 
-    subs.add_parser('daily',   help='Grade yesterday + today\'s picks + screenshot template (one command)')
+    p = subs.add_parser('bets', help='+EV bets at real prices (Kalshi, sportsbooks, any app)')
+    p.add_argument('--bankroll', type=float, default=100.0)
+    p.add_argument('--min-ev', type=float, default=0.04, dest='min_ev')
+    p.add_argument('--reuse', action='store_true', help="reuse today's saved fair board (fast)")
+    p.add_argument('--price', action='append', help='"Name STAT over|under LINE PRICE"')
+    p.add_argument('--entry', action='append', help='"leg; leg" with per-leg prices, or use --payout')
+    p.add_argument('--payout', type=float, help='total entry multiplier')
+
+    subs.add_parser('daily',   help='Grade yesterday + today\'s market props and team picks')
     subs.add_parser('refresh', help='Force data refresh from NBA/ESPN APIs')
     subs.add_parser('status',  help='Cumulative performance reports for picks + props')
     subs.add_parser('ratings', help='Current team power ratings table')
@@ -328,6 +386,7 @@ def main():
         'refresh': cmd_refresh,
         'status':  cmd_status,
         'ratings': cmd_ratings,
+        'bets':    cmd_bets,
     }[args.command](args)
 
 

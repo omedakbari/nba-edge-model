@@ -41,7 +41,7 @@ from config.settings import DB_PATH, NBA_API_DELAY, BACKFILL_SEASONS, CURRENT_SE
 
 # Seasons that could have playoff opponents we need to classify.
 # We only fetch regular-season stats (used to rank opponent DRTG at playoff time).
-TARGET_SEASONS = ['2021-22', '2022-23', '2023-24', '2024-25', '2025-26']
+TARGET_SEASONS = ['2021-22', '2022-23', '2023-24', '2024-25', '2025-26', '2026-27']
 
 
 def _team_abbr_map() -> dict[int, str]:
@@ -98,7 +98,7 @@ def upsert_team_stats(conn: sqlite3.Connection, df: pd.DataFrame) -> int:
     rows = df.to_dict('records')
     conn.executemany("""
         INSERT INTO team_stats (team_abbr, season, pace, off_rtg, def_rtg, net_rtg, reb_rate, ast_rate, updated_at)
-        VALUES (:team_abbr, :season, :pace, :off_rtg, :def_rtg, :net_rtg, :reb_rate, :ast_rate, datetime('now', 'localtime'))
+        VALUES (:team_abbr, :season, :pace, :off_rtg, :def_rtg, :net_rtg, :reb_rate, :ast_rate, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
         ON CONFLICT(team_abbr, season) DO UPDATE SET
             pace      = excluded.pace,
             off_rtg   = excluded.off_rtg,
