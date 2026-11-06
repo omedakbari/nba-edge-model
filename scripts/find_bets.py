@@ -234,6 +234,15 @@ def find(board: list[dict], name: str, stat: str) -> dict | None:
     return hits[0] if len(hits) == 1 else (next((r for r in hits if r['key'] == key), None))
 
 
+def quote_scan_summary(target_date):
+    path = latest_revision(PROJECT_ROOT / 'data/quote_snapshots' / f'{target_date}.json')
+    if not path.exists():
+        return None
+    snapshot = json.loads(path.read_text())
+    return dict(source_snapshot=str(path), captured_at=snapshot['captured_at'],
+                shadow_freshness=snapshot.get('shadow_freshness'))
+
+
 def save_market_picks(bets, board, target_date, season, phase):
     """Save candidates; price_sources describes selected records, not feed availability."""
     records, seen = [], set()
@@ -272,6 +281,7 @@ def save_market_picks(bets, board, target_date, season, phase):
                'generated_at': datetime.now(timezone.utc).isoformat(),
                'is_playoffs': phase == 'playoffs', 'is_play_in': phase == 'play-in',
                'line_source': 'market',
+               'freshness_rules': quote_scan_summary(target_date),
                'price_sources': sorted({r['price_source'] for r in records}),
                'scan_summary': {
                    'eligible_props': len(board),
@@ -564,6 +574,7 @@ def main():
     diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
     revision_path(diagnostics_path).write_text(json.dumps(dict(
         generated_at=utc_now(), excluded_quotes=excluded, eligible_props=len(board),
+        freshness_rules=quote_scan_summary(args.date),
         model_versions=dict(Counter(r.get('model_version', 'legacy') for r in board)),
         anchors=dict(Counter(r.get('anchor_kind', 'unknown') for r in board)),
         candidate_sides=dict(Counter(b['side'] for b in good))), indent=2))

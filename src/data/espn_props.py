@@ -259,6 +259,15 @@ def fetch_book_props(target_date: str, workers: int = 2) -> dict:
     rejected = []
     cons = no_vig_consensus(rows, use_current=live_date, captured_at=captured, rejected=rejected)
     coverage = quote_coverage(rows, rejected, cons, timestamp_check_applied=live_date)
+    from src.data.shadow_freshness import compare
+    from config.settings import SHADOW_CAPTURE_MINUTES, SHADOW_FUTURE_TOLERANCE_SECONDS
+    shadow = compare(rows, sb, session.quote_http_evidence, captured, capture_minutes=SHADOW_CAPTURE_MINUTES,
+                     future_tolerance_seconds=SHADOW_FUTURE_TOLERANCE_SECONDS,
+                     provider_inventory=session.quote_provider_evidence) if live_date else None
+    if shadow:
+        print(f"  Shadow freshness only: current={shadow['current_paired_props']} vs shadow={shadow['shadow_paired_props']} paired props; future anomalies={shadow['future_anomaly_sides']} sides. Production gate unchanged.")
+        for group in shadow['by_book_stat']:
+            print(f"    {group['book']} {group['stat']}: current={group['current_eligible_sides']} / shadow={group['shadow_eligible_sides']} sides; future anomalies={group['future_anomaly_sides']}")
     print_quote_coverage(coverage)
     # Keep raw quotes for later as-of investigations. This is an append-only
     # snapshot, not a historical claim about when a quote first became available.
@@ -269,7 +278,7 @@ def fetch_book_props(target_date: str, workers: int = 2) -> dict:
         revision_path(directory / f'{target_date}.json').write_text(json.dumps(
             dict(captured_at=captured, scoreboard=sb, rows=rows, rejected_quotes=rejected,
                  http_evidence=session.quote_http_evidence,
-                 provider_inventory=session.quote_provider_evidence, quote_coverage=coverage,
+                 provider_inventory=session.quote_provider_evidence, quote_coverage=coverage, shadow_freshness=shadow,
                  row_evidence=[dict(side_verified=getattr(r,'side_verified',False),raw=getattr(r,'raw',None))
                                for r in rows]), indent=2))
     if rejected:

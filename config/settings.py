@@ -79,3 +79,7 @@ TEAM_PRIOR_RETENTION = 0.8
 # Override only with a trusted local appearance-v2 training artifact.
 APPEARANCE_RESEARCH_BUNDLE = Path(os.getenv('NBA_APPEARANCE_RESEARCH_BUNDLE', str(
     DATA_DIR / 'audits/2026-10-25/followup/2026-10-25T215941.947988_0000/appearance_v2_research.pkl')))
+
+# Shadow diagnostics only; these never change the existing approval/quote gates.
+SHADOW_CAPTURE_MINUTES = float(os.getenv('NBA_SHADOW_CAPTURE_MINUTES', '5'))
+SHADOW_FUTURE_TOLERANCE_SECONDS = float(os.getenv('NBA_SHADOW_FUTURE_TOLERANCE_SECONDS', '60'))
