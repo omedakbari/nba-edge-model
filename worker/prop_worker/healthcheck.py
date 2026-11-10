@@ -1,10 +1,12 @@
-"""Phase 1 check: can this machine reach every source the worker depends on?
+"""Source healthcheck: can this machine reach every source the worker depends on?
 
 Run:  python -m prop_worker.healthcheck [--json out.json] [--require-db]
 
 Exit code 1 if any *required* probe fails. Results also go to $GITHUB_STEP_SUMMARY in Actions.
-cdn.nba.com is informational only: it returns 403 to plain requests from the dev Mac, and we
-want to know whether cloud IPs fare any differently. We never try to get around the block.
+Informational probes (never fail the run):
+  - cdn.nba.com: 403 from the dev Mac and from GitHub runners (run 42912209921). Kept only to
+    notice if that ever changes; the worker uses ESPN instead and never tries to get around the block.
+  - PropLine (two probes): does our tier return NBA player props, and free box-score stats?
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ import os
 import sys
 import time
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from . import config
 from .http import make_session
@@ -161,13 +163,105 @@ def probe_cdn_nba(session):
     return PASS, f"reachable, {len(games)} games today"
 
 
+# ── PropLine (informational) ─────────────────────────────────────────────────
+
+_TIER_CODES = {401: "key rejected", 402: "not on this tier", 403: "not on this tier"}
+
+
+def _propline_get(session, api_key: str, path: str, params=None):
+    """GET a PropLine path. Returns (response, error string or None). Never puts the key in a message."""
+    r = session.get(f"{config.PROPLINE_API}/{path}", params=params or {},
+                    headers={"X-API-Key": api_key})
+    if r.status_code in _TIER_CODES:
+        return r, f"/{path.split('/')[-1]}: HTTP {r.status_code} ({_TIER_CODES[r.status_code]})"
+    r.raise_for_status()
+    return r, None
+
+
+def _quota(r) -> str:
+    h = getattr(r, "headers", {}) or {}
+    rem, lim = h.get("x-daily-remaining"), h.get("x-daily-limit")
+    return f"; quota {rem}/{lim} left today" if rem and lim else ""
+
+
+def _parse_ts(s: str) -> datetime:
+    return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+def count_prop_markets(odds: dict) -> tuple[dict[str, int], int]:
+    """Player-prop markets per market key, and how many books carried at least one."""
+    counts: dict[str, int] = {}
+    books = 0
+    for b in odds.get("bookmakers") or []:
+        n0 = sum(counts.values())
+        for m in b.get("markets") or []:
+            if m.get("key") in config.PROPLINE_MARKETS:
+                counts[m["key"]] = counts.get(m["key"], 0) + 1
+        books += sum(counts.values()) > n0
+    return counts, books
+
+
+def probe_propline_props(session, api_key: str, now_et: datetime, max_events: int = 3):
+    if not api_key:
+        return SKIP, "PROPLINE_API_KEY not set"
+    sport = config.PROPLINE_SPORT
+    r, err = _propline_get(session, api_key, f"sports/{sport}/events")
+    if err:
+        return FAIL, err
+    now_utc = now_et.astimezone(timezone.utc)
+    upcoming = sorted((e for e in r.json() if _parse_ts(e["commence_time"]) > now_utc),
+                      key=lambda e: e["commence_time"])
+    if not upcoming:
+        return FAIL, "no upcoming NBA events listed"
+    tried = []
+    for ev in upcoming[:max_events]:
+        r, err = _propline_get(session, api_key, f"sports/{sport}/events/{ev['id']}/odds",
+                               {"markets": ",".join(config.PROPLINE_MARKETS)})
+        if err:
+            return FAIL, f"player props NOT on our tier: {err}"
+        counts, books = count_prop_markets(r.json())
+        label = f"{ev['away_team']} @ {ev['home_team']}"
+        if counts:
+            missing = sorted(set(config.PROPLINE_MARKETS) - set(counts))
+            per = ", ".join(f"{config.PROPLINE_MARKETS[k]}={v}" for k, v in sorted(counts.items()))
+            gap = f"; missing {missing}" if missing else ""
+            return PASS, f"player props on our tier: {label}: {books} books, {per}{gap}{_quota(r)}"
+        tried.append(label)
+    return FAIL, f"0 player-prop markets for the next {len(tried)} events ({'; '.join(tried)})"
+
+
+def probe_propline_boxscore(session, api_key: str):
+    if not api_key:
+        return SKIP, "PROPLINE_API_KEY not set"
+    sport = config.PROPLINE_SPORT
+    r, err = _propline_get(session, api_key, f"sports/{sport}/scores", {"days_from": 3})
+    if err:
+        return FAIL, err
+    finals = [e for e in r.json() if e.get("status") == "final"]
+    if not finals:
+        return FAIL, "no final NBA games in the last 3 days"
+    ev = finals[0]
+    r, err = _propline_get(session, api_key, f"sports/{sport}/events/{ev['id']}/stats")
+    if err:
+        return FAIL, f"box-score stats NOT on our tier: {err}"
+    rows = [s for s in r.json().get("stats") or [] if s.get("player_name")]
+    players = {s["player_name"] for s in rows}
+    types = {s["stat_type"] for s in rows}
+    missing = sorted({"minutes", "points", "rebounds", "assists", "threes"} - types)
+    if not players or missing:
+        return FAIL, f"event {ev['id']}: {len(players)} players, missing stats {missing}"
+    return PASS, (f"free box-score stats: event {ev['id']} ({ev['away_team']} @ {ev['home_team']}): "
+                  f"{len(players)} players, {len(types)} stat types{_quota(r)}")
+
+
 # ── runner ───────────────────────────────────────────────────────────────────
 
 def run(session=None, now_et: datetime | None = None, db_url: str | None = None,
-        require_db: bool = False) -> list[Probe]:
+        require_db: bool = False, propline_key: str | None = None) -> list[Probe]:
     session = session or make_session()
     now_et = now_et or datetime.now(config.ET)
     db_url = config.SUPABASE_DB_URL if db_url is None else db_url
+    propline_key = config.PROPLINE_API_KEY if propline_key is None else propline_key
     return [
         _timed("postgres", True, probe_postgres, db_url, require_db),
         _timed("espn_scoreboard", True, probe_espn_scoreboard, session, now_et),
@@ -175,6 +269,8 @@ def run(session=None, now_et: datetime | None = None, db_url: str | None = None,
         _timed("espn_injuries", True, probe_espn_injuries, session),
         _timed("nba_injury_pdf", True, probe_injury_pdf, session, now_et),
         _timed("kalshi", True, probe_kalshi, session),
+        _timed("propline_props (info)", False, probe_propline_props, session, propline_key, now_et),
+        _timed("propline_boxscore (info)", False, probe_propline_boxscore, session, propline_key),
         _timed("cdn_nba (info)", False, probe_cdn_nba, session),
     ]
 

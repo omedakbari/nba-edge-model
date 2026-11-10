@@ -1,0 +1,3991 @@
+{
+ "id": "641560",
+ "sport_key": "basketball_nba",
+ "home_team": "Golden State Warriors",
+ "away_team": "New Orleans Pelicans",
+ "commence_time": "2026-11-10T03:00:00Z",
+ "status": "final",
+ "home_score": 138,
+ "away_score": 87,
+ "mlb_game_pk": null,
+ "stats": [
+  {
+   "player_name": "",
+   "team_abbr": "",
+   "stat_type": "period_h1_home",
+   "stat_value": 72.0
+  },
+  {
+   "player_name": "",
+   "team_abbr": "",
+   "stat_type": "period_h1_away",
+   "stat_value": 43.0
+  },
+  {
+   "player_name": "",
+   "team_abbr": "",
+   "stat_type": "period_h2_home",
+   "stat_value": 66.0
+  },
+  {
+   "player_name": "",
+   "team_abbr": "",
+   "stat_type": "period_h2_away",
+   "stat_value": 44.0
+  },
+  {
+   "player_name": "",
+   "team_abbr": "",
+   "stat_type": "overtime_periods",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "",
+   "team_abbr": "",
+   "stat_type": "period_q1_home",
+   "stat_value": 35.0
+  },
+  {
+   "player_name": "",
+   "team_abbr": "",
+   "stat_type": "period_q1_away",
+   "stat_value": 20.0
+  },
+  {
+   "player_name": "",
+   "team_abbr": "",
+   "stat_type": "period_q2_home",
+   "stat_value": 37.0
+  },
+  {
+   "player_name": "",
+   "team_abbr": "",
+   "stat_type": "period_q2_away",
+   "stat_value": 23.0
+  },
+  {
+   "player_name": "",
+   "team_abbr": "",
+   "stat_type": "period_q3_home",
+   "stat_value": 40.0
+  },
+  {
+   "player_name": "",
+   "team_abbr": "",
+   "stat_type": "period_q3_away",
+   "stat_value": 22.0
+  },
+  {
+   "player_name": "",
+   "team_abbr": "",
+   "stat_type": "period_q4_home",
+   "stat_value": 26.0
+  },
+  {
+   "player_name": "",
+   "team_abbr": "",
+   "stat_type": "period_q4_away",
+   "stat_value": 22.0
+  },
+  {
+   "player_name": "",
+   "team_abbr": "",
+   "stat_type": "first_basket_team",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "",
+   "team_abbr": "",
+   "stat_type": "first_field_goal_team",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "points",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "assists",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "blocks",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "turnovers",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "threes",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_made",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "threes_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "twos_made",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "twos_attempted",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "personal_fouls",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "points_assists",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds_assists",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "blocks_steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "minutes",
+   "stat_value": 12.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "AJ Johnson",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "assists",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "steals",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "points",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "blocks",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "turnovers",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "threes",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_made",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "threes_attempted",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "twos_made",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "twos_attempted",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "personal_fouls",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "minutes",
+   "stat_value": 15.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 13.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds_assists",
+   "stat_value": 8.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "points_assists",
+   "stat_value": 11.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "blocks_steals",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Al Horford",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "minutes",
+   "stat_value": 24.18
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "assists",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "blocks",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "turnovers",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "threes",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_made",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 9.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "threes_attempted",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "twos_made",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "twos_attempted",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "personal_fouls",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds_assists",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "blocks_steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "points_assists",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds",
+   "stat_value": 8.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 8.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "points",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_made",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bennedict Mathurin",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "first_basket",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 19.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "threes_attempted",
+   "stat_value": 11.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "points",
+   "stat_value": 25.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "assists",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "blocks",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "turnovers",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "threes",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_made",
+   "stat_value": 10.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "twos_made",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "twos_attempted",
+   "stat_value": 8.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "personal_fouls",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "points_assists",
+   "stat_value": 29.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds",
+   "stat_value": 27.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 31.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds_assists",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "blocks_steals",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "minutes",
+   "stat_value": 26.28
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "first_field_goal",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Brandin Podziemski",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "minutes",
+   "stat_value": 1.65
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "points",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "assists",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "blocks",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "turnovers",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "threes",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_made",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "threes_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "twos_made",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "twos_attempted",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "personal_fouls",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "points_assists",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds_assists",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "blocks_steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Brandon Williams",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "minutes",
+   "stat_value": 27.55
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "points",
+   "stat_value": 8.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "assists",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "blocks",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "turnovers",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "threes",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_made",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "threes_attempted",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "twos_made",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_made",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "personal_fouls",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "points_assists",
+   "stat_value": 8.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds",
+   "stat_value": 10.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 10.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds_assists",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "blocks_steals",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 8.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "twos_attempted",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Bryce McGowens",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "personal_fouls",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds_assists",
+   "stat_value": 11.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "points",
+   "stat_value": 12.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds",
+   "stat_value": 10.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "assists",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "blocks",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "turnovers",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "threes",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_made",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 8.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "threes_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "twos_made",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "twos_attempted",
+   "stat_value": 8.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "points_assists",
+   "stat_value": 13.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds",
+   "stat_value": 22.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 23.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "blocks_steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "minutes",
+   "stat_value": 18.07
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Charles Bassey",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "points",
+   "stat_value": 16.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "assists",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "blocks",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "turnovers",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "threes",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_made",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 11.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "threes_attempted",
+   "stat_value": 8.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "twos_made",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "twos_attempted",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_made",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "personal_fouls",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "blocks_steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "points_assists",
+   "stat_value": 19.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds",
+   "stat_value": 20.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 23.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds_assists",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "minutes",
+   "stat_value": 26.23
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "De'Anthony Melton",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "points",
+   "stat_value": 12.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "assists",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "blocks",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "turnovers",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "threes",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_made",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "threes_attempted",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "personal_fouls",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds_assists",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "blocks_steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "minutes",
+   "stat_value": 17.55
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 10.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "twos_made",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "twos_attempted",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "points_assists",
+   "stat_value": 13.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds",
+   "stat_value": 15.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 16.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Dejounte Murray",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds_assists",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "minutes",
+   "stat_value": 21.28
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "points",
+   "stat_value": 16.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_made",
+   "stat_value": 8.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 10.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "points_assists",
+   "stat_value": 16.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds",
+   "stat_value": 20.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_made",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 8.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "twos_made",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "twos_attempted",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "assists",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "blocks",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "turnovers",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "threes",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "threes_attempted",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "personal_fouls",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "blocks_steals",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 20.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Derik Queen",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "points",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "blocks",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "turnovers",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "threes",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_made",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "threes_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "twos_made",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "twos_attempted",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "personal_fouls",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "blocks_steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "assists",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "points_assists",
+   "stat_value": 8.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 11.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds_assists",
+   "stat_value": 9.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "minutes",
+   "stat_value": 20.82
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Draymond Green",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "twos_made",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "twos_attempted",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "points",
+   "stat_value": 9.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "assists",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "blocks",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "turnovers",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "threes",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_made",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "threes_attempted",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "personal_fouls",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds_assists",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "blocks_steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds",
+   "stat_value": 11.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "points_assists",
+   "stat_value": 11.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 13.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "minutes",
+   "stat_value": 18.63
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Georges Niang",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "points",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "blocks",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "turnovers",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "threes",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "threes_attempted",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "personal_fouls",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "blocks_steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_made",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "twos_made",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "twos_attempted",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "points_assists",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds",
+   "stat_value": 9.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 11.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds_assists",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "assists",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "minutes",
+   "stat_value": 12.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Graham Ike",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "blocks",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "turnovers",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "threes",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "threes_attempted",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "twos_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "twos_attempted",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_made",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "personal_fouls",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "points_assists",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds",
+   "stat_value": 10.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 14.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds_assists",
+   "stat_value": 11.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "blocks_steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "minutes",
+   "stat_value": 20.87
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "assists",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "points",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Gui Santos",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "points",
+   "stat_value": 10.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "assists",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "blocks",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "turnovers",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "threes",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_made",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "threes_attempted",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "twos_made",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "personal_fouls",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "points_assists",
+   "stat_value": 11.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds",
+   "stat_value": 16.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 17.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds_assists",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "blocks_steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 9.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "twos_attempted",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "minutes",
+   "stat_value": 24.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Herbert Jones",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "points",
+   "stat_value": 11.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "blocks",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "turnovers",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "threes",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_made",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 12.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "threes_attempted",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "twos_made",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "twos_attempted",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_made",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "personal_fouls",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "points_assists",
+   "stat_value": 19.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds",
+   "stat_value": 14.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 22.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds_assists",
+   "stat_value": 11.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "blocks_steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "assists",
+   "stat_value": 8.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "minutes",
+   "stat_value": 28.78
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Jeremiah Fears",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "minutes",
+   "stat_value": 34.12
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "points",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "assists",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "blocks",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "turnovers",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "threes",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_made",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "threes_attempted",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "twos_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "twos_attempted",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_made",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "personal_fouls",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "points_assists",
+   "stat_value": 9.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds",
+   "stat_value": 10.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 12.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds_assists",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "blocks_steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Jordan Poole",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "points",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "assists",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "blocks",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "turnovers",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "threes",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "minutes",
+   "stat_value": 9.28
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_made",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "threes_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "twos_made",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "personal_fouls",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds_assists",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "blocks_steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "twos_attempted",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "points_assists",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Julian Reese",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "points",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "assists",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "blocks",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "turnovers",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "threes",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_made",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "threes_attempted",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "twos_made",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "twos_attempted",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "personal_fouls",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "points_assists",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "blocks_steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "minutes",
+   "stat_value": 17.43
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds",
+   "stat_value": 10.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 12.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds_assists",
+   "stat_value": 8.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Karlo Matkovi\u0107",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "assists",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "blocks",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "turnovers",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "twos_made",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "twos_attempted",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "personal_fouls",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds_assists",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "blocks_steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "points",
+   "stat_value": 10.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "threes",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 9.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "threes_attempted",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "points_assists",
+   "stat_value": 13.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds",
+   "stat_value": 10.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 13.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "minutes",
+   "stat_value": 20.18
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_made",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "LJ Cryer",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "points",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "assists",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "blocks",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "turnovers",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "threes",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "threes_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "twos_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "twos_attempted",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_made",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "personal_fouls",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "points_assists",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "minutes",
+   "stat_value": 12.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds_assists",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "blocks_steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Malevy Leons",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "points",
+   "stat_value": 9.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "assists",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "blocks",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "turnovers",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "threes",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_made",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 9.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "threes_attempted",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "twos_made",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "twos_attempted",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_made",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "personal_fouls",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "points_assists",
+   "stat_value": 13.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds",
+   "stat_value": 9.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 13.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "rebounds_assists",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "blocks_steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "minutes",
+   "stat_value": 23.82
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Saddiq Bey",
+   "team_abbr": "NOP",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "assists",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "blocks",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "turnovers",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "twos_made",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "twos_attempted",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_made",
+   "stat_value": 9.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 9.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "personal_fouls",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "blocks_steals",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 5.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds_assists",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "points",
+   "stat_value": 25.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "threes",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_made",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 10.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "threes_attempted",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "points_assists",
+   "stat_value": 27.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "minutes",
+   "stat_value": 20.82
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds",
+   "stat_value": 30.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 32.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Stephen Curry",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "first_basket",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "points",
+   "stat_value": 23.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds",
+   "stat_value": 7.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "assists",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "blocks",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "turnovers",
+   "stat_value": 2.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "threes",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "twos_made",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "twos_attempted",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_made",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "free_throws_attempted",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "offensive_rebounds",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "personal_fouls",
+   "stat_value": 3.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "blocks_steals",
+   "stat_value": 1.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_made",
+   "stat_value": 8.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "field_goals_attempted",
+   "stat_value": 10.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "threes_attempted",
+   "stat_value": 4.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "points_assists",
+   "stat_value": 27.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "rebounds_assists",
+   "stat_value": 11.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "minutes",
+   "stat_value": 27.45
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "defensive_rebounds",
+   "stat_value": 6.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds",
+   "stat_value": 30.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "points_rebounds_assists",
+   "stat_value": 34.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "first_field_goal",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_basket_scorer",
+   "stat_value": 0.0
+  },
+  {
+   "player_name": "Yaxel Lendeborg",
+   "team_abbr": "GSW",
+   "stat_type": "team_first_field_goal_scorer",
+   "stat_value": 0.0
+  }
+ ]
+}

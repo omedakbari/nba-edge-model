@@ -22,40 +22,47 @@ Trust comes from a trust layer, not a smarter model:
 |---|---|---|
 | Replace "the 65/35 blend and normal curve" | Default picks have been **market-anchored since 2026-10-07** (`src/models/market_blend.py`, params in `data/processed/models/market_blend.json`); `nba bets` already prices Kalshi ladders with the 0.07·P·(1−P) fee | Phase 4 extends the existing blend (adds minutes-first + count distributions as the model component). It does not rebuild it |
 | Seed the report card from settled Kalshi history | Kalshi NBA player props launched Oct 2026, so there's **~1 month** of history | Seed from `historical_props` (ESPN/DK book props, 2023-24 onward) and add Kalshi as it builds up |
-| PropLine $9/mo for book lines; `nbainjuries` package | User preference: free, self-built pipelines; no paid vendors or convenience wrappers | Odds: Kalshi public API + existing ESPN/DK scraper (`src/data/espn_props.py`) behind freshness gates. Injuries: own parser for the official PDFs. **$0/month** |
-| cdn.nba.com "works from anywhere" | Plain requests from this Mac get **HTTP 403** (schedule and scoreboard) | Schedule and box scores come from ESPN (`scoreboard` / `summary`, both verified). cdn.nba.com is probed only for information |
+| PropLine $9/mo for book lines | PropLine's **free tier** (1,000 requests/day, key in `PROPLINE_API_KEY`) returns NBA player props from ~30 books (DK, FD, MGM, Pinnacle, Kalshi, PrizePicks …) and free box-score stats. Verified 2026-11-10 | Use PropLine free for book lines and as the second box-score source. Stay off paid tiers. The ESPN/DK scraper stays as a fallback |
+| `nbainjuries` package | User preference: own parser, no convenience wrappers | Own pdfplumber parser for the official PDFs |
+| cdn.nba.com "works from anywhere" | **HTTP 403** from this Mac *and* from GitHub-hosted runners (healthcheck run 42912209921) | **ESPN replaces cdn.nba.com** for schedule, box scores, and the secondary injury feed. cdn.nba.com stays only as an informational probe |
 | Kalshi host `external-api.kalshi.com` | Repo uses `api.elections.kalshi.com/trade-api/v2` (verified 200, no auth) | Use the repo's host |
 
 Unchanged from the PDF: the phases, the checks that gate each one, the freshness and blocking
 rules, research mode until a stat earns probabilities, and stopping at checkpoints so the user
 runs git.
 
-## Data sources (all free)
+## Data sources
 
 | Feed | Source | Refresh | Cross-check / fallback |
 |---|---|---|---|
-| Schedule | ESPN `site.api.espn.com/.../nba/scoreboard?dates=YYYYMMDD` | Daily + every ingest | — |
-| Box scores (game logs) | ESPN `.../nba/summary?event={id}` → `boxscore.players` (MIN, PTS, FG, 3PT, FT, REB, AST, TO, STL, BLK, OREB, DREB, PF, +/-) | After each final | Mac-only `nba_api` backfill |
+| Schedule | ESPN `site.api.espn.com/.../nba/scoreboard?dates=YYYYMMDD` | Every ingest | — |
+| Box scores (game logs) | ESPN `.../nba/summary?event={id}` → `boxscore.players` (MIN, PTS, FG, 3PT, FT, REB, AST, TO, STL, BLK, OREB, DREB, PF, +/-), finals only | Every ingest until all of last night's finals are in | PropLine `/events/{id}/stats` (free) for the 10-player validation |
 | History backfill | `data/nba_edge.db` game logs (2019-20 onward; incomplete before 2023-24) | Once, from the Mac | — |
 | Injuries (primary) | Official NBA PDFs: `ak-static.cms.nba.com/referee/injury/Injury-Report_YYYY-MM-DD_HH_MM{AM,PM}.pdf`, 15-min slots, parsed with pdfplumber | Every 15 min, 9am–tip | — |
-| Injuries (cross-check) | ESPN `.../nba/injuries` (already archived by the repo) | Every 15 min | A disagreement with the official report blocks the prop |
-| Kalshi prices | `api.elections.kalshi.com/trade-api/v2` series KXNBAPTS / REB / AST / 3PT / PRA | Every 5 min on game days | — |
-| Book lines | Existing ESPN/DK scraper with provider timestamps; future timestamps go red | Every 15 min | — |
+| Injuries (secondary) | ESPN `.../nba/injuries` | Every 15 min | Both stored; disagreements flagged and block the prop |
+| Kalshi prices | `api.elections.kalshi.com/trade-api/v2` series KXNBAPTS / REB / AST / 3PT / PRA + NBA game markets | Every ingest on game days | — |
+| Book lines | PropLine `api.prop-line.com/v1` (`X-API-Key`), markets player_points / rebounds / assists / threes / points_rebounds_assists. Outcomes carry `player_id: "nba:<NBA.com id>"` | Every ingest on game days, **within 1,000 requests/day** | ESPN/DK scraper (`src/data/espn_props.py`); future timestamps go red |
 | Lineups | Injury report + recent rotation from box scores | — | — |
 
-The scheduled jobs never call stats.nba.com.
+No scheduled job calls stats.nba.com or cdn.nba.com. `nba_api` runs only on the Mac.
+
+**PropLine budget:** 1,000 requests/day on the free tier. The ingest runs 64 times a day
+(every 15 min, 9am–1am ET), so it needs about one PropLine call per run, using the bulk odds
+endpoint rather than one call per game. The validation and healthcheck use a few more.
+Each response carries `x-daily-remaining`, which the job records.
 
 ## Architecture
 
 ```
-sources (ESPN, NBA injury PDFs, Kalshi, nba_edge.db backfill)
+sources (ESPN, NBA injury PDFs, Kalshi, PropLine, nba_edge.db backfill)
    → worker/ (Python 3.12, GitHub Actions): ingest → project & price → grade & check
    → Postgres on Supabase (single source of truth; every row: source, provider_ts, fetched_at)
    → web/ (Next.js on Vercel, login-only, reads the DB only) → iPhone home screen
 ```
 
 Data only flows one way into the app: every number on screen is a database row with a source
-and a timestamp. Every table has a `sport` column from day one, so other leagues can be added later.
+and a timestamp. Every table has a `sport` column (default `'nba'`) from day one, so other
+leagues can be added later.
 
 ## Projection engine (Phase 4)
 
@@ -79,10 +86,10 @@ and a timestamp. Every table has a `sport` column from day one, so other leagues
 | Game logs | last night's finals loaded by 9am ET | — | any final missing |
 
 3. A prop is blocked, with the reason shown, when: the player is Out / Doubtful / Questionable / GTD; the team doesn't match across injury report, roster and odds; projected minutes < 15; the game has started; the line is > 2 pts off the cross-book median; or |model − no-vig market| > 15 pts ("model probably missing information").
-4. Jobs fail loudly: a `job_runs` row per run. On a game day a run is red if it loads 0 rows, finishes in < 2 s, or loads < 50% of the usual row count. A red run shows a banner in the app and sends an ntfy.sh push.
+4. Jobs fail loudly: a `job_runs` row per run. On a game day a run is red if it loads 0 rows, finishes in < 2 s, or loads < 50% of its trailing average. A red run exits non-zero and sends an ntfy.sh push to `NTFY_TOPIC`; the app shows a banner.
 5. Nightly grading: calibration in 5-point buckets per stat, Brier score, CLV against the Kalshi or book closing price.
 6. Probabilities are earned per stat: ≥ 200 graded props, and every bucket with ≥ 30 props within 3 pts of its stated rate. Until then the stat stays in research mode (projections and hit rates, no edge, no picks). Approval stays disabled and stakes stay $0 until then.
-7. Tests on every commit: parsers run against saved real responses (including a day with future timestamps), plus a replay test of one stored game day.
+7. Tests on every commit: parsers run against saved real responses (including a day with future timestamps, an empty game day and an unmatched player), plus a replay test of one stored game day.
 
 ## Build phases
 
@@ -90,9 +97,17 @@ Each phase ends at a check you can run without reading code. Don't start a phase
 previous one passes.
 
 1. **Accounts and skeleton** — `worker/` and `web/` folders, a Supabase project, GitHub Actions secrets.
-   *Check:* the `healthcheck` workflow, run from GitHub Actions, reaches Postgres, ESPN, the injury-PDF host and Kalshi. It also reports whether cdn.nba.com answers from cloud IPs.
-2. **Data pipeline** — schema, ingest jobs (schedule, boxscores, injuries_official, injuries_espn, kalshi, book_lines), `job_runs`, freshness stamps, backfill from `nba_edge.db`.
-   *Check:* three game days in a row with every job green, plus an automated check that 10 random players' game logs match the box score.
+   *Check:* the `healthcheck` workflow reaches Postgres, ESPN, the injury-PDF host and Kalshi from GitHub Actions.
+   **Passed 2026-11-10** (run 42912209921). cdn.nba.com: 403 from the runner. PropLine probe added afterwards: free tier returns props and box-score stats.
+2. **Data pipeline** (in progress) — in `worker/`:
+   - Schema migration in Supabase: `players, player_xref, teams, games, game_logs, injuries, kalshi_markets, kalshi_quotes, book_quotes, projections, picks, results, job_runs`. Every quote/injury row stores `source, provider_ts, fetched_at`; quotes are stored only when the price changes (500 MB cap).
+   - `player_xref`: one internal `player_id` → NBA.com ID (from `nba_edge.db`), ESPN ID, Kalshi name/ticker fragment, PropLine ID. Matched on team + normalized name; unmatched players go to a report and are never silently dropped.
+   - Ingest jobs, each with a CLI: `schedule` (ESPN), `boxscores` (ESPN, finals only), `injuries` (official PDF primary + ESPN secondary, both stored, disagreements flagged), `kalshi` (five KXNBA* prop series + NBA game markets), `propline` (book player props).
+   - `job_runs` on every job (rows_in, rows_out, duration, status) with the red-run rule and ntfy alerts above.
+   - Backfill script (Mac-only): `nba_edge.db` game logs → Postgres via `player_xref`, with before/after counts that must match and an unmatched-player count.
+   - Validation: 10 random players' ESPN `game_logs` rows from last night vs. PropLine box-score stats; any mismatch fails.
+   - GitHub Actions: `ingest` every 15 min 9am–1am ET, `grade` placeholder 6am ET, `healthcheck` manual. Node 24 action versions, `runs-on: ubuntu-24.04`.
+   *Check:* three game days in a row with every job green, plus the 10-player check passing.
 3. **Player page** — stat tabs, line stepper, hit-rate cards (L5 / L10 / L15 / season / H2H), filters, game-log chart, line chips with age. Installable as a PWA.
    *Check:* loads in < 2 s on the phone, and every number traces to a database row.
 4. **Projection engine** (above).
@@ -104,8 +119,9 @@ previous one passes.
 
 ## Costs and risks
 
-- $0/month: Supabase Free (500 MB; the 15-min ingest keeps it from pausing), GitHub Actions, Vercel Hobby.
+- $0/month: Supabase Free (500 MB; the 15-min ingest keeps it from pausing), GitHub Actions, Vercel Hobby, PropLine Free.
 - **500 MB cap:** store a quote only when the price changes, and thin to hourly after settlement.
+- **PropLine free quota (1,000/day):** one bulk odds call per ingest. If a night runs out of quota, book lines go amber/red through the freshness gates instead of failing silently.
 - **Unofficial endpoints change format:** fixture tests catch it. BALLDONTLIE All-Star ($9.99) is the paid fallback, used only if needed.
 - **The ESPN/DK book feed has had bad timestamps** (`docs/QUOTE_TIMESTAMP_AUDIT_2026-11-06.md`): freshness gates hide those quotes rather than trusting them.
 - **The model may not beat Kalshi's prices.** That's a normal outcome. Research mode keeps the app useful.
@@ -114,4 +130,4 @@ previous one passes.
 ## Open decisions
 
 - [ ] Public or private repo (public = free Actions minutes and a portfolio piece; the app stays login-only either way).
-- [ ] Retire the Streamlit dashboard once the player page ships (recommended).
+- [x] Retire the Streamlit dashboard after Phase 3 (decided 2026-11-10; untouched until then).

@@ -22,6 +22,7 @@ jobs:
       - name: Probe every source from a GitHub-hosted runner
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PROPLINE_API_KEY: ${{ secrets.PROPLINE_API_KEY }}
         run: python -m prop_worker.healthcheck --require-db --json healthcheck.json
       - uses: actions/upload-artifact@v4
         if: always()
