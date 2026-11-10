@@ -1,0 +1,3320 @@
+{
+ "timestamp": "2026-11-10T23:24:58Z",
+ "injuries": [
+  {
+   "id": "1",
+   "displayName": "Atlanta Hawks",
+   "injuries": [
+    {
+     "id": "538188",
+     "status": "Out",
+     "date": "2026-11-08T22:15Z",
+     "shortComment": "Newell (toe) has been ruled out for Monday's game against the Lakers.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Toe",
+      "location": "Leg",
+      "side": "Left",
+      "returnDate": "2026-11-13"
+     },
+     "athlete": {
+      "displayName": "Asa Newell",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4873201/asa-newell",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538186",
+     "status": "Out",
+     "date": "2026-11-08T22:13Z",
+     "shortComment": "Gilbert (knee) has been ruled out for Monday's game against the Lakers.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Inflammation",
+      "side": "Left",
+      "returnDate": "2026-11-13"
+     },
+     "athlete": {
+      "displayName": "Keshon Gilbert",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4585618/keshon-gilbert",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "-58751",
+     "status": "Out",
+     "date": "2026-10-19T19:38Z",
+     "shortComment": "Gueye underwent surgery Tuesday to repair a fractured left foot that he suffered during a workout last week, Brad Rowland of the Locked On Podcast Network reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Foot",
+      "location": "Leg",
+      "detail": "Fracture",
+      "side": "Left",
+      "returnDate": "2026-11-20"
+     },
+     "athlete": {
+      "displayName": "Mouhamed Gueye",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4712863/mouhamed-gueye",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "-57577",
+     "status": "Out",
+     "date": "2026-09-21T19:50Z",
+     "shortComment": "Veesaar was diagnosed with a torn right ACL and is expected to miss the 2026-27 season, the Hawks announced Monday.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OFS",
+       "abbreviation": "OFS"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "side": "Right",
+      "returnDate": "2027-07-01"
+     },
+     "athlete": {
+      "displayName": "Henri Veesaar",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5105571/henri-veesaar",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "17",
+   "displayName": "Brooklyn Nets",
+   "injuries": [
+    {
+     "id": "538506",
+     "status": "Day-To-Day",
+     "date": "2026-11-10T22:56Z",
+     "shortComment": "Traore (calf) is listed as questionable for Wednesday's game against New Orleans.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Calf",
+      "location": "Leg",
+      "detail": "Soreness",
+      "side": "Right",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Nolan Traore",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5279130/nolan-traore",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538505",
+     "status": "Out",
+     "date": "2026-11-10T22:51Z",
+     "shortComment": "Demin (leg) is probable for Wednesday's game against the Pelicans, Erik Slater of ClutchPoints.com reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Leg",
+      "location": "Leg",
+      "detail": "Bruise",
+      "side": "Right",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Egor Demin",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5175643/egor-demin",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "-60557",
+     "status": "Day-To-Day",
+     "date": "2026-11-08T16:21Z",
+     "shortComment": "Nelson signed a two-way contract with the Nets on Friday, Michael Scotto of HoopsHype.com reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "side": "Left",
+      "returnDate": "2026-11-10"
+     },
+     "athlete": {
+      "displayName": "Grant Nelson",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4702670/grant-nelson",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "30",
+   "displayName": "Charlotte Hornets",
+   "injuries": [
+    {
+     "id": "-60646",
+     "status": "Day-To-Day",
+     "date": "2026-11-10T02:51Z",
+     "shortComment": "Miller (groin) is listed as out for Monday's game against Cleveland.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Groin",
+      "location": "Groin",
+      "detail": "Soreness",
+      "side": "Right",
+      "returnDate": "2026-11-12"
+     },
+     "athlete": {
+      "displayName": "Brandon Miller",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4433287/brandon-miller",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "-60645",
+     "status": "Day-To-Day",
+     "date": "2026-11-10T02:51Z",
+     "shortComment": "Diabate (quadriceps) has been downgraded to out for Monday's game against Cleveland.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Quadriceps",
+      "location": "Leg",
+      "side": "Right",
+      "returnDate": "2026-11-12"
+     },
+     "athlete": {
+      "displayName": "Moussa Diabate",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4433249/moussa-diabate",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538195",
+     "status": "Out",
+     "date": "2026-11-08T22:35Z",
+     "shortComment": "Williams (hamstring) is out for Monday's game against the Cavaliers.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Hamstring",
+      "location": "Leg",
+      "side": "Right",
+      "returnDate": "2026-11-12"
+     },
+     "athlete": {
+      "displayName": "Grant Williams",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4066218/grant-williams",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538194",
+     "status": "Out",
+     "date": "2026-11-08T22:31Z",
+     "shortComment": "Knueppel (hamstring) was diagnosed with a left hamstring strain Sunday and will be re-evaluated in four weeks.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Hamstring",
+      "location": "Leg",
+      "detail": "Strain",
+      "side": "Left",
+      "returnDate": "2026-12-12"
+     },
+     "athlete": {
+      "displayName": "Kon Knueppel",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5061575/kon-knueppel",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538192",
+     "status": "Out",
+     "date": "2026-11-08T22:26Z",
+     "shortComment": "Schroder has been diagnosed with a left hamstring strain and will be reevaluated in two weeks, Michael Scotto of HoopsHype.com reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Hamstring",
+      "location": "Leg",
+      "detail": "Strain",
+      "side": "Left",
+      "returnDate": "2026-11-25"
+     },
+     "athlete": {
+      "displayName": "Dennis Schroder",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/3032979/dennis-schroder",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "4",
+   "displayName": "Chicago Bulls",
+   "injuries": [
+    {
+     "id": "538500",
+     "status": "Day-To-Day",
+     "date": "2026-11-10T22:21Z",
+     "shortComment": "Powell (shoulder) is listed as questionable for Wednesday's game versus the Spurs.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Shoulder",
+      "location": "Arm",
+      "detail": "Inflammation",
+      "side": "Right",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Norman Powell",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/2595516/norman-powell",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538498",
+     "status": "Day-To-Day",
+     "date": "2026-11-10T22:19Z",
+     "shortComment": "Awaka (back) is questionable for Wednesday's game against the Spurs.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Back",
+      "location": "Torso",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Tobe Awaka",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5105555/tobe-awaka",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538497",
+     "status": "Day-To-Day",
+     "date": "2026-11-10T22:19Z",
+     "shortComment": "Collins (illness) is questionable for Wednesday's game against the Spurs.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Illness",
+      "location": "Other",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Zach Collins",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4066650/zach-collins",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "5",
+   "displayName": "Cleveland Cavaliers",
+   "injuries": [
+    {
+     "id": "538496",
+     "status": "Out",
+     "date": "2026-11-10T22:12Z",
+     "shortComment": "Merrill (elbow) is listed as out for Wednesday's game against the Knicks.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Elbow",
+      "location": "Arm",
+      "side": "Right",
+      "returnDate": "2026-11-16"
+     },
+     "athlete": {
+      "displayName": "Sam Merrill",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4066757/sam-merrill",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538494",
+     "status": "Out",
+     "date": "2026-11-10T22:07Z",
+     "shortComment": "Tyson (ankle) is questionable to face the Knicks on Wednesday.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Ankle",
+      "location": "Leg",
+      "detail": "Sprain",
+      "side": "Right",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Jaylon Tyson",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4683747/jaylon-tyson",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "6",
+   "displayName": "Dallas Mavericks",
+   "injuries": [
+    {
+     "id": "-60654",
+     "status": "Day-To-Day",
+     "date": "2026-11-10T03:46Z",
+     "shortComment": "Johnson (leg) has been ruled out for Monday's game against the Pacers.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Leg",
+      "location": "Leg",
+      "returnDate": "2026-11-12"
+     },
+     "athlete": {
+      "displayName": "Morez Johnson Jr.",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4873153/morez-johnson-jr",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "537788",
+     "status": "Out",
+     "date": "2026-11-05T22:24Z",
+     "shortComment": "De Larrea (knee) is out for Friday's game against Utah.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Strain",
+      "side": "Right",
+      "returnDate": "2026-11-12"
+     },
+     "athlete": {
+      "displayName": "Sergio de Larrea",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5279129/sergio-de-larrea",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "537125",
+     "status": "Out",
+     "date": "2026-11-01T23:19Z",
+     "shortComment": "Biberovic (heel) is listed as out for Monday's game against Sacramento.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Heel",
+      "location": "Leg",
+      "detail": "Inflammation",
+      "side": "Right",
+      "returnDate": "2026-11-12"
+     },
+     "athlete": {
+      "displayName": "Tarik Biberovic",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5148538/tarik-biberovic",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "537120",
+     "status": "Out",
+     "date": "2026-11-01T22:57Z",
+     "shortComment": "Lively (foot) is listed as out for Monday's game against the Kings.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Foot",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Right",
+      "returnDate": "2026-11-12"
+     },
+     "athlete": {
+      "displayName": "Dereck Lively II",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4683688/dereck-lively-ii",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "7",
+   "displayName": "Denver Nuggets",
+   "injuries": [
+    {
+     "id": "534858",
+     "status": "Out",
+     "date": "2026-10-17T00:52Z",
+     "shortComment": "Strawther (knee) was diagnosed with a left knee sprain Friday and will be re-evaluated in six weeks, Vinny Benedetto of The Denver Gazette reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Sprain",
+      "side": "Left",
+      "returnDate": "2026-11-29"
+     },
+     "athlete": {
+      "displayName": "Julian Strawther",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4432181/julian-strawther",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "8",
+   "displayName": "Detroit Pistons",
+   "injuries": [
+    {
+     "id": "538306",
+     "status": "Out",
+     "date": "2026-11-09T18:54Z",
+     "shortComment": "Joe (hip) is out for Monday against the Wizards.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Hip",
+      "location": "Torso",
+      "detail": "Bruise",
+      "side": "Right",
+      "returnDate": "2026-11-17"
+     },
+     "athlete": {
+      "displayName": "Isaiah Joe",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4395702/isaiah-joe",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538124",
+     "status": "Out",
+     "date": "2026-11-08T16:05Z",
+     "shortComment": "Duren (hamstring) has begun on-court activity and will be re-evaluated in two weeks, Hunter Patterson of The Athletic reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Hamstring",
+      "location": "Leg",
+      "detail": "Strain",
+      "side": "Right",
+      "returnDate": "2026-11-24"
+     },
+     "athlete": {
+      "displayName": "Jalen Duren",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4433621/jalen-duren",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "9",
+   "displayName": "Golden State Warriors",
+   "injuries": [
+    {
+     "id": "538488",
+     "status": "Out",
+     "date": "2026-11-10T21:36Z",
+     "shortComment": "Payton (knee) is out for Wednesday's game against Houston.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Inflammation",
+      "side": "Left",
+      "returnDate": "2026-11-13"
+     },
+     "athlete": {
+      "displayName": "Gary Payton II",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/3134903/gary-payton-ii",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538487",
+     "status": "Out",
+     "date": "2026-11-10T21:34Z",
+     "shortComment": "Richard (thumb) is questionable for Wednesday's game against Houston.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Thumb",
+      "location": "Arm",
+      "side": "Left",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Will Richard",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4897262/will-richard",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538486",
+     "status": "Out",
+     "date": "2026-11-10T21:24Z",
+     "shortComment": "Williams (hamstring) will miss at least one week, per Anthony Slater of ESPN.com.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Hamstring",
+      "location": "Leg",
+      "detail": "Not Specified",
+      "side": "Left",
+      "returnDate": "2026-11-22"
+     },
+     "athlete": {
+      "displayName": "Brandon Williams",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4397040/brandon-williams",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "537861",
+     "status": "Out",
+     "date": "2026-11-06T21:26Z",
+     "shortComment": "Porzingis announced on his social media that he's stepping away from basketball.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Illness",
+      "location": "Other",
+      "returnDate": "2027-01-02"
+     },
+     "athlete": {
+      "displayName": "Kristaps Porzingis",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/3102531/kristaps-porzingis",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "534700",
+     "status": "Out",
+     "date": "2026-10-16T16:14Z",
+     "shortComment": "Moody (knee) is progressing toward a potential return between December and January after rupturing his left patellar tendon in March, Anthony Slater of ESPN reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Left",
+      "returnDate": "2026-12-01"
+     },
+     "athlete": {
+      "displayName": "Moses Moody",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4432171/moses-moody",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "534699",
+     "status": "Out",
+     "date": "2026-10-16T16:11Z",
+     "shortComment": "Butler (knee) could return sometime between January and February as he continues recovering from a torn right ACL, Anthony Slater of ESPN reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Right",
+      "returnDate": "2027-01-02"
+     },
+     "athlete": {
+      "displayName": "Jimmy Butler III",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/6430/jimmy-butler-iii",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "10",
+   "displayName": "Houston Rockets",
+   "injuries": [
+    {
+     "id": "538372",
+     "status": "Out",
+     "date": "2026-11-09T23:56Z",
+     "shortComment": "Head coach Ime Udoka stated Monday that Capela (ankle) could be cleared to return either Nov. 15 in Washington or Nov. 16 in Miami, Lachard Binkley of SI.com reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Ankle",
+      "location": "Leg",
+      "detail": "Sprain",
+      "side": "Right",
+      "returnDate": "2026-11-15"
+     },
+     "athlete": {
+      "displayName": "Clint Capela",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/3102529/clint-capela",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538371",
+     "status": "Out",
+     "date": "2026-11-09T23:55Z",
+     "shortComment": "Head coach Ime Udoka said Monday that Adams could return as soon as Sunday's game at Washington, Lachard Binkley of SI.com reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Calf",
+      "location": "Leg",
+      "detail": "Strain",
+      "side": "Right",
+      "returnDate": "2026-11-15"
+     },
+     "athlete": {
+      "displayName": "Steven Adams",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/2991235/steven-adams",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "11",
+   "displayName": "Indiana Pacers",
+   "injuries": [
+    {
+     "id": "538493",
+     "status": "Day-To-Day",
+     "date": "2026-11-10T22:05Z",
+     "shortComment": "McConnell is questionable for Wednesday's game against the Wizards due to a strained right hamstring.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Hamstring",
+      "location": "Leg",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "T.J. McConnell",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/2530530/tj-mcconnell",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538013",
+     "status": "Out",
+     "date": "2026-11-07T20:46Z",
+     "shortComment": "Haliburton (hamstring) is progressing well but does not have a timetable to return, Dustin Dopirak of The Indianapolis Star reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Hamstring",
+      "location": "Leg",
+      "detail": "Strain",
+      "side": "Left",
+      "returnDate": "2026-11-13"
+     },
+     "athlete": {
+      "displayName": "Tyrese Haliburton",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4396993/tyrese-haliburton",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "536814",
+     "status": "Out",
+     "date": "2026-10-30T19:06Z",
+     "shortComment": "Furphy (knee) is practicing with the G League's Noblesville Boom, per Alex Golden of SI.com.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Right",
+      "returnDate": "2027-01-02"
+     },
+     "athlete": {
+      "displayName": "Johnny Furphy",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5157066/johnny-furphy",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "536529",
+     "status": "Out",
+     "date": "2026-10-28T21:41Z",
+     "shortComment": "Head coach Rick Carlise confirmed Sheppard will miss \"months\" after undergoing surgery to repair a torn meniscus in his left knee, Tony East of Forbes.com reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "side": "Left",
+      "returnDate": "2027-01-02"
+     },
+     "athlete": {
+      "displayName": "Ben Sheppard",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4433076/ben-sheppard",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "12",
+   "displayName": "LA Clippers",
+   "injuries": [
+    {
+     "id": "538376",
+     "status": "Out",
+     "date": "2026-11-10T00:05Z",
+     "shortComment": "Niederhauser (foot) is out for Tuesday's game against Phoenix, Ohm Youngmisuk of ESPN.com reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Foot",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Right",
+      "returnDate": "2026-11-17"
+     },
+     "athlete": {
+      "displayName": "Yanic Konan Niederhauser",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5108024/yanic-konan-niederhauser",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538374",
+     "status": "Out",
+     "date": "2026-11-10T00:00Z",
+     "shortComment": "Ingram (Achilles) has been ruled out for Tuesday's game at Phoenix, Ohm Youngmisuk of ESPN.com reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Achilles",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Right",
+      "returnDate": "2026-11-13"
+     },
+     "athlete": {
+      "displayName": "Brandon Ingram",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/3913176/brandon-ingram",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538373",
+     "status": "Day-To-Day",
+     "date": "2026-11-09T23:59Z",
+     "shortComment": "Christie is questionable for Tuesday's game against the Suns due to a right ankle sprain, Ohm Youngmisuk of ESPN.com reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Ankle",
+      "location": "Leg",
+      "returnDate": "2026-11-10"
+     },
+     "athlete": {
+      "displayName": "Cam Christie",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4845363/cam-christie",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "534472",
+     "status": "Out",
+     "date": "2026-10-15T01:03Z",
+     "shortComment": "Beal (knee) will not be ready for the start of the regular season, NBA writer Justin Russo reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Inflammation",
+      "side": "Right",
+      "returnDate": "2026-11-29"
+     },
+     "athlete": {
+      "displayName": "Bradley Beal",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/6580/bradley-beal",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "532401",
+     "status": "Out",
+     "date": "2026-08-26T20:04Z",
+     "shortComment": "Miller underwent surgery Wednesday to repair a torn left rotator cuff and will be re-evaluated in six months, per Law Murray of The Athletic.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Shoulder",
+      "location": "Arm",
+      "detail": "Surgery",
+      "side": "Left",
+      "returnDate": "2027-03-02"
+     },
+     "athlete": {
+      "displayName": "Jordan Miller",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4396818/jordan-miller",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "13",
+   "displayName": "Los Angeles Lakers",
+   "injuries": [
+    {
+     "id": "538509",
+     "status": "Day-To-Day",
+     "date": "2026-11-10T23:07Z",
+     "shortComment": "Grimes (finger) is listed as questionable for Wednesday's game in Milwaukee.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Finger",
+      "location": "Arm",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Quentin Grimes",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4397014/quentin-grimes",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "29",
+   "displayName": "Memphis Grizzlies",
+   "injuries": [
+    {
+     "id": "-60685",
+     "status": "Out",
+     "date": "2026-11-10T23:10Z",
+     "shortComment": "Post (head) didn't return to Monday's 118-102 win over the Raptors. He ended the night with one rebound in two minutes.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Head",
+      "location": "Head",
+      "returnDate": "2026-11-13"
+     },
+     "athlete": {
+      "displayName": "Quinten Post",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4593016/quinten-post",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "-60652",
+     "status": "Day-To-Day",
+     "date": "2026-11-10T03:01Z",
+     "shortComment": "Stewart (knee) has been ruled out for Monday's game against Toronto.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Bruise",
+      "side": "Right",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Isaiah Stewart",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4432810/isaiah-stewart",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538207",
+     "status": "Out",
+     "date": "2026-11-08T23:07Z",
+     "shortComment": "Pippen (back) won't play in Monday's game versus the Raptors.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Back",
+      "location": "Torso",
+      "detail": "Soreness",
+      "returnDate": "2026-11-21"
+     },
+     "athlete": {
+      "displayName": "Scotty Pippen Jr.",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4431785/scotty-pippen-jr",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "537982",
+     "status": "Out",
+     "date": "2026-11-07T17:24Z",
+     "shortComment": "Saunders signed a two-way contract with the Grizzlies on Saturday, Shams Charania of ESPN reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Right",
+      "returnDate": "2026-12-01"
+     },
+     "athlete": {
+      "displayName": "Richie Saunders",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5105462/richie-saunders",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "14",
+   "displayName": "Miami Heat",
+   "injuries": [
+    {
+     "id": "538359",
+     "status": "Day-To-Day",
+     "date": "2026-11-09T23:05Z",
+     "shortComment": "Antetokounmpo is probable for Tuesday's game against the Jazz due to a right wrist sprain.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Wrist",
+      "location": "Arm",
+      "detail": "Sprain",
+      "side": "Right",
+      "returnDate": "2026-11-10"
+     },
+     "athlete": {
+      "displayName": "Giannis Antetokounmpo",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/3032977/giannis-antetokounmpo",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "15",
+   "displayName": "Milwaukee Bucks",
+   "injuries": [
+    {
+     "id": "-60687",
+     "status": "Out",
+     "date": "2026-11-10T23:20Z",
+     "shortComment": "Herro (contusion) is listed as questionable for Tuesday's game against the Knicks.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Bruise",
+      "side": "Right",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Tyler Herro",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4395725/tyler-herro",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "16",
+   "displayName": "Minnesota Timberwolves",
+   "injuries": [
+    {
+     "id": "536718",
+     "status": "Out",
+     "date": "2026-10-29T18:33Z",
+     "shortComment": "Edwards underwent a successful arthroscopic procedure on his right knee Thursday, the Timberwolves announced.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Right",
+      "returnDate": "2026-12-21"
+     },
+     "athlete": {
+      "displayName": "Anthony Edwards",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4594268/anthony-edwards",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "533214",
+     "status": "Out",
+     "date": "2026-10-05T20:53Z",
+     "shortComment": "DiVincenzo (Achilles) remains confident that he'll return during the 2026-27 season, Jon Krawczynski of The Athletic reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Achilles",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Right",
+      "returnDate": "2027-04-02"
+     },
+     "athlete": {
+      "displayName": "Donte DiVincenzo",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/3934673/donte-divincenzo",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "3",
+   "displayName": "New Orleans Pelicans",
+   "injuries": [
+    {
+     "id": "538481",
+     "status": "Out",
+     "date": "2026-11-10T19:26Z",
+     "shortComment": "Watford (ankle) is out for Wednesday's game against the Nets.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Ankle",
+      "location": "Leg",
+      "returnDate": "2026-11-13"
+     },
+     "athlete": {
+      "displayName": "Trendon Watford",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4431675/trendon-watford",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538479",
+     "status": "Day-To-Day",
+     "date": "2026-11-10T19:22Z",
+     "shortComment": "Murphy (knee) is probable for Wednesday's game against the Nets.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Tendinitis",
+      "side": "Not Specified",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Trey Murphy III",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4397688/trey-murphy-iii",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "537773",
+     "status": "Out",
+     "date": "2026-11-05T20:47Z",
+     "shortComment": "Missi (knee) is out for Friday's game against Minnesota.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Bruise",
+      "side": "Left",
+      "returnDate": "2026-11-16"
+     },
+     "athlete": {
+      "displayName": "Yves Missi",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5061589/yves-missi",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "18",
+   "displayName": "New York Knicks",
+   "injuries": [
+    {
+     "id": "538507",
+     "status": "Out",
+     "date": "2026-11-10T22:58Z",
+     "shortComment": "Hart (illness) won't play Tuesday against the Bucks, Kristian Winfield of the New York Daily News reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Illness",
+      "location": "Other",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Josh Hart",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/3062679/josh-hart",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "25",
+   "displayName": "Oklahoma City Thunder",
+   "injuries": [
+    {
+     "id": "538392",
+     "status": "Out",
+     "date": "2026-11-10T00:53Z",
+     "shortComment": "Williams (back) has been ruled out for Tuesday's game against the Trail Blazers.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Back",
+      "location": "Torso",
+      "detail": "Spasms",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Jaylin Williams",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4432823/jaylin-williams",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "537482",
+     "status": "Out",
+     "date": "2026-11-03T22:45Z",
+     "shortComment": "Sorber (knee) is out for Wednesday's game against the Cavaliers.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "returnDate": "2026-11-13"
+     },
+     "athlete": {
+      "displayName": "Thomas Sorber",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5061603/thomas-sorber",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "536873",
+     "status": "Out",
+     "date": "2026-10-31T01:16Z",
+     "shortComment": "Wallace underwent surgery Friday to repair a torn labrum in his left shoulder and will be re-evaluated before the end of the regular season, Clemente Almanza of USA Today reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Shoulder",
+      "location": "Arm",
+      "detail": "Surgery",
+      "side": "Left",
+      "returnDate": "2027-03-02"
+     },
+     "athlete": {
+      "displayName": "Cason Wallace",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4683692/cason-wallace",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "536870",
+     "status": "Out",
+     "date": "2026-10-31T01:02Z",
+     "shortComment": "Holmgren underwent a biological treatment Friday to address a small patellar tendon tear and will miss at least 8-10 weeks, Nick Crain of Slam reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "side": "Right",
+      "returnDate": "2027-01-02"
+     },
+     "athlete": {
+      "displayName": "Chet Holmgren",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4433255/chet-holmgren",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "536553",
+     "status": "Out",
+     "date": "2026-10-28T23:41Z",
+     "shortComment": "Williams (leg) underwent successful surgery Wednesday to \"address a fractured left fibula and reconstruction of ankle ligaments following a fracture and dislocation.\" He will be re-evaluated before the end of the regular season, Tim MacMahon of ESPN.com reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Leg",
+      "location": "Leg",
+      "detail": "Fracture",
+      "side": "Left",
+      "returnDate": "2027-03-02"
+     },
+     "athlete": {
+      "displayName": "Jalen Williams",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4593803/jalen-williams",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "19",
+   "displayName": "Orlando Magic",
+   "injuries": [
+    {
+     "id": "538446",
+     "status": "Day-To-Day",
+     "date": "2026-11-10T16:50Z",
+     "shortComment": "Da Silva is questionable for Tuesday's game against the Kings due to a left calf strain.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Calf",
+      "location": "Leg",
+      "detail": "Strain",
+      "side": "Left",
+      "returnDate": "2026-11-10"
+     },
+     "athlete": {
+      "displayName": "Tristan da Silva",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4702382/tristan-da-silva",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538363",
+     "status": "Out",
+     "date": "2026-11-09T23:11Z",
+     "shortComment": "Suggs (knee) has been ruled out for Tuesday's game against the Kings.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "side": "Right",
+      "returnDate": "2026-11-16"
+     },
+     "athlete": {
+      "displayName": "Jalen Suggs",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4432165/jalen-suggs",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538362",
+     "status": "Out",
+     "date": "2026-11-09T23:10Z",
+     "shortComment": "Isaac (knee) is out for Tuesday's game against Sacramento.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Not Specified",
+      "side": "Left",
+      "returnDate": "2026-11-16"
+     },
+     "athlete": {
+      "displayName": "Jonathan Isaac",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4065654/jonathan-isaac",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "535844",
+     "status": "Out",
+     "date": "2026-10-24T16:47Z",
+     "shortComment": "Banchero is expected to be sidelined for the next four-to-six weeks due to a right high-ankle sprain, Shams Charania of ESPN reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Ankle",
+      "location": "Leg",
+      "detail": "Sprain",
+      "side": "Right",
+      "returnDate": "2026-11-22"
+     },
+     "athlete": {
+      "displayName": "Paolo Banchero",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4432573/paolo-banchero",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "535097",
+     "status": "Out",
+     "date": "2026-10-17T22:19Z",
+     "shortComment": "Penda was diagnosed with a partially torn right hamstring Saturday, Jason Beede of the Orlando Sentinel reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Hamstring",
+      "location": "Leg",
+      "detail": "Strain",
+      "side": "Right",
+      "returnDate": "2026-11-18"
+     },
+     "athlete": {
+      "displayName": "Noah Penda",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5214637/noah-penda",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "-57605",
+     "status": "Out",
+     "date": "2026-09-28T21:33Z",
+     "shortComment": "Team president Jeff Weltman said Monday that Nelson (ankle) remains about a month away from returning to the court after offseason surgery, per Philip Rossman-Reich of OrlandoMagicDaily.com.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Ankle",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Left",
+      "returnDate": "2026-11-18"
+     },
+     "athlete": {
+      "displayName": "Izaiyah Nelson",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5107251/izaiyah-nelson",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "20",
+   "displayName": "Philadelphia 76ers",
+   "injuries": [
+    {
+     "id": "538349",
+     "status": "Out",
+     "date": "2026-11-09T22:03Z",
+     "shortComment": "Bona (back) is out for Tuesday's game against the Celtics.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Back",
+      "location": "Torso",
+      "detail": "Sprain",
+      "returnDate": "2026-11-12"
+     },
+     "athlete": {
+      "displayName": "Adem Bona",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5105637/adem-bona",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "537539",
+     "status": "Out",
+     "date": "2026-11-04T22:41Z",
+     "shortComment": "Head coach Nick Nurse said Wednesday that Barlow (back) likely needs another 10-12 days before he's cleared to return to the court, Derek Bodner of AllPHLY.com reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Back",
+      "location": "Torso",
+      "detail": "Fracture",
+      "side": "Not Specified",
+      "returnDate": "2026-11-18"
+     },
+     "athlete": {
+      "displayName": "Dominick Barlow",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4870562/dominick-barlow",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "533362",
+     "status": "Out",
+     "date": "2026-10-06T19:17Z",
+     "shortComment": "Hukporti has sustained a season-ending ruptured right Achilles tendon, per Shams Charania of ESPN.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OFS",
+       "abbreviation": "OFS"
+      },
+      "type": "Achilles",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Right",
+      "returnDate": "2027-10-01"
+     },
+     "athlete": {
+      "displayName": "Ariel Hukporti",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4871141/ariel-hukporti",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "21",
+   "displayName": "Phoenix Suns",
+   "injuries": [
+    {
+     "id": "532554",
+     "status": "Out",
+     "date": "2026-09-11T16:03Z",
+     "shortComment": "Williams underwent surgery Thursday to repair a torn labrum in his left shoulder and will miss an extended period of time, Shams Charania of ESPN reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Shoulder",
+      "location": "Arm",
+      "detail": "Surgery",
+      "side": "Left",
+      "returnDate": "2027-02-03"
+     },
+     "athlete": {
+      "displayName": "Mark Williams",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4701232/mark-williams",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "22",
+   "displayName": "Portland Trail Blazers",
+   "injuries": [
+    {
+     "id": "538064",
+     "status": "Out",
+     "date": "2026-11-08T02:18Z",
+     "shortComment": "Head coach Micah Nori said Morant met with a doctor in Los Angeles, who gave him a positive outlook on his recovery from the hamstring injury. While Nori declined to update Morant's timetable, he added Morant \"may not be out for as long as we thought,\" Trail Blazers Insider Sean Highkin reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Hamstring",
+      "location": "Leg",
+      "detail": "Not Specified",
+      "side": "Left",
+      "returnDate": "2026-12-01"
+     },
+     "athlete": {
+      "displayName": "Ja Morant",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4279888/ja-morant",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "537626",
+     "status": "Out",
+     "date": "2026-11-05T05:17Z",
+     "shortComment": "Head coach Micah Nori said that Krejci suffered a left leg fracture during Wednesday's 132-119 win over the Suns, Brett Siegel of ClutchPoints.com reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Ankle",
+      "location": "Leg",
+      "side": "Left",
+      "returnDate": "2027-01-02"
+     },
+     "athlete": {
+      "displayName": "Vit Krejci",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4578893/vit-krejci",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "532395",
+     "status": "Out",
+     "date": "2026-08-24T20:23Z",
+     "shortComment": "Sharpe suffered a torn meniscus in his knee and is expected to miss six months, per Shams Charania of ESPN.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Right",
+      "returnDate": "2027-03-02"
+     },
+     "athlete": {
+      "displayName": "Shaedon Sharpe",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4914336/shaedon-sharpe",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "23",
+   "displayName": "Sacramento Kings",
+   "injuries": [
+    {
+     "id": "538383",
+     "status": "Out",
+     "date": "2026-11-10T00:37Z",
+     "shortComment": "Raynaud (knee) has been ruled out for Tuesday's game against Orlando.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Dislocated",
+      "side": "Right",
+      "returnDate": "2026-11-15"
+     },
+     "athlete": {
+      "displayName": "Maxime Raynaud",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4898371/maxime-raynaud",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "535308",
+     "status": "Out",
+     "date": "2026-10-21T04:22Z",
+     "shortComment": "Simmons underwent successful surgery Tuesday to repair a torn right Achilles tendon, James Ham of ESPN 1320 Sacramento reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OFS",
+       "abbreviation": "OFS"
+      },
+      "type": "Achilles",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Right",
+      "returnDate": "2027-10-01"
+     },
+     "athlete": {
+      "displayName": "Ben Simmons",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/3907387/ben-simmons",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "24",
+   "displayName": "San Antonio Spurs",
+   "injuries": [
+    {
+     "id": "538503",
+     "status": "Day-To-Day",
+     "date": "2026-11-10T22:48Z",
+     "shortComment": "Vassell (groin) is listed as questionable for Wednesday's game versus the Bulls, NBA reporter Matthew Tynan reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Groin",
+      "location": "Groin",
+      "side": "Left",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Devin Vassell",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4395630/devin-vassell",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538502",
+     "status": "Out",
+     "date": "2026-11-10T22:46Z",
+     "shortComment": "Harris (calf) is out for Wednesday's game against Chicago, Jared Weiss of The Athletic reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Calf",
+      "location": "Leg",
+      "detail": "Strain",
+      "side": "Left",
+      "returnDate": "2026-11-19"
+     },
+     "athlete": {
+      "displayName": "Tobias Harris",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/6440/tobias-harris",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "533226",
+     "status": "Out",
+     "date": "2026-10-05T21:43Z",
+     "shortComment": "Quaintance has been around the team but has not yet been cleared for basketball activities, Matt Guzman of SI.com reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Right",
+      "returnDate": "2026-12-03"
+     },
+     "athlete": {
+      "displayName": "Jayden Quaintance",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5101845/jayden-quaintance",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "28",
+   "displayName": "Toronto Raptors",
+   "injuries": [
+    {
+     "id": "-60676",
+     "status": "Day-To-Day",
+     "date": "2026-11-10T21:54Z",
+     "shortComment": "Jackson-Davis is questionable for Wednesday's game against Boston with an illness.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Illness",
+      "location": "Other",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Trayce Jackson-Davis",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4431684/trayce-jackson-davis",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538491",
+     "status": "Day-To-Day",
+     "date": "2026-11-10T21:51Z",
+     "shortComment": "Murray-Boyles (illness) is questionable for Wednesday's game against the Celtics.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Illness",
+      "location": "Other",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Collin Murray-Boyles",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/5093267/collin-murray-boyles",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538490",
+     "status": "Day-To-Day",
+     "date": "2026-11-10T21:49Z",
+     "shortComment": "Quickley (hamstring) is questionable for Wednesday's game against Boston.",
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Hamstring",
+      "location": "Leg",
+      "side": "Right",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Immanuel Quickley",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4395724/immanuel-quickley",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538489",
+     "status": "Out",
+     "date": "2026-11-10T21:48Z",
+     "shortComment": "Barnes (groin) is out for Wednesday's game against Boston.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Groin",
+      "location": "Groin",
+      "detail": "Soreness",
+      "side": "Left",
+      "returnDate": "2026-11-12"
+     },
+     "athlete": {
+      "displayName": "Scottie Barnes",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4433134/scottie-barnes",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538468",
+     "status": "Out",
+     "date": "2026-11-10T17:33Z",
+     "shortComment": "Leonard (knee) is continuing the reconditioning process, and another update will be provided in one week, Blake Murphy of Sportsnet.ca reports.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Inflammation",
+      "side": "Left",
+      "returnDate": "2026-11-23"
+     },
+     "athlete": {
+      "displayName": "Kawhi Leonard",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/6450/kawhi-leonard",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538181",
+     "status": "Out",
+     "date": "2026-11-08T21:20Z",
+     "shortComment": "Bittle (foot) is listed as out for Monday's game against Memphis.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Foot",
+      "location": "Leg",
+      "detail": "Fracture",
+      "side": "Right",
+      "returnDate": "2026-11-15"
+     },
+     "athlete": {
+      "displayName": "Nate Bittle",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4432586/nate-bittle",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "26",
+   "displayName": "Utah Jazz",
+   "injuries": [
+    {
+     "id": "538471",
+     "status": "Out",
+     "date": "2026-11-10T18:30Z",
+     "shortComment": "Markkanen is out for Tuesday's game versus the Heat with a right wrist sprain.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Wrist",
+      "location": "Arm",
+      "detail": "Sprain",
+      "side": "Right",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Lauri Markkanen",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4066336/lauri-markkanen",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "538378",
+     "status": "Out",
+     "date": "2026-11-10T00:08Z",
+     "shortComment": "George (ankle) has been ruled out for Tuesday's game against the Heat.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Ankle",
+      "location": "Leg",
+      "detail": "Sprain",
+      "side": "Right",
+      "returnDate": "2026-11-11"
+     },
+     "athlete": {
+      "displayName": "Keyonte George",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4433627/keyonte-george",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "537851",
+     "status": "Out",
+     "date": "2026-11-06T18:20Z",
+     "shortComment": "Nurkic (toe) has begun participating in on-court activities as he continues recovering from a right foot injury sustained during an Oct. 4 preseason game against Denver. He will be re-evaluated in two weeks, the Jazz announced Friday.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Foot",
+      "location": "Leg",
+      "detail": "Strain",
+      "side": "Right",
+      "returnDate": "2026-11-20"
+     },
+     "athlete": {
+      "displayName": "Jusuf Nurkic",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/3102530/jusuf-nurkic",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "536354",
+     "status": "Out",
+     "date": "2026-10-27T19:25Z",
+     "shortComment": "Jackson has been diagnosed with a torn MCL in his right knee and will be sidelined for 6-to-8 weeks, per Shams Charania of ESPN.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Not Specified",
+      "side": "Right",
+      "returnDate": "2026-12-14"
+     },
+     "athlete": {
+      "displayName": "Jaren Jackson Jr.",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4277961/jaren-jackson-jr",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "27",
+   "displayName": "Washington Wizards",
+   "injuries": [
+    {
+     "id": "538189",
+     "status": "Out",
+     "date": "2026-11-08T22:17Z",
+     "shortComment": "Vukcevic (hip) has been ruled out for Monday's game against Detroit.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Hip",
+      "location": "Torso",
+      "detail": "Pinched Nerve",
+      "side": "Left",
+      "returnDate": "2026-11-16"
+     },
+     "athlete": {
+      "displayName": "Tristan Vukcevic",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4997537/tristan-vukcevic",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "537207",
+     "status": "Out",
+     "date": "2026-11-02T18:22Z",
+     "shortComment": "The Wizards announced Monday that Beekman sustained a right acromioclavicular joint injury and will be re-evaluated in approximately three weeks.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Shoulder",
+      "location": "Arm",
+      "returnDate": "2026-12-03"
+     },
+     "athlete": {
+      "displayName": "Reece Beekman",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4432187/reece-beekman",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "536492",
+     "status": "Out",
+     "date": "2026-10-28T18:38Z",
+     "shortComment": "Champagnie (foot) is expected to miss several months, per Josh Robbins of The Athletic.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Foot",
+      "location": "Leg",
+      "detail": "Not Specified",
+      "side": "Right",
+      "returnDate": "2027-02-25"
+     },
+     "athlete": {
+      "displayName": "Justin Champagnie",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4432907/justin-champagnie",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "-57028",
+     "status": "Out",
+     "date": "2026-07-30T20:11Z",
+     "shortComment": "The Wizards announced Thursday that Watkins has undergone surgery for a torn ACL.",
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Left",
+      "returnDate": "2027-04-02"
+     },
+     "athlete": {
+      "displayName": "Jamir Watkins",
+      "links": [
+       {
+        "language": "en-US",
+        "rel": [
+         "playercard",
+         "desktop",
+         "athlete"
+        ],
+        "href": "https://www.espn.com/nba/player/_/id/4606840/jamir-watkins",
+        "text": "Player Card",
+        "shortText": "Player Card",
+        "isExternal": false,
+        "isPremium": false
+       }
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}

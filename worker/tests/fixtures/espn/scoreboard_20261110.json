@@ -1,0 +1,400 @@
+{
+ "events": [
+  {
+   "id": "401909960",
+   "date": "2026-11-11T00:30Z",
+   "name": "Milwaukee Bucks at New York Knicks",
+   "season": {
+    "year": 2027,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0.0",
+    "period": 0,
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Tue, November 10th at 7:30 PM EST",
+     "shortDetail": "11/10 - 7:30 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401909960",
+     "date": "2026-11-11T00:30Z",
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0.0",
+      "period": 0,
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Tue, November 10th at 7:30 PM EST",
+       "shortDetail": "11/10 - 7:30 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "winner": null,
+       "team": {
+        "id": "18",
+        "abbreviation": "NY",
+        "displayName": "New York Knicks"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "winner": null,
+       "team": {
+        "id": "15",
+        "abbreviation": "MIL",
+        "displayName": "Milwaukee Bucks"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401909961",
+   "date": "2026-11-11T01:00Z",
+   "name": "Boston Celtics at Philadelphia 76ers",
+   "season": {
+    "year": 2027,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0.0",
+    "period": 0,
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Tue, November 10th at 8:00 PM EST",
+     "shortDetail": "11/10 - 8:00 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401909961",
+     "date": "2026-11-11T01:00Z",
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0.0",
+      "period": 0,
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Tue, November 10th at 8:00 PM EST",
+       "shortDetail": "11/10 - 8:00 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "winner": null,
+       "team": {
+        "id": "20",
+        "abbreviation": "PHI",
+        "displayName": "Philadelphia 76ers"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "winner": null,
+       "team": {
+        "id": "2",
+        "abbreviation": "BOS",
+        "displayName": "Boston Celtics"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401909962",
+   "date": "2026-11-11T02:00Z",
+   "name": "LA Clippers at Phoenix Suns",
+   "season": {
+    "year": 2027,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0.0",
+    "period": 0,
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Tue, November 10th at 9:00 PM EST",
+     "shortDetail": "11/10 - 9:00 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401909962",
+     "date": "2026-11-11T02:00Z",
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0.0",
+      "period": 0,
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Tue, November 10th at 9:00 PM EST",
+       "shortDetail": "11/10 - 9:00 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "winner": null,
+       "team": {
+        "id": "21",
+        "abbreviation": "PHX",
+        "displayName": "Phoenix Suns"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "winner": null,
+       "team": {
+        "id": "12",
+        "abbreviation": "LAC",
+        "displayName": "LA Clippers"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401909963",
+   "date": "2026-11-11T02:00Z",
+   "name": "Miami Heat at Utah Jazz",
+   "season": {
+    "year": 2027,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0.0",
+    "period": 0,
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Tue, November 10th at 9:00 PM EST",
+     "shortDetail": "11/10 - 9:00 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401909963",
+     "date": "2026-11-11T02:00Z",
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0.0",
+      "period": 0,
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Tue, November 10th at 9:00 PM EST",
+       "shortDetail": "11/10 - 9:00 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "winner": null,
+       "team": {
+        "id": "26",
+        "abbreviation": "UTAH",
+        "displayName": "Utah Jazz"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "winner": null,
+       "team": {
+        "id": "14",
+        "abbreviation": "MIA",
+        "displayName": "Miami Heat"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401909964",
+   "date": "2026-11-11T03:00Z",
+   "name": "Orlando Magic at Sacramento Kings",
+   "season": {
+    "year": 2027,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0.0",
+    "period": 0,
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Tue, November 10th at 10:00 PM EST",
+     "shortDetail": "11/10 - 10:00 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401909964",
+     "date": "2026-11-11T03:00Z",
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0.0",
+      "period": 0,
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Tue, November 10th at 10:00 PM EST",
+       "shortDetail": "11/10 - 10:00 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "winner": null,
+       "team": {
+        "id": "23",
+        "abbreviation": "SAC",
+        "displayName": "Sacramento Kings"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "winner": null,
+       "team": {
+        "id": "19",
+        "abbreviation": "ORL",
+        "displayName": "Orlando Magic"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401909965",
+   "date": "2026-11-11T04:00Z",
+   "name": "Oklahoma City Thunder at Portland Trail Blazers",
+   "season": {
+    "year": 2027,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0.0",
+    "period": 0,
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Tue, November 10th at 11:00 PM EST",
+     "shortDetail": "11/10 - 11:00 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401909965",
+     "date": "2026-11-11T04:00Z",
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0.0",
+      "period": 0,
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Tue, November 10th at 11:00 PM EST",
+       "shortDetail": "11/10 - 11:00 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "winner": null,
+       "team": {
+        "id": "22",
+        "abbreviation": "POR",
+        "displayName": "Portland Trail Blazers"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "winner": null,
+       "team": {
+        "id": "25",
+        "abbreviation": "OKC",
+        "displayName": "Oklahoma City Thunder"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -102,8 +102,20 @@ previous one passes.
 2. **Data pipeline** (in progress) — in `worker/`:
    - Schema migration in Supabase: `players, player_xref, teams, games, game_logs, injuries, kalshi_markets, kalshi_quotes, book_quotes, projections, picks, results, job_runs`. Every quote/injury row stores `source, provider_ts, fetched_at`; quotes are stored only when the price changes (500 MB cap).
    - `player_xref`: one internal `player_id` → NBA.com ID (from `nba_edge.db`), ESPN ID, Kalshi name/ticker fragment, PropLine ID. Matched on team + normalized name; unmatched players go to a report and are never silently dropped.
+     **Built 2026-11-10** (`worker/prop_worker/xref.py`). PropLine joins directly on `nba:<NBA.com id>`. ESPN and Kalshi match on team + normalized name, then the same team with last name + first initial. The last fallback (`name_unique_stale_team`) links only when the name is unique league-wide and our team for the player is unknown or from before this season: offseason moves and rookies. A player with current-season games for another team is never auto-linked. ESPN rosters keep `players.team_abbr` current. Manual fixes go in `worker/xref_overrides.csv`. Local rehearsal against the live feeds: ESPN 518/520, PropLine 94/94, Kalshi 87/87; the 2 unmatched are real (a player missing from `nba_edge.db`, and a trade in the last few days).
    - Ingest jobs, each with a CLI: `schedule` (ESPN), `boxscores` (ESPN, finals only), `injuries` (official PDF primary + ESPN secondary, both stored, disagreements flagged), `kalshi` (five KXNBA* prop series + NBA game markets), `propline` (book player props).
    - `job_runs` on every job (rows_in, rows_out, duration, status) with the red-run rule and ntfy alerts above.
+     **Built 2026-11-10** (`worker/prop_worker/jobs/`, `runner.py`, `ingest.py`, `status.py`). Jobs: `rosters` (once per slate day), `schedule`, `boxscores`, `injuries`, `kalshi`, `propline`. Checks built into the jobs:
+     - **boxscores:** a game loads only if each team's player points add up to its final score. Rows for unmatched players wait in `pending_rows` and are re-applied once the player resolves.
+     - **injuries:** the official PDF is parsed from word positions, with wrapped reasons and page breaks handled. Disagreements with ESPN go to `injury_flags`; G League assignments are excluded.
+     - **kalshi:** a market's line is stored only when its "N+" title matches its strike.
+     - **propline:** main lines only, pregame only, from the 9 books.
+
+     Two refinements to the red-run rules, based on a live rehearsal:
+     - **Trailing average:** compares rows per game or event, and only against runs at about the same ET time of day (±1 h). Volume grows through the day as teams file reports and books post props.
+     - **"< 2 s":** red only when the run is also under 25% of that job's usual duration. The jobs normally take 0.1–2.5 s, so a flat 2 s floor turned every run red. `RED_DURATION_MODE = "absolute"` restores the literal rule.
+
+     **Storage finding:** even with change-only storage, about 1,600 prices change per evening run. That projects to roughly 20–35 MB a day, so pruning of settled quotes is needed before the ingest runs unattended past about two weeks.
    - Backfill script (Mac-only): `nba_edge.db` game logs → Postgres via `player_xref`, with before/after counts that must match and an unmatched-player count.
    - Validation: 10 random players' ESPN `game_logs` rows from last night vs. PropLine box-score stats; any mismatch fails.
    - GitHub Actions: `ingest` every 15 min 9am–1am ET, `grade` placeholder 6am ET, `healthcheck` manual. Node 24 action versions, `runs-on: ubuntu-24.04`.

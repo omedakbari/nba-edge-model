@@ -1,0 +1,136 @@
+{
+ "timestamp": "2026-11-10T22:41:57Z",
+ "status": "success",
+ "season": {
+  "year": 2027,
+  "displayName": "2026-27",
+  "type": 2,
+  "name": "Regular Season"
+ },
+ "team": {
+  "id": "18",
+  "abbreviation": "NY",
+  "displayName": "New York Knicks"
+ },
+ "athletes": [
+  {
+   "id": "4683730",
+   "fullName": "Jaden Akins",
+   "displayName": "Jaden Akins",
+   "shortName": "J. Akins",
+   "jersey": "14"
+  },
+  {
+   "id": "4277869",
+   "fullName": "Jose Alvarado",
+   "displayName": "Jose Alvarado",
+   "shortName": "J. Alvarado",
+   "jersey": "5"
+  },
+  {
+   "id": "3934719",
+   "fullName": "OG Anunoby",
+   "displayName": "OG Anunoby",
+   "shortName": "O. Anunoby",
+   "jersey": "8"
+  },
+  {
+   "id": "3147657",
+   "fullName": "Mikal Bridges",
+   "displayName": "Mikal Bridges",
+   "shortName": "M. Bridges",
+   "jersey": "25"
+  },
+  {
+   "id": "3934672",
+   "fullName": "Jalen Brunson",
+   "displayName": "Jalen Brunson",
+   "shortName": "J. Brunson",
+   "jersey": "11"
+  },
+  {
+   "id": "2528426",
+   "fullName": "Jordan Clarkson",
+   "displayName": "Jordan Clarkson",
+   "shortName": "J. Clarkson",
+   "jersey": "00"
+  },
+  {
+   "id": "5211983",
+   "fullName": "Pacome Dadiet",
+   "displayName": "Pacome Dadiet",
+   "shortName": "P. Dadiet",
+   "jersey": "4"
+  },
+  {
+   "id": "5289900",
+   "fullName": "Mohamed Diawara",
+   "displayName": "Mohamed Diawara",
+   "shortName": "M. Diawara",
+   "jersey": "51"
+  },
+  {
+   "id": "6585",
+   "fullName": "Andre Drummond",
+   "displayName": "Andre Drummond",
+   "shortName": "A. Drummond",
+   "jersey": "0"
+  },
+  {
+   "id": "3062679",
+   "fullName": "Josh Hart",
+   "displayName": "Josh Hart",
+   "shortName": "J. Hart",
+   "jersey": "3"
+  },
+  {
+   "id": "4897943",
+   "fullName": "Dalton Knecht",
+   "displayName": "Dalton Knecht",
+   "shortName": "D. Knecht",
+   "jersey": "99"
+  },
+  {
+   "id": "4433225",
+   "fullName": "Tyler Kolek",
+   "displayName": "Tyler Kolek",
+   "shortName": "T. Kolek",
+   "jersey": "13"
+  },
+  {
+   "id": "4431823",
+   "fullName": "Miles McBride",
+   "displayName": "Miles McBride",
+   "shortName": "M. McBride",
+   "jersey": "2"
+  },
+  {
+   "id": "4838721",
+   "fullName": "Tyler Nickel",
+   "displayName": "Tyler Nickel",
+   "shortName": "T. Nickel",
+   "jersey": "55"
+  },
+  {
+   "id": "3914044",
+   "fullName": "Landry Shamet",
+   "displayName": "Landry Shamet",
+   "shortName": "L. Shamet",
+   "jersey": "44"
+  },
+  {
+   "id": "3136195",
+   "fullName": "Karl-Anthony Towns",
+   "displayName": "Karl-Anthony Towns",
+   "shortName": "K. Towns",
+   "jersey": "32"
+  },
+  {
+   "id": "4432808",
+   "fullName": "James Wiseman",
+   "displayName": "James Wiseman",
+   "shortName": "J. Wiseman",
+   "jersey": "35"
+  }
+ ]
+}
