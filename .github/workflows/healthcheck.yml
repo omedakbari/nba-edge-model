@@ -1,0 +1,30 @@
+name: healthcheck
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  healthcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: worker/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: pytest -q tests
+      - name: Probe every source from a GitHub-hosted runner
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python -m prop_worker.healthcheck --require-db --json healthcheck.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: healthcheck
+          path: worker/healthcheck.json

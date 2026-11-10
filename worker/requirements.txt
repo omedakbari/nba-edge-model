@@ -1,0 +1,6 @@
+# Prop Research App worker (GitHub Actions + Mac). Keep this list small.
+requests>=2.31
+python-dotenv>=1.0
+psycopg[binary]>=3.2
+pdfplumber>=0.11
+pytest>=8.0
