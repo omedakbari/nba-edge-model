@@ -1,0 +1,4 @@
+# Local test extras. pgserver bundles a throwaway Postgres so the database tests run on the Mac
+# without Docker; CI uses a Postgres service container via TEST_DATABASE_URL instead.
+-r requirements.txt
+pgserver>=0.1.4
