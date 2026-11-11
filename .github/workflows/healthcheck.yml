@@ -1,22 +1,32 @@
 name: healthcheck
 
-# Manual only: probes every source from a GitHub-hosted runner.
+# Manual only: probes every source from a GitHub-hosted runner. The JSON artifact is public on a
+# public repo: it holds probe names, PASS/FAIL, latency and redacted details only (no secrets,
+# hosts or users), and expires after 7 days.
 on:
   workflow_dispatch: {}
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   healthcheck:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: worker
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Mask values derived from secrets (DB host, user, project ref, password)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PROPLINE_API_KEY: ${{ secrets.PROPLINE_API_KEY }}
+        run: python3 -m prop_worker.masking
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: "3.12"
           cache: pip
@@ -27,8 +37,10 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           PROPLINE_API_KEY: ${{ secrets.PROPLINE_API_KEY }}
         run: python -m prop_worker.healthcheck --require-db --json healthcheck.json
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         if: always()
         with:
           name: healthcheck
           path: worker/healthcheck.json
+          retention-days: 7
+          if-no-files-found: ignore

@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 
 from . import config
 from .http import make_session
+from .masking import redact
 
 PASS, FAIL, SKIP, INFO = "PASS", "FAIL", "SKIP", "INFO"
 
@@ -41,6 +42,7 @@ def _timed(name, required, fn, *args):
         status, detail = fn(*args)
     except Exception as exc:  # any failure is a FAIL with the reason, never a crash
         status, detail = FAIL, f"{type(exc).__name__}: {exc}"[:300]
+    detail = redact(detail)       # the summary and the uploaded artifact are public
     if not required and status == FAIL:
         status = INFO
     return Probe(name, status, required, int((time.monotonic() - t0) * 1000), detail)
@@ -51,11 +53,19 @@ def _timed(name, required, fn, *args):
 def probe_postgres(db_url: str, require: bool):
     if not db_url:
         return (FAIL if require else SKIP), "SUPABASE_DB_URL not set"
-    import psycopg
+    from .db import connect, is_local
 
-    with psycopg.connect(db_url, connect_timeout=10) as conn:
+    with connect(db_url, connect_timeout=10) as conn:
         version = conn.execute("select version()").fetchone()[0]
-    return PASS, version.split(",")[0]
+        tls = conn.execute("select ssl from pg_stat_ssl where pid = pg_backend_pid()").fetchone()
+        no_rls = [r[0] for r in conn.execute(
+            """select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+               where n.nspname = 'public' and c.relkind in ('r', 'p') and not c.relrowsecurity""")]
+    if not (tls and tls[0]) and not is_local(db_url):
+        return FAIL, "connected WITHOUT TLS"
+    if no_rls:
+        return FAIL, f"tables without row-level security: {no_rls}"
+    return PASS, f"{version.split(',')[0]}; TLS {'on' if tls and tls[0] else 'off (local)'}; RLS on every table"
 
 
 def probe_espn_scoreboard(session, now_et: datetime):
@@ -284,7 +294,7 @@ def render(results: list[Probe]) -> str:
     lines += [f"| {p.name} | {p.status} | {p.latency_ms} | {p.detail.replace('|', '/')} |" for p in results]
     lines.append("")
     lines.append(f"**Overall: {'PASS' if overall_ok(results) else 'FAIL'}**")
-    return "\n".join(lines)
+    return redact("\n".join(lines))
 
 
 def main(argv=None) -> int:
@@ -298,8 +308,8 @@ def main(argv=None) -> int:
     table = render(results)
     print(table)
     if args.json:
-        with open(args.json, "w") as f:
-            json.dump([asdict(p) for p in results], f, indent=2)
+        with open(args.json, "w") as f:   # uploaded as a public artifact: redact again, belt and braces
+            f.write(redact(json.dumps([asdict(p) for p in results], indent=2)))
     summary = os.getenv("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a") as f:

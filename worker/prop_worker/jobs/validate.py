@@ -9,8 +9,12 @@ Second sources:
   nba_edge_db  data/nba_edge.db (NBA.com via nba_api, Mac only). The old pipeline must already have
                ingested that night, or the check fails saying so.
 
-Sample: ESPN rows (source 'espn', played) on the latest finished game date before today (or --date),
-chosen with a seed derived from the date, so a re-run checks the same players.
+Date: LAST NIGHT only (the slate before today's, rolling over at 6am ET), or --date. It never falls
+back to an older date. If last night had no games the run is green and not expected; if any of last
+night's finals has no game_logs rows the run is red and names the games.
+Rows: whatever game_logs source holds that night (ESPN, or nba_edge_db where the backfill superseded
+ESPN), played rows only, chosen with a seed derived from the date so a re-run checks the same players.
+Against nba_edge_db only ESPN rows are sampled (comparing nba_edge.db with itself proves nothing).
 Compared: pts reb ast fg3m fg3a fgm fga ftm fta oreb dreb stl blk tov pf exactly; minutes within 1
 (ESPN reports whole minutes); plus/minus too against nba_edge_db.
 Red on ANY mismatch, including a sampled player missing from the second source.
@@ -22,6 +26,7 @@ import argparse
 import random
 import sqlite3
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 from .. import config
@@ -40,25 +45,30 @@ DEFAULT_SQLITE = Path(__file__).resolve().parents[3] / "data" / "nba_edge.db"
 
 
 def target_date(ctx: Context):
-    if ctx.options.get("date"):
-        return ctx.options["date"]
-    row = ctx.conn.execute(
-        """select max(game_date) from games where sport = %s and status = 'final' and game_date < %s""",
-        (config.SPORT, ctx.now_et.date())).fetchone()
-    return row[0]
+    """Last night: the slate before the current one. Never an older fallback."""
+    return ctx.options.get("date") or (ctx.slate - timedelta(days=1))
 
 
-def sample(ctx: Context, d, n: int) -> list[dict]:
+def missing_box_scores(ctx: Context, d) -> list[str]:
+    rows = ctx.conn.execute(
+        """select g.away_team || '@' || g.home_team from games g
+           where g.sport = %s and g.game_date = %s and g.status = 'final'
+             and not exists (select 1 from game_logs l where l.game_id = g.game_id)
+           order by g.start_time""", (config.SPORT, d)).fetchall()
+    return [r[0] for r in rows]
+
+
+def sample(ctx: Context, d, n: int, sources=("espn", "nba_edge_db")) -> list[dict]:
     rows = ctx.conn.execute(
         f"""select l.player_id, p.full_name, l.team_abbr, g.game_id, g.espn_event_id, g.propline_event_id,
-                   g.home_team, g.away_team, g.start_time, x.external_id as nba_id, l.min, {", ".join("l." + c for c in EXACT)},
-                   l.plus_minus
+                   g.home_team, g.away_team, g.game_date, x.external_id as nba_id, l.source, l.min,
+                   {", ".join("l." + c for c in EXACT)}, l.plus_minus
             from game_logs l join games g using (game_id) join players p using (player_id)
             left join player_xref x on x.player_id = l.player_id and x.source = 'nba'
-            where l.sport = %s and l.source = 'espn' and not l.did_not_play and g.game_date = %s
-            order by l.player_id, g.game_id""", (config.SPORT, d)).fetchall()
+            where l.sport = %s and l.source = any(%s) and not l.did_not_play and g.game_date = %s
+            order by l.player_id, g.game_id""", (config.SPORT, list(sources), d)).fetchall()
     cols = ["player_id", "name", "team", "game_id", "espn_event_id", "propline_event_id", "home", "away",
-            "start_time", "nba_id", "min", *EXACT, "plus_minus"]
+            "game_date", "nba_id", "source", "min", *EXACT, "plus_minus"]
     rows = [dict(zip(cols, r)) for r in rows]
     return random.Random(f"validate:{d.isoformat()}").sample(rows, min(n, len(rows)))
 
@@ -103,16 +113,18 @@ def find_in(players: dict[tuple[str, str], dict], name: str, team: str) -> dict 
 
 
 def propline_event_id(ctx: Context, game: dict, key: str) -> str | None:
+    """The PropLine event for this game: same ET date AND same home team. Matched on games.game_date,
+    which is always set (backfilled games have no start_time)."""
     if game["propline_event_id"]:
         return game["propline_event_id"]
-    r = ctx.session.get(f"{config.PROPLINE_API}/sports/{config.PROPLINE_SPORT}/scores", params={"days_from": 3},
-                        headers={"X-API-Key": key})
+    days_back = max(3, (ctx.now_et.date() - game["game_date"]).days + 2)
+    r = ctx.session.get(f"{config.PROPLINE_API}/sports/{config.PROPLINE_SPORT}/scores",
+                        params={"days_from": days_back}, headers={"X-API-Key": key})
     r.raise_for_status()
     by_pl = ctx.teams["by_propline_id"]
     for e in r.json() or []:
         start = parse_ts(e.get("commence_time"))
-        if start and et_date(start) == et_date(game["start_time"] or start) and \
-                by_pl.get(e.get("home_team_id")) == game["home"]:
+        if start and et_date(start) == game["game_date"] and by_pl.get(e.get("home_team_id")) == game["home"]:
             return str(e["id"])
     return None
 
@@ -161,16 +173,29 @@ def second_source_sqlite(path: str, d, picks: list[dict]) -> tuple[dict, list[st
 
 def run(ctx: Context) -> JobResult:
     d = target_date(ctx)
-    if d is None:
-        return JobResult(0, 0, expected=False, meta={"skipped": "no finished games yet"})
     against = ctx.options.get("against") or "propline"
     n = ctx.options.get("players") or 10
-    finals = ctx.conn.execute("select count(*) from games where sport = %s and game_date = %s and status = 'final'",
-                              (config.SPORT, d)).fetchone()[0]
-    picks = sample(ctx, d, n)
+    scheduled, finals = ctx.conn.execute(
+        """select count(*) filter (where status not in ('postponed', 'canceled')),
+                  count(*) filter (where status = 'final')
+           from games where sport = %s and game_date = %s""", (config.SPORT, d)).fetchone()
+    meta = {"date": d.isoformat(), "against": against, "games": scheduled, "finals": finals}
+    if not scheduled:
+        return JobResult(0, 0, expected=False, meta={**meta, "skipped": f"no games on {d}"})
+    red, warnings = [], []
+    if finals < scheduled:
+        warnings.append(f"{scheduled - finals} of {scheduled} game(s) on {d} not final yet")
+    missing = missing_box_scores(ctx, d)
+    if missing:
+        red.append(f"last night's box scores are missing for {len(missing)} of {finals} final(s) on {d}: "
+                   + ", ".join(missing))
+    sources = ("espn",) if against == "nba_edge_db" else ("espn", "nba_edge_db")
+    picks = sample(ctx, d, n, sources)
     if not picks:
-        reasons = [f"{finals} final(s) on {d} but no ESPN game_logs rows to check"] if finals else []
-        return JobResult(0, 0, expected=bool(finals), red_reasons=reasons, meta={"date": d.isoformat()})
+        if finals and not missing:
+            red.append(f"no ESPN rows on {d} to compare with nba_edge.db (that night's rows came from nba_edge.db itself)"
+                       if against == "nba_edge_db" else f"no played game_logs rows on {d}")
+        return JobResult(0, 0, expected=bool(finals), red_reasons=red, warnings=warnings, meta=meta)
 
     if against == "propline":
         found, problems = second_source_propline(ctx, picks)
@@ -188,13 +213,14 @@ def run(ctx: Context) -> JobResult:
             continue
         diffs = compare(p, found[p["player_id"]], label, with_plus_minus=against == "nba_edge_db")
         mismatches += diffs
-        checked.append({"player": p["name"], "team": p["team"], "ok": not diffs})
+        checked.append({"player": p["name"], "team": p["team"], "source": p["source"], "ok": not diffs})
     matched = sum(c["ok"] for c in checked)
+    if mismatches:
+        red.append(f"{len(mismatches)} mismatch(es) vs {label} on {d}: " + "; ".join(mismatches[:8]))
     return JobResult(rows_in=len(picks), rows_out=matched, expected=True, units=None,
-                     red_reasons=[f"{len(mismatches)} mismatch(es) vs {label} on {d}: " + "; ".join(mismatches[:8])]
-                     if mismatches else [],
-                     meta={"date": d.isoformat(), "against": against, "players": checked,
-                           "mismatches": mismatches})
+                     red_reasons=red, warnings=warnings,
+                     meta={**meta, "players": checked, "mismatches": mismatches,
+                           "row_sources": sorted({p["source"] for p in picks})})
 
 
 def main(argv=None) -> int:
@@ -211,7 +237,11 @@ def main(argv=None) -> int:
                          options={"date": args.date, "against": args.against, "sqlite": args.sqlite,
                                   "players": args.players})
     for c in (outs[0].meta or {}).get("players", []):
-        print(f"  {'OK      ' if c['ok'] else 'MISMATCH'} {c['player']} ({c['team']})")
+        print(f"  {'OK      ' if c['ok'] else 'MISMATCH'} {c['player']} ({c['team']}, row from {c['source']})")
+    for w in outs[0].warnings:
+        print(f"  warning: {w}")
+    for r in outs[0].red_reasons:
+        print(f"  RED: {r}")
     for m in (outs[0].meta or {}).get("mismatches", []):
         print(f"  - {m}")
     return code

@@ -128,10 +128,16 @@ previous one passes.
        - All workflows use Node 24 actions (checkout, setup-python and upload-artifact v7; cache v6) on `ubuntu-24.04`, and the virtualenv is cached.
      - **Validation** (`jobs/validate.py`): 10 seeded-random players' ESPN rows from the last game night, compared with PropLine's free box score. It runs nightly in CI; `--against nba_edge_db` runs it on the Mac instead. Any mismatch is red, including a player missing from the second source. A live rehearsal for Nov 10 matched 10 of 10 against PropLine.
      - **Prune** (`jobs/prune.py`): implements the approved rule, vacuums afterwards, and turns red when the database passes 400 MB.
-   - **Open: long-term quote storage.** The approved rule keeps 2 rows per quote line forever. Measured at about 780 B per book row and 500 B per Kalshi row, with about 900 book lines and 250 Kalshi tickers per game, that is roughly 1.2–1.7 MB per game. The database would reach the 400 MB alarm in about 4–5 weeks, and a season needs around 1.5 GB. The proposed fix collapses each settled line into one narrow `quote_history` row (opening and closing for both sides), for an estimated 0.1–0.15 MB per game. Awaiting a decision.
-   - **Open: Actions minutes.** The repo is private, and the ingest needs about 1,977 runs a month at 1 or more billed minutes each. That is right at GitHub Free's 2,000-minute limit. Options: make the repo public (recommended; standard runners are free and the app stays login-only), ingest every 20–30 min, or a paid plan.
-   - Validation: 10 random players' ESPN `game_logs` rows from last night vs. PropLine box-score stats; any mismatch fails.
-   - GitHub Actions: `ingest` every 15 min 9am–1am ET, `grade` placeholder 6am ET, `healthcheck` manual. Node 24 action versions, `runs-on: ubuntu-24.04`.
+   - **Long-term quote storage (approved and built 2026-11-11).** After 2 days, each line folds into one `quote_history` row: opening and closing for both sides, keyed by a 16-byte hash. Rows a pick used stay in full, and settled Kalshi market metadata is deleted (migration 005, `jobs/prune.py`).
+     - Dry run on real data (`--as-of`): 646 KB → 202 KB per game, 69% smaller. That's with only about 3 snapshots per line; full game days compact more.
+     - Projection: roughly 270–330 MB for the rest of the season on top of about 76 MB, under the prune job's 400 MB alarm. Next levers if needed: fewer books long-term, or fewer Kalshi strikes.
+   - **Actions minutes: resolved.** The repo went public on 2026-11-11, so standard runners are free; ingest stays every 15 min.
+   - **validate fix (2026-11-11):** it checks last night only and never an older date. It compares whichever `game_logs` source holds that night (ESPN, or `nba_edge_db` where the backfill superseded ESPN), and fails loudly, naming the games, if any of last night's finals has no box score. PropLine events now match on `game_date`, because backfilled games have no start time.
+   - **Security hardening (2026-11-11):** see `docs/SECURITY.md`.
+     - Migration 004: RLS everywhere, no privileges for `anon`/`authenticated` (now or for future tables), `security_invoker` views, fixed `search_path`. `migrate` re-verifies all of it on every run.
+     - TLS required on every remote connection.
+     - Secrets masked and redacted in every log, summary, alert and artifact.
+     - Workflows: SHA-pinned actions, `permissions: {}` by default, no privileged triggers. Regression tests enforce each rule.
    *Check:* three game days in a row with every job green, plus the 10-player check passing.
 3. **Player page** — stat tabs, line stepper, hit-rate cards (L5 / L10 / L15 / season / H2H), filters, game-log chart, line chips with age. Installable as a PWA.
    *Check:* loads in < 2 s on the phone, and every number traces to a database row.
@@ -154,6 +160,6 @@ previous one passes.
 
 ## Open decisions
 
-- [ ] Public or private repo (public = free Actions minutes and a portfolio piece; the app stays login-only either way). **Now blocking:** the 15-min ingest needs about 1,977 runs a month, against 2,000 free private-repo minutes (see Phase 2).
-- [ ] Long-term quote storage: compact settled history into `quote_history` (recommended) vs. fewer books vs. a paid tier (see Phase 2).
+- [x] Public repo (2026-11-11). Hardening in `docs/SECURITY.md`.
+- [x] Long-term quote storage: compact `quote_history` (2026-11-11).
 - [x] Retire the Streamlit dashboard after Phase 3 (decided 2026-11-10; untouched until then).

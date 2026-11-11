@@ -27,6 +27,7 @@ from typing import Callable
 from . import config
 from .db import connect
 from .http import make_session
+from .masking import redact
 from .util import slate_date, utcnow
 
 
@@ -162,8 +163,8 @@ def run_job(ctx: Context, name: str, fn: Callable[[Context], JobResult],
         conn.commit()
     except Exception as exc:  # noqa: BLE001 — any failure becomes an 'error' run, never a crash
         conn.rollback()
-        error = f"{type(exc).__name__}: {exc}"
-        tb = traceback.format_exc(limit=6)
+        error = redact(f"{type(exc).__name__}: {exc}")          # never store/print a secret
+        tb = redact(traceback.format_exc(limit=6))
     duration = clock() - t0
 
     is_game_day = ctx.games_on(ctx.slate) > 0
@@ -173,6 +174,8 @@ def run_job(ctx: Context, name: str, fn: Callable[[Context], JobResult],
     else:
         trailing, n, median_s = trailing_average(conn, name, ctx.now)
         reasons, volume = judge(result, duration, is_game_day, trailing, n, median_s)
+        reasons = [redact(r) for r in reasons]
+        result.warnings = [redact(w) for w in result.warnings]
         outcome = RunOutcome(name, "red" if reasons else "green", duration, result.rows_in, result.rows_out,
                              is_game_day, result.expected, volume, trailing, reasons, result.warnings,
                              None, result.meta)
@@ -197,7 +200,7 @@ def render_summary(outcomes: list[RunOutcome], when: datetime, title: str = "Ing
         notes = "; ".join(o.red_reasons + [f"warn: {w}" for w in o.warnings]).replace("|", "/")
         lines.append(f"| {o.job} | {o.status.upper()} | {o.duration_s:.1f} | {_n(o.rows_in)} | {_n(o.rows_out)} | "
                      f"{_f(o.volume)} | {_f(o.trailing_avg)} | {'yes' if o.is_game_day else 'no'} | {notes} |")
-    return "\n".join(lines)
+    return redact("\n".join(lines))
 
 
 def _n(v):
@@ -217,7 +220,7 @@ def alert_text(outcomes: list[RunOutcome]) -> tuple[str, str] | None:
     run_url = _actions_run_url()
     if run_url:
         body.append(run_url)
-    return title, "\n".join(body)
+    return title, redact("\n".join(body))
 
 
 def _actions_run_url() -> str | None:
@@ -236,7 +239,7 @@ def send_ntfy(title: str, body: str, session=None, topic: str | None = None) -> 
         r.raise_for_status()
         return "ntfy sent"
     except Exception as exc:  # noqa: BLE001 — a failed alert must not hide the red run itself
-        return f"ntfy FAILED: {type(exc).__name__}: {exc}"
+        return redact(f"ntfy FAILED: {type(exc).__name__}: {exc}")   # the topic is a secret too
 
 
 def run_all(jobs: list[tuple[str, Callable]], conn=None, session=None, now=None, options=None,

@@ -14,27 +14,36 @@ on:
         required: false
         default: ""
 
+permissions: {}
+
 concurrency:
   group: ingest            # never overlaps an ingest run (shared tables, VACUUM)
   cancel-in-progress: false
-
-permissions:
-  contents: read
 
 jobs:
   nightly:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: worker
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Mask values derived from secrets (DB host, user, project ref, password)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PROPLINE_API_KEY: ${{ secrets.PROPLINE_API_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python3 -m prop_worker.masking
       - id: py
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: "3.12"
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: worker/.venv
           key: venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-${{ hashFiles('worker/requirements.txt') }}

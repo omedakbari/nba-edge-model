@@ -1,26 +1,28 @@
 name: tests
 
 # Worker tests on every push / PR that touches the worker, including the database tests against a
-# throwaway Postgres service (never Supabase).
+# throwaway Postgres service (never Supabase). Uses no secrets, so fork PRs (which need your
+# approval to run) can't reach anything sensitive. Only the unprivileged pull_request trigger is used.
 on:
   push:
-    paths: ["worker/**", ".github/workflows/tests.yml"]
+    paths: ["worker/**", ".github/**"]
   pull_request:
-    paths: ["worker/**", ".github/workflows/tests.yml"]
+    paths: ["worker/**", ".github/**"]
   workflow_dispatch: {}
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   pytest:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
     services:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_PASSWORD: postgres     # throwaway container, only reachable from this job
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
@@ -28,8 +30,10 @@ jobs:
       run:
         working-directory: worker
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: "3.12"
           cache: pip

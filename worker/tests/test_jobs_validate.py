@@ -94,10 +94,37 @@ def test_no_games_last_night_is_green_not_expected(pg):
     assert out.status == "green" and out.expected is False
 
 
-def test_finals_without_espn_rows_is_red(pg):
+def test_missing_box_scores_last_night_fail_loudly_and_name_the_games(pg):
     run(pg, _net(), "schedule", schedule.run)                    # final known, box score never loaded
     out = run(pg, _net(), "validate", validate.run, propline_key="k")
-    assert out.status == "red" and "no ESPN game_logs rows" in out.red_reasons[0]
+    assert out.status == "red"
+    assert out.red_reasons[0] == "last night's box scores are missing for 1 of 1 final(s) on 2026-11-09: NOP@GSW"
+
+
+def test_backfill_superseded_night_is_still_validated(pg):
+    # The reported bug: the backfill replaced ESPN's rows for that night with nba_edge_db rows.
+    net = _loaded(pg)
+    pg.execute("update game_logs set source = 'nba_edge_db'")
+    pg.commit()
+    out = run(pg, net, "validate", validate.run, propline_key="k")
+    assert out.status == "green", out.red_reasons
+    assert out.rows_out == 10 and out.meta["row_sources"] == ["nba_edge_db"]
+
+
+def test_never_falls_back_to_an_older_date(pg):
+    _loaded(pg)                                                  # Nov 9 fully loaded
+    two_days_later = datetime(2026, 11, 11, 6, 5, tzinfo=config.ET)   # last night = Nov 10: no games in this DB
+    out = _run(pg, Net(), "validate", validate.run, now=two_days_later, propline_key="k")
+    assert out.status == "green" and out.expected is False and out.meta["date"] == "2026-11-10"
+    assert out.rows_in == 0                                      # did NOT quietly check Nov 9 instead
+
+
+def test_against_nba_edge_db_refuses_to_compare_it_with_itself(pg, tmp_path):
+    _loaded(pg)
+    pg.execute("update game_logs set source = 'nba_edge_db'")
+    pg.commit()
+    out = run(pg, Net(), "validate", validate.run, against="nba_edge_db", sqlite=_sqlite(tmp_path, []))
+    assert out.status == "red" and "came from nba_edge.db itself" in out.red_reasons[0]
 
 
 def _sqlite(tmp_path, rows):
@@ -142,3 +169,17 @@ def test_explicit_date(pg, d):
     net = _loaded(pg)
     out = run(pg, net, "validate", validate.run, propline_key="k", date=d)
     assert out.meta["date"] == d.isoformat()
+
+
+def test_event_lookup_uses_game_date_when_start_time_is_missing(pg):
+    # Backfilled games have no start_time; the same home team plays again two days later.
+    net = _loaded(pg)
+    pg.execute("update games set start_time = null, source = 'nba_edge_db'")
+    pg.execute("update game_logs set source = 'nba_edge_db'")
+    pg.commit()
+    wrong = {"id": "999999", "commence_time": "2026-11-12T03:00:00Z", "home_team_id": "nba:1610612744", "status": "final"}
+    right = {"id": "641560", "commence_time": "2026-11-10T03:00:00Z", "home_team_id": "nba:1610612744", "status": "final"}
+    net.add(lambda u, p: u.endswith("/scores"), Resp([wrong, right]))      # wrong one listed first
+    out = run(pg, net, "validate", validate.run, propline_key="k")
+    assert out.status == "green", out.red_reasons
+    assert not any("/events/999999/" in c[0] for c in net.calls)
