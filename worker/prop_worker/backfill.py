@@ -184,6 +184,8 @@ def backfill(conn, rows: list[tuple]) -> dict:
     result["problems"] = problems
     if problems:
         raise BackfillMismatch("; ".join(problems))
+    # The staging copy (~25 MB) would otherwise count in pg_database_size until the session ends.
+    conn.execute("drop table pg_temp.stage_logs")
     return result
 
 
@@ -209,6 +211,10 @@ def render(before: dict, result: dict, dry_run: bool) -> str:
         f"  games                    {before['games']:>8}   {a['games']:>8}   "
         f"({result['games_created']} created)",
         f"  pending (nba_edge_db)    {before['pending']:>8}   {a['pending']:>8}",
+        "",
+        f"Rows written this run: game_logs {result['upserted']}, games {result['games_touched']}, "
+        f"pending_rows {result['held']}" + ("   (0 = nothing changed)" if not (result['upserted'] or
+                                             result['games_touched'] or result['held']) else ""),
         "",
         "season     SQLite   Postgres",
     ]

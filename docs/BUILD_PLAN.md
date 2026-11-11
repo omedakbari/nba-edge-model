@@ -119,6 +119,17 @@ previous one passes.
    - Backfill script (Mac-only): `nba_edge.db` game logs → Postgres via `player_xref`, with before/after counts that must match and an unmatched-player count.
      **Built 2026-11-11** (`worker/prop_worker/backfill.py`). Everything happens in one transaction, which rolls back if any count check fails, and `--dry-run` is available. A games row is created for each NBA game ID, or the ID is attached to the row ESPN already made. Where `nba_edge.db` and ESPN overlap, the NBA.com row wins, and unmatched players are held in `pending_rows`. Unchanged rows aren't rewritten, and the touched tables are vacuumed afterwards with a 30 s lock timeout so dead rows don't count against the cap. Local rehearsal: 144,116 of 144,116 rows matched, per-season counts equal, 0 unmatched; the re-run wrote nothing. Size: `game_logs` ≈ 49 MB, database ≈ 90 MB after the backfill.
    - The 10-player validation moves to checkpoint 5 with the workflows and the prune job (approved 2026-11-11: keep 2 days of intraday quotes, then opening, closing and any price a pick used).
+   - **Checkpoint 5 built 2026-11-11.**
+     - **Workflows:**
+       - `ingest.yml` runs every 15 min, 9am–1am ET. The UTC crons are set per month (EST months, EDT months, and a superset in March and November), and the worker's `--window` check trims extra slots. A test simulates every 15-minute slot of a full year.
+       - `nightly.yml` runs at 6am ET: schedule, boxscores, validate, prune, then the grade placeholder.
+       - `healthcheck.yml` stays manual.
+       - `tests.yml` runs on every push, with a Postgres service container, so the database tests run in CI.
+       - All workflows use Node 24 actions (checkout, setup-python and upload-artifact v7; cache v6) on `ubuntu-24.04`, and the virtualenv is cached.
+     - **Validation** (`jobs/validate.py`): 10 seeded-random players' ESPN rows from the last game night, compared with PropLine's free box score. It runs nightly in CI; `--against nba_edge_db` runs it on the Mac instead. Any mismatch is red, including a player missing from the second source. A live rehearsal for Nov 10 matched 10 of 10 against PropLine.
+     - **Prune** (`jobs/prune.py`): implements the approved rule, vacuums afterwards, and turns red when the database passes 400 MB.
+   - **Open: long-term quote storage.** The approved rule keeps 2 rows per quote line forever. Measured at about 780 B per book row and 500 B per Kalshi row, with about 900 book lines and 250 Kalshi tickers per game, that is roughly 1.2–1.7 MB per game. The database would reach the 400 MB alarm in about 4–5 weeks, and a season needs around 1.5 GB. The proposed fix collapses each settled line into one narrow `quote_history` row (opening and closing for both sides), for an estimated 0.1–0.15 MB per game. Awaiting a decision.
+   - **Open: Actions minutes.** The repo is private, and the ingest needs about 1,977 runs a month at 1 or more billed minutes each. That is right at GitHub Free's 2,000-minute limit. Options: make the repo public (recommended; standard runners are free and the app stays login-only), ingest every 20–30 min, or a paid plan.
    - Validation: 10 random players' ESPN `game_logs` rows from last night vs. PropLine box-score stats; any mismatch fails.
    - GitHub Actions: `ingest` every 15 min 9am–1am ET, `grade` placeholder 6am ET, `healthcheck` manual. Node 24 action versions, `runs-on: ubuntu-24.04`.
    *Check:* three game days in a row with every job green, plus the 10-player check passing.
@@ -143,5 +154,6 @@ previous one passes.
 
 ## Open decisions
 
-- [ ] Public or private repo (public = free Actions minutes and a portfolio piece; the app stays login-only either way).
+- [ ] Public or private repo (public = free Actions minutes and a portfolio piece; the app stays login-only either way). **Now blocking:** the 15-min ingest needs about 1,977 runs a month, against 2,000 free private-repo minutes (see Phase 2).
+- [ ] Long-term quote storage: compact settled history into `quote_history` (recommended) vs. fewer books vs. a paid tier (see Phase 2).
 - [x] Retire the Streamlit dashboard after Phase 3 (decided 2026-11-10; untouched until then).

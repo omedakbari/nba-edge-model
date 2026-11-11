@@ -98,7 +98,7 @@ def test_run_all_records_every_job_and_alerts_once(pg, tmp_path, monkeypatch):
                     ("empty", "red", 0, None), ("ok2", "green", 3, None)]   # boom's insert was rolled back
     assert len(note.sent) == 1
     title, body = note.sent[0]
-    assert title == "NBA ingest: 2 job(s) ERROR/RED"
+    assert title == "NBA worker: 2 job(s) ERROR/RED"
     assert "boom ERROR: RuntimeError: source exploded" in body and "empty RED: loaded 0 rows" in body
     assert body.endswith("https://github.com/me/repo/actions/runs/42")
     text = summary.read_text()

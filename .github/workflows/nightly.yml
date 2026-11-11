@@ -1,0 +1,54 @@
+name: nightly
+
+# 6am ET: finish last night's box scores, 10-player validation vs PropLine, prune quotes, grade
+# (placeholder until Phase 5). 10:00 UTC = 6am EDT, 11:00 UTC = 6am EST; the worker's
+# --only-at-et-hour 6 check makes the other one a no-op.
+on:
+  schedule:
+    - cron: "0 10 * * *"
+    - cron: "0 11 * * *"
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: "Comma list (blank = all): schedule,boxscores,validate,prune,grade"
+        required: false
+        default: ""
+
+concurrency:
+  group: ingest            # never overlaps an ingest run (shared tables, VACUUM)
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  nightly:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v7
+      - id: py
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v6
+        with:
+          path: worker/.venv
+          key: venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-${{ hashFiles('worker/requirements.txt') }}
+      - name: Install dependencies (cache miss only)
+        run: test -x .venv/bin/python || { python -m venv .venv && .venv/bin/pip install -q -r requirements.txt; }
+      - name: Nightly
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PROPLINE_API_KEY: ${{ secrets.PROPLINE_API_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          JOBS: ${{ inputs.jobs }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          args=()
+          [ -n "$JOBS" ] && args+=(--jobs "$JOBS")
+          [ "$EVENT" = "schedule" ] && args+=(--only-at-et-hour 6)
+          .venv/bin/python -m prop_worker.nightly "${args[@]}"

@@ -1,0 +1,66 @@
+name: ingest
+
+# Every 15 min, 9am-1am ET. GitHub cron is UTC and ignores daylight saving, so the UTC hours are
+# set per month: EST months (Dec-Feb, UTC-5), EDT months (Apr-Oct, UTC-4), and in the two months
+# the clocks change (Mar, Nov) a superset of both. The worker's --window 09:00-01:00 check skips
+# any slot outside 9am-1am ET (exit 0, nothing recorded), so only Mar/Nov waste a few runs a day.
+# GitHub may start scheduled runs several minutes late. Checked by tests/test_schedule_window.py.
+on:
+  schedule:
+    - cron: "*/15 14-23 * 12,1,2 *"     # EST: 9:00 am - 6:45 pm ET
+    - cron: "*/15 0-5 * 12,1,2 *"       # EST: 7:00 pm - 12:45 am ET
+    - cron: "0 6 * 12,1,2 *"            # EST: 1:00 am ET
+    - cron: "*/15 13-23 * 4-10 *"       # EDT: 9:00 am - 7:45 pm ET
+    - cron: "*/15 0-4 * 4-10 *"         # EDT: 8:00 pm - 12:45 am ET
+    - cron: "0 5 * 4-10 *"              # EDT: 1:00 am ET
+    - cron: "*/15 13-23 * 3,11 *"       # DST change months: superset, guard trims
+    - cron: "*/15 0-6 * 3,11 *"
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: "Comma list (blank = all): rosters,schedule,boxscores,injuries,kalshi,propline"
+        required: false
+        default: ""
+      ignore_window:
+        description: "Run even outside 9am-1am ET"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ingest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v7
+      - id: py
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v6
+        with:
+          path: worker/.venv
+          key: venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-${{ hashFiles('worker/requirements.txt') }}
+      - name: Install dependencies (cache miss only)
+        run: test -x .venv/bin/python || { python -m venv .venv && .venv/bin/pip install -q -r requirements.txt; }
+      - name: Ingest
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PROPLINE_API_KEY: ${{ secrets.PROPLINE_API_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          JOBS: ${{ inputs.jobs }}
+          IGNORE_WINDOW: ${{ inputs.ignore_window }}
+        run: |
+          args=()
+          [ -n "$JOBS" ] && args+=(--jobs "$JOBS")
+          [ "$IGNORE_WINDOW" = "true" ] || args+=(--window 09:00-01:00)
+          .venv/bin/python -m prop_worker.ingest "${args[@]}"

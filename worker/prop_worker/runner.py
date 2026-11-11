@@ -189,8 +189,8 @@ def run_job(ctx: Context, name: str, fn: Callable[[Context], JobResult],
     return outcome
 
 
-def render_summary(outcomes: list[RunOutcome], when: datetime) -> str:
-    lines = [f"## Ingest {when.astimezone(config.ET):%Y-%m-%d %H:%M} ET", "",
+def render_summary(outcomes: list[RunOutcome], when: datetime, title: str = "Ingest") -> str:
+    lines = [f"## {title} {when.astimezone(config.ET):%Y-%m-%d %H:%M} ET", "",
              "| job | status | s | rows in | rows out | per game | trailing | game day | notes |",
              "|---|---|---|---|---|---|---|---|---|"]
     for o in outcomes:
@@ -212,7 +212,7 @@ def alert_text(outcomes: list[RunOutcome]) -> tuple[str, str] | None:
     bad = [o for o in outcomes if o.status in ("red", "error")]
     if not bad:
         return None
-    title = f"NBA ingest: {len(bad)} job(s) {'/'.join(sorted({o.status.upper() for o in bad}))}"
+    title = f"NBA worker: {len(bad)} job(s) {'/'.join(sorted({o.status.upper() for o in bad}))}"
     body = [f"{o.job} {o.status.upper()}: {'; '.join(o.red_reasons)}" for o in bad]
     run_url = _actions_run_url()
     if run_url:
@@ -240,7 +240,8 @@ def send_ntfy(title: str, body: str, session=None, topic: str | None = None) -> 
 
 
 def run_all(jobs: list[tuple[str, Callable]], conn=None, session=None, now=None, options=None,
-            alert: bool = True, notifier=send_ntfy, clock=time.monotonic) -> tuple[int, list[RunOutcome]]:
+            alert: bool = True, notifier=send_ntfy, clock=time.monotonic,
+            title: str = "Ingest") -> tuple[int, list[RunOutcome]]:
     own = conn is None
     conn = conn or connect()
     try:
@@ -249,7 +250,7 @@ def run_all(jobs: list[tuple[str, Callable]], conn=None, session=None, now=None,
     finally:
         if own:
             conn.close()
-    summary = render_summary(outcomes, now or utcnow())
+    summary = render_summary(outcomes, now or utcnow(), title)
     print(summary)
     path = os.getenv("GITHUB_STEP_SUMMARY")
     if path:

@@ -102,6 +102,9 @@ def test_rerun_is_idempotent(pg, tmp_path):
     first = _run(pg, path)
     second = _run(pg, path)
     assert first["after"] == second["after"] and second["games_created"] == 0
+    assert first["upserted"] == 5 and (second["upserted"], second["games_touched"], second["held"]) == (0, 0, 0)
+    assert "(0 = nothing changed)" in backfill.render(backfill.counts(pg), second, dry_run=False)
+    assert pg.execute("select to_regclass('pg_temp.stage_logs')").fetchone()[0] is None
 
 
 def test_unexpected_extra_row_fails_and_rolls_back(pg, tmp_path):
