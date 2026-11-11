@@ -67,3 +67,16 @@ data/kalshi_snapshots/
 data/clv_reports/
 data/roster_continuity/
 data/shadow_freshness/
+
+# Old pipeline runtime folders and SQLite side files
+data/audits/
+data/fair/
+data/injury_snapshots/
+data/live_snapshots/
+data/market_diagnostics/
+data/prop_stacks/
+data/quote_snapshots/
+data/role_evidence/
+data/*.db-shm
+data/*.db-wal
+*.bak

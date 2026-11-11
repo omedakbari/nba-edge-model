@@ -164,6 +164,28 @@ class Linker:
         self._count(ext.source, "linked")
         return result.player_id
 
+    def match_in_teams(self, source: str, external_id: str, name: str, teams: list[str | None]) -> int | None:
+        """Name-only record known to belong to one of `teams` (e.g. a PropLine outcome without an id,
+        whose event gives home and away). Overrides first; otherwise the normal team+name tiers for
+        each team, and only a single distinct hit counts. Misses go to xref_unmatched."""
+        override = self.overrides.get((source, external_id))
+        if override:
+            pid = self.xref.get(("nba", override))
+            if pid is None:
+                return self._miss(External(source, external_id, name, None),
+                                  "override_nba_id_not_in_players", [{"nba_id": override}])
+            self._count(source, "linked")
+            return pid
+        teams = [t for t in teams if t]
+        results = [self.index.match(name, t, stale_before=self.stale_before) for t in teams]
+        hits = {r.player_id for r in results if r.player_id is not None}
+        if len(hits) == 1:
+            self._count(source, "linked")
+            return hits.pop()
+        reason = "ambiguous_between_teams" if hits else (results[0].reason if results else "no_team")
+        candidates = [c for r in results for c in r.candidates] or [{"player_id": p} for p in sorted(hits)]
+        return self._miss(External(source, external_id, name, "/".join(teams) or None), reason, candidates)
+
     def _link(self, ext: External, pid: int, method: str) -> int | None:
         if ext.source in ONE_PER_PLAYER and (ext.source, pid) in self.linked_sources:
             other = next(e for (s, e), p in self.xref.items() if s == ext.source and p == pid)

@@ -119,3 +119,55 @@ def test_non_list_response_is_an_error(pg, payload):
     out = run(pg, _net(events=payload if payload is not None else {"events": []}), "propline", propline.run,
               propline_key="k")
     assert out.status == "error"
+
+
+def _strip_ids(odds, renames):
+    """Drop player_id on every outcome of the named players and rename them (as a book might)."""
+    for e in odds:
+        for b in e["bookmakers"]:
+            for m in b["markets"]:
+                for o in m["outcomes"]:
+                    if o.get("description") in renames:
+                        o["player_id"], o["description"] = None, renames[o["description"]]
+    return odds
+
+
+def test_outcome_without_id_matches_within_event_teams(pg):
+    # Like Fanatics' 'Airious Bailey' (= Ace Bailey): no id, different first name, same team.
+    _setup(pg)
+    pg.execute("update players set team_abbr = 'NYK' where full_name = 'Jalen Brunson'")   # rosters set this live
+    pg.commit()
+    odds = _strip_ids(load("propline/odds_bulk_2026-11-10.json"), {"Jalen Brunson": "Jaylen Brunson"})
+    out = run(pg, _net(odds), "propline", propline.run, propline_key="k")
+    assert out.meta["unresolved_players"] == 0
+    brunson = pg.execute("select player_id from players where full_name = 'Jalen Brunson'").fetchone()[0]
+    keys = pg.execute("select distinct player_key, player_id from book_quotes where external_name = 'Jaylen Brunson'")
+    assert keys.fetchall() == [("name:jaylen brunson", brunson)]
+
+
+def test_outcome_without_id_that_cant_match_is_reported(pg):
+    _setup(pg)
+    odds = _strip_ids(load("propline/odds_bulk_2026-11-10.json"), {"Jalen Brunson": "Totally Unknown"})
+    out = run(pg, _net(odds), "propline", propline.run, propline_key="k")
+    assert out.meta["unresolved_players"] > 0
+    row = pg.execute("""select external_id, team_abbr, reason from xref_unmatched
+                        where source = 'propline' and resolved_at is null""").fetchone()
+    assert row == ("name:totally unknown", "NYK/MIL", "no_candidate")
+
+
+def test_unchanged_quote_gets_player_id_filled_once_resolvable(pg):
+    _setup(pg)
+    odds = _strip_ids(load("propline/odds_bulk_2026-11-10.json"), {"Jalen Brunson": "Unknown Guy"})
+    run(pg, _net(odds), "propline", propline.run, propline_key="k")
+    assert pg.execute("select count(*) from book_quotes where player_id is null").fetchone()[0] > 0
+    fixed = _strip_ids(load("propline/odds_bulk_2026-11-10.json"), {"Jalen Brunson": "Unknown Guy"})
+    from prop_worker import xref as _x
+    monkey = {("propline", "name:unknown guy"): "1628973"}
+    orig = _x.load_overrides
+    _x.load_overrides = lambda *a, **k: monkey
+    try:
+        again = run(pg, _net(fixed), "propline", propline.run, propline_key="k", now=NOW + timedelta(minutes=15))
+    finally:
+        _x.load_overrides = orig
+    assert again.meta["quotes_new"] == 0                     # same prices -> no new rows...
+    assert pg.execute("select count(*) from book_quotes where player_id is null").fetchone()[0] == 0   # ...but ids filled

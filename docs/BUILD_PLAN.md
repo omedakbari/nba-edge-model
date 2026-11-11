@@ -117,6 +117,8 @@ previous one passes.
 
      **Storage finding:** even with change-only storage, about 1,600 prices change per evening run. That projects to roughly 20–35 MB a day, so pruning of settled quotes is needed before the ingest runs unattended past about two weeks.
    - Backfill script (Mac-only): `nba_edge.db` game logs → Postgres via `player_xref`, with before/after counts that must match and an unmatched-player count.
+     **Built 2026-11-11** (`worker/prop_worker/backfill.py`). Everything happens in one transaction, which rolls back if any count check fails, and `--dry-run` is available. A games row is created for each NBA game ID, or the ID is attached to the row ESPN already made. Where `nba_edge.db` and ESPN overlap, the NBA.com row wins, and unmatched players are held in `pending_rows`. Unchanged rows aren't rewritten, and the touched tables are vacuumed afterwards with a 30 s lock timeout so dead rows don't count against the cap. Local rehearsal: 144,116 of 144,116 rows matched, per-season counts equal, 0 unmatched; the re-run wrote nothing. Size: `game_logs` ≈ 49 MB, database ≈ 90 MB after the backfill.
+   - The 10-player validation moves to checkpoint 5 with the workflows and the prune job (approved 2026-11-11: keep 2 days of intraday quotes, then opening, closing and any price a pick used).
    - Validation: 10 random players' ESPN `game_logs` rows from last night vs. PropLine box-score stats; any mismatch fails.
    - GitHub Actions: `ingest` every 15 min 9am–1am ET, `grade` placeholder 6am ET, `healthcheck` manual. Node 24 action versions, `runs-on: ubuntu-24.04`.
    *Check:* three game days in a row with every job green, plus the 10-player check passing.

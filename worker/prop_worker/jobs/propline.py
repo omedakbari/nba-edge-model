@@ -7,7 +7,8 @@ filtered server-side to config.BOOK_QUOTE_BOOKS. Only main lines of games that h
 kept; book_quotes stores a row only when a price changes.
 
 Players join directly on PropLine's 'nba:<NBA.com id>' through player_xref. An outcome without an
-id is still stored (player_key 'name:<normalized name>') and counted. Events attach to games by ET
+id (player_key 'name:<normalized name>') is matched by name within the event's two teams; if that
+fails it is still stored with player_id null and listed in xref_unmatched. Events attach to games by ET
 date + home team, and the game row gets propline_event_id.
 
 provider_ts = the book's own update time when PropLine has it, else PropLine's last_change_at.
@@ -67,7 +68,8 @@ def parse_odds(events: list[dict], now) -> tuple[list[dict], dict]:
                         or parse_ts(m.get("last_update"))
                     counts["future_ts"] += is_future(provider_ts, now)
                     quotes.append({
-                        "event_id": str(e["id"]), "home_team_id": e.get("home_team_id"), "start": start,
+                        "event_id": str(e["id"]), "home_team_id": e.get("home_team_id"),
+                        "away_team_id": e.get("away_team_id"), "start": start,
                         "book": b["key"], "market": m["key"], "stat": config.PROPLINE_MARKETS[m["key"]],
                         "line_type": "main", "line": line, "side": side,
                         "price_american": int(o["price"]) if o.get("price") is not None else None,
@@ -114,9 +116,13 @@ def run(ctx: Context) -> JobResult:
 
     linker = Linker(ctx.conn, now=ctx.now)
     unresolved = 0
+    by_pl = ctx.teams["by_propline_id"]
     for q in quotes:
-        pid = linker.resolve(External("propline", q["propline_player_id"], q["external_name"], None)) \
-            if q["propline_player_id"] else None
+        if q["propline_player_id"]:
+            pid = linker.resolve(External("propline", q["propline_player_id"], q["external_name"], None))
+        else:   # e.g. Fanatics lists Ace Bailey as 'Airious Bailey' with no id: match within the two teams
+            pid = linker.match_in_teams("propline", q["player_key"], q["external_name"],
+                                        [by_pl.get(q["home_team_id"]), by_pl.get(q["away_team_id"])])
         unresolved += pid is None
         q.update(sport=config.SPORT, game_id=game_for.get(q["event_id"]), player_id=pid, fetched_at=ctx.now)
 
