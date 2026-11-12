@@ -177,3 +177,29 @@ def test_status_report_shows_latest_and_per_day(pg):
     text = status.render(status.latest_runs(pg), status.by_day(pg, 30), status.db_size_mb(pg), status.table_sizes(pg))
     assert "empty" in text and "RED" in text and "loaded 0 rows" in text
     assert "2026-11-10  game day  HAS RED" in text and "MB of 500 MB" in text
+
+
+def test_trailing_average_only_compares_runs_with_the_same_baseline(pg):
+    ts = datetime(2026, 11, 9, 19, 0, tzinfo=config.ET)
+    for _ in range(5):              # old book list: no baseline stored, higher volume
+        pg.execute("""insert into job_runs (job, started_at, status, is_game_day, expected, volume, duration_s)
+                      values ('propline', %s, 'green', true, true, 737.6, 5.0)""", (ts,))
+    pg.commit()
+    when = datetime(2026, 11, 11, 19, 15, tzinfo=config.ET)
+    assert runner.trailing_average(pg, "propline", when)[:2] == (737.6, 5)            # old behaviour
+    assert runner.trailing_average(pg, "propline", when, "books=dk")[:2] == (None, 0)   # fresh start
+    # ...so a drop to the new level can't be judged against the old one
+    reasons, _ = judge(JobResult(100, 3000, units=10, baseline="books=dk"), 5.0, True, None, 0)
+    assert reasons == []
+
+
+def test_baseline_is_stored_in_job_runs_meta(pg):
+    def job(ctx):
+        return JobResult(10, 10, units=1, baseline="books=a,b")
+    run_all([("bjob", job)], conn=pg, now=NOW, notifier=Notifier(), clock=_clock())
+    assert pg.execute("select meta->>'baseline' from job_runs where job = 'bjob'").fetchone()[0] == "books=a,b"
+
+
+def test_propline_baseline_names_the_book_list():
+    from prop_worker.jobs import propline
+    assert propline.baseline().startswith("books=draftkings,fanduel,betmgm,pinnacle,prizepicks,sleeper;")

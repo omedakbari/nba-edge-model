@@ -108,3 +108,46 @@ def test_unknown_job_names_are_rejected():
         ingest.main(["--jobs", "kalshi,bogus"])
     with pytest.raises(SystemExit):
         nightly.main(["--jobs", "prune,bogus"])
+
+
+def test_second_trigger_in_a_slot_does_nothing(pg, monkeypatch, capsys):
+    from contextlib import contextmanager
+    from prop_worker import ingest
+
+    @contextmanager
+    def same_conn():
+        yield pg
+    monkeypatch.setattr(ingest, "connect", same_conn)
+    ran = []
+    monkeypatch.setattr(ingest, "run_all", lambda jobs, **kw: ran.append(len(jobs)) or (0, []))
+    now = utc(2026, 11, 12, 0, 15)
+    pg.execute("insert into job_runs (job, status, started_at) values ('kalshi', 'green', %s)",
+               (now - timedelta(minutes=4),))
+    pg.commit()
+    assert ingest.main(["--window", W, "--min-gap-minutes", "10"], now=now) == 0
+    assert ran == [] and "already ran" in capsys.readouterr().out
+    later = now + timedelta(minutes=11)                       # next slot: runs
+    assert ingest.main(["--window", W, "--min-gap-minutes", "10"], now=later) == 0 and ran == [6]
+
+
+def test_an_errored_run_does_not_block_a_retry(pg, monkeypatch):
+    from contextlib import contextmanager
+    from prop_worker import ingest
+
+    @contextmanager
+    def same_conn():
+        yield pg
+    monkeypatch.setattr(ingest, "connect", same_conn)
+    ran = []
+    monkeypatch.setattr(ingest, "run_all", lambda jobs, **kw: ran.append(len(jobs)) or (0, []))
+    now = utc(2026, 11, 12, 0, 15)
+    pg.execute("insert into job_runs (job, status, started_at) values ('propline', 'error', %s)",
+               (now - timedelta(minutes=2),))
+    pg.commit()
+    ingest.main(["--window", W, "--min-gap-minutes", "10"], now=now)
+    assert ran == [6]
+
+
+def test_workflow_passes_the_gap_guard():
+    text = (Path(__file__).resolve().parents[2] / ".github/workflows/ingest.yml").read_text()
+    assert "--window 09:00-01:00 --min-gap-minutes 10" in text

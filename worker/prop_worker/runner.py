@@ -9,6 +9,8 @@ Every job is a function  run(ctx) -> JobResult.  The runner:
                 - it loaded 0 rows
                 - it finished in under RED_MIN_DURATION_S (2 s)
                 - its rows per game/event fell under half its trailing average
+                  (only runs with the same `baseline` count: a job sets one when what it collects
+                  changes, e.g. propline's book list, so older runs don't make the new level look low)
        green  otherwise
   4. updates the job_runs row, and after all jobs sends one ntfy push listing every red/error run,
   5. exits non-zero if any run was red or error.
@@ -40,6 +42,7 @@ class JobResult:
     red_reasons: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     meta: dict = field(default_factory=dict)
+    baseline: str = ""                    # what was collected; trailing average only compares equal ones
 
 
 @dataclass
@@ -98,8 +101,9 @@ def _squash(name: str) -> str:
 
 # ── judging a run ────────────────────────────────────────────────────────────
 
-def trailing_average(conn, job: str, now: datetime) -> tuple[float | None, int, float | None]:
-    """Average rows-per-game of recent green game-day runs at about the same ET time of day.
+def trailing_average(conn, job: str, now: datetime, baseline: str = "") -> tuple[float | None, int, float | None]:
+    """Average rows-per-game of recent green game-day runs at about the same ET time of day, with the
+    same baseline (runs stored before baselines existed count as baseline '').
 
     Same time of day (±1 h) because volume legitimately grows through the day (teams file injury
     reports, books post props); a 9 am run judged against evening runs would always look low.
@@ -109,11 +113,11 @@ def trailing_average(conn, job: str, now: datetime) -> tuple[float | None, int, 
         """select avg(volume), count(*), percentile_cont(0.5) within group (order by duration_s) from (
                select volume, duration_s from job_runs
                where sport = %s and job = %s and status = 'green' and is_game_day and expected
-                 and volume is not null
+                 and volume is not null and coalesce(meta->>'baseline', '') = %s
                  and least(abs(extract(hour from started_at at time zone 'America/New_York') - %s),
                            24 - abs(extract(hour from started_at at time zone 'America/New_York') - %s)) <= 1
                order by started_at desc limit %s) t""",
-        (config.SPORT, job, hour, hour, config.TRAILING_WINDOW)).fetchone()
+        (config.SPORT, job, baseline, hour, hour, config.TRAILING_WINDOW)).fetchone()
     avg, n, median_s = row
     return (float(avg) if avg is not None else None), n, (float(median_s) if median_s is not None else None)
 
@@ -172,7 +176,9 @@ def run_job(ctx: Context, name: str, fn: Callable[[Context], JobResult],
         outcome = RunOutcome(name, "error", duration, None, None, is_game_day, None, None, None,
                              [error], [], error, {"traceback": tb[-4000:]})
     else:
-        trailing, n, median_s = trailing_average(conn, name, ctx.now)
+        trailing, n, median_s = trailing_average(conn, name, ctx.now, result.baseline)
+        if result.baseline:
+            result.meta = {**result.meta, "baseline": result.baseline}
         reasons, volume = judge(result, duration, is_game_day, trailing, n, median_s)
         reasons = [redact(r) for r in reasons]
         result.warnings = [redact(w) for w in result.warnings]

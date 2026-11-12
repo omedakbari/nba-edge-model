@@ -149,8 +149,15 @@ previous one passes.
      - TLS required on every remote connection.
      - Secrets masked and redacted in every log, summary, alert and artifact.
      - Workflows: SHA-pinned actions, `permissions: {}` by default, no privileged triggers. Regression tests enforce each rule.
-   *Check:* three game days in a row with every job green, plus the 10-player check passing.
-3. **Player page** — stat tabs, line stepper, hit-rate cards (L5 / L10 / L15 / season / H2H), filters, game-log chart, line chips with age. Installable as a PWA.
+   - **Scheduling (2026-11-11):** GitHub's cron produced no ingest runs for about 3 hours after the workflow landed, although the config was valid. Ingest now has a second trigger: cron-job.org calls `workflow_dispatch` every 15 minutes with a fine-grained token limited to *Actions* on this repo. `--min-gap-minutes 10` makes the second trigger of a slot a no-op. See `docs/SCHEDULING.md`.
+   - **Trailing-average rebase:** a job can tag its runs with a `baseline` describing what it collects. The trailing average compares only runs with the same baseline. PropLine's baseline is its book and market list, so the book cut (737.6 → 513.6 rows per game) starts a fresh trailing average instead of risking false REDs. The volume rule needs 5 matching runs at the same time of day before it judges again.
+   - **`prop_worker.slate` (2026-11-11):** a read-only CLI for your own bets.
+     - **Per prop:** the consensus line (DK/FD/MGM/Pinnacle), Sleeper's line, the nearest Kalshi strikes with prices, hit rates and injury status.
+     - **Read-only:** the connection opens every transaction `READ ONLY`.
+     - **Shared maths:** `prop_worker/hitrates.py` also powers `web/lib/hitRates.ts`.
+     - **RA:** RA lines aren't collected yet; PropLine has `player_rebounds_assists`, and adding it is a job change after the gate.
+   *Check:* three game days in a row with every job green, plus the 10-player check passing. Count the days from the 2026-11-12 push, which changes the PropLine job's baseline and adds the gap guard.
+3. **Player page** (started 2026-11-11 on a synthetic fixture: `web/`; see `web/README.md`. The read-only DB role, migrations and the Data API wait for the gate) — stat tabs, line stepper, hit-rate cards (L5 / L10 / L15 / season / H2H), filters, game-log chart, line chips with age. Installable as a PWA.
    *Check:* loads in < 2 s on the phone, and every number traces to a database row.
 4. **Projection engine** (above).
    *Check:* on a 2025-26 backtest, each enabled stat beats the current market_blend and L10 baselines on log loss.

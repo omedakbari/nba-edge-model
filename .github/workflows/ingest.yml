@@ -4,7 +4,9 @@ name: ingest
 # set per month: EST months (Dec-Feb, UTC-5), EDT months (Apr-Oct, UTC-4), and in the two months
 # the clocks change (Mar, Nov) a superset of both. The worker's --window 09:00-01:00 check skips
 # any slot outside 9am-1am ET (exit 0, nothing recorded), so only Mar/Nov waste a few runs a day.
-# GitHub may start scheduled runs several minutes late. Checked by tests/test_schedule_window.py.
+# GitHub may start scheduled runs late or skip them, so an external cron also calls
+# workflow_dispatch every 15 min (docs/SCHEDULING.md); --min-gap-minutes 10 makes the second
+# trigger of a slot a no-op. Checked by tests/test_schedule_window.py.
 # Security rules for every workflow here are enforced by tests/test_workflows_security.py.
 on:
   schedule:
@@ -72,5 +74,5 @@ jobs:
         run: |
           args=()
           [ -n "$JOBS" ] && args+=(--jobs "$JOBS")
-          [ "$IGNORE_WINDOW" = "true" ] || args+=(--window 09:00-01:00)
+          [ "$IGNORE_WINDOW" = "true" ] || args+=(--window 09:00-01:00 --min-gap-minutes 10)
           .venv/bin/python -m prop_worker.ingest "${args[@]}"

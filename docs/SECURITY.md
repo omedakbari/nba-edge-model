@@ -20,6 +20,7 @@ anyone can see, where each secret lives, how to rotate each one, and what to do 
 | `SUPABASE_DB_URL` (contains the DB password) | worker: every job, migrate, backfill | GitHub → Settings → Secrets and variables → Actions; your Mac's `.env` |
 | `PROPLINE_API_KEY` | `propline` and `validate` jobs, healthcheck | Same two places |
 | `NTFY_TOPIC` | Alerts from `ingest` / `nightly` | Same two places; your phone's ntfy app subscription |
+| GitHub fine-grained token `cron-job.org ingest dispatch` | cron-job.org, to start the ingest workflow every 15 min | cron-job.org job headers only (never in the repo or `.env`). Scope: this repo, *Actions: Read and write* only, 90-day expiry; see `docs/SCHEDULING.md` |
 | Supabase anon / service-role keys | Nothing yet (Phase 3 web app) | Supabase dashboard only. Never commit; the service-role key bypasses RLS |
 
 ## Protections in place
@@ -59,6 +60,8 @@ Every rotation ends the same way:
 2. Subscribe to it in the ntfy app, and unsubscribe from the old one.
 3. `NTFY_TOPIC` in `.env`, then `gh secret set NTFY_TOPIC`.
 4. Send a test: `PYTHONPATH=worker ./venv/bin/python -c "from prop_worker.runner import send_ntfy; print(send_ntfy('test', 'new topic works'))"`.
+
+**GitHub dispatch token** (cron-job.org): follow "Rotating the token" in `docs/SCHEDULING.md`, then delete the old token. If it leaks, the worst case is extra workflow runs (no-ops thanks to the gap guard) and someone reading or deleting run logs; it can't read secrets or change code.
 
 ## If a secret leaks
 

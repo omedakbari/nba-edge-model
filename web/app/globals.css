@@ -1,0 +1,145 @@
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eef0f4;
+  --text: #14161a;
+  --muted: #5d6470;
+  --border: #dde1e7;
+  --accent: #2456d6;
+  --accent-text: #ffffff;
+  --hit: #1f8a4c;
+  --miss: #c23b3b;
+  --push: #8a8f98;
+  --warn-bg: #fff4d6;
+  --warn-text: #7a5300;
+  --radius: 12px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1115;
+    --surface: #181b21;
+    --surface-2: #22262e;
+    --text: #eceef2;
+    --muted: #9aa1ad;
+    --border: #2c313a;
+    --accent: #6f95ff;
+    --accent-text: #0b0d10;
+    --hit: #4cc27f;
+    --miss: #ff7a7a;
+    --push: #7d838d;
+    --warn-bg: #3a2f12;
+    --warn-text: #ffd57a;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0f1115;
+  --surface: #181b21;
+  --surface-2: #22262e;
+  --text: #eceef2;
+  --muted: #9aa1ad;
+  --border: #2c313a;
+  --accent: #6f95ff;
+  --accent-text: #0b0d10;
+  --hit: #4cc27f;
+  --miss: #ff7a7a;
+  --push: #7d838d;
+  --warn-bg: #3a2f12;
+  --warn-text: #ffd57a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+a { color: var(--accent); text-decoration: none; }
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+}
+
+h1 { font-size: 22px; margin: 4px 0 2px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 20px 0 8px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+.banner {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font-size: 13px;
+  margin: 8px 0;
+}
+
+/* stat tabs */
+.tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.tab {
+  flex: 0 0 auto; min-height: 36px; padding: 6px 14px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit;
+}
+.tab[aria-selected="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+
+/* line stepper */
+.stepper { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.stepper button {
+  width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font-size: 22px;
+}
+.stepper .value { font-size: 30px; font-weight: 700; text-align: center; }
+
+/* hit-rate cards */
+.rates { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.rate { text-align: center; padding: 10px 4px; }
+.rate .pct { font-size: 18px; font-weight: 700; }
+.rate .label { font-size: 12px; color: var(--muted); }
+.rate .count { font-size: 12px; color: var(--muted); }
+
+/* chips */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 13px;
+}
+.chip[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.chip .age { color: var(--muted); margin-left: 4px; }
+
+/* filters */
+.filters { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* game-log chart */
+.chart { width: 100%; height: 160px; display: block; }
+.chart .bar-hit { fill: var(--hit); }
+.chart .bar-miss { fill: var(--miss); }
+.chart .bar-push { fill: var(--push); }
+.chart .line { stroke: var(--text); stroke-dasharray: 4 3; stroke-width: 1.5; }
+.chart text { fill: var(--muted); font-size: 10px; }
+
+/* slate list */
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.list a { display: flex; justify-content: space-between; align-items: center; color: var(--text); }
+
+@media (max-width: 380px) {
+  .rate .pct { font-size: 16px; }
+}

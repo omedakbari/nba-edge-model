@@ -1,0 +1,473 @@
+{
+ "_about": "Shared golden cases for worker/prop_worker/hitrates.py and web/lib/hitRates.ts. Hit-rate cases: before 2026-11-11, season_start 2026-10-01, h2h_since 2025-10-01, opp BOS. expect = [hits, n, pushes].",
+ "params": {
+  "before": "2026-11-11",
+  "season_start": "2026-10-01",
+  "h2h_since": "2025-10-01",
+  "opp": "BOS"
+ },
+ "games": [
+  {
+   "game_date": "2026-11-10",
+   "opp": "BOS",
+   "minutes": 34.0,
+   "did_not_play": false,
+   "pts": 30,
+   "reb": 5,
+   "ast": 4,
+   "fg3m": 0
+  },
+  {
+   "game_date": "2026-11-08",
+   "opp": "MIA",
+   "minutes": 34.0,
+   "did_not_play": false,
+   "pts": 25,
+   "reb": 6,
+   "ast": 5,
+   "fg3m": 1
+  },
+  {
+   "game_date": "2026-11-06",
+   "opp": "BOS",
+   "minutes": 34.0,
+   "did_not_play": false,
+   "pts": 18,
+   "reb": 7,
+   "ast": 4,
+   "fg3m": 2
+  },
+  {
+   "game_date": "2026-11-04",
+   "opp": "CHI",
+   "minutes": 34.0,
+   "did_not_play": false,
+   "pts": 25,
+   "reb": 5,
+   "ast": 5,
+   "fg3m": 3
+  },
+  {
+   "game_date": "2026-11-02",
+   "opp": "MIL",
+   "minutes": 34.0,
+   "did_not_play": false,
+   "pts": 31,
+   "reb": 6,
+   "ast": 4,
+   "fg3m": 0
+  },
+  {
+   "game_date": "2026-10-31",
+   "opp": "BOS",
+   "minutes": 34.0,
+   "did_not_play": false,
+   "pts": 12,
+   "reb": 7,
+   "ast": 5,
+   "fg3m": 1
+  },
+  {
+   "game_date": "2026-10-29",
+   "opp": "ATL",
+   "minutes": 34.0,
+   "did_not_play": false,
+   "pts": 27,
+   "reb": 5,
+   "ast": 4,
+   "fg3m": 2
+  },
+  {
+   "game_date": "2026-10-27",
+   "opp": "PHI",
+   "minutes": 34.0,
+   "did_not_play": false,
+   "pts": 24,
+   "reb": 6,
+   "ast": 5,
+   "fg3m": 3
+  },
+  {
+   "game_date": "2026-10-25",
+   "opp": "BOS",
+   "minutes": 34.0,
+   "did_not_play": false,
+   "pts": 26,
+   "reb": 7,
+   "ast": 4,
+   "fg3m": 0
+  },
+  {
+   "game_date": "2026-10-23",
+   "opp": "TOR",
+   "minutes": 34.0,
+   "did_not_play": false,
+   "pts": 19,
+   "reb": 5,
+   "ast": 5,
+   "fg3m": 1
+  },
+  {
+   "game_date": "2026-10-21",
+   "opp": "CLE",
+   "minutes": 34.0,
+   "did_not_play": false,
+   "pts": 28,
+   "reb": 6,
+   "ast": 4,
+   "fg3m": 2
+  },
+  {
+   "game_date": "2026-10-19",
+   "opp": "DET",
+   "minutes": 34.0,
+   "did_not_play": false,
+   "pts": 22,
+   "reb": 7,
+   "ast": 5,
+   "fg3m": 3
+  },
+  {
+   "game_date": "2026-11-11",
+   "opp": "NYK",
+   "minutes": 36.0,
+   "did_not_play": false,
+   "pts": 40,
+   "reb": 9,
+   "ast": 9,
+   "fg3m": 5
+  },
+  {
+   "game_date": "2026-10-23",
+   "opp": "BOS",
+   "minutes": null,
+   "did_not_play": true,
+   "pts": null,
+   "reb": null,
+   "ast": null,
+   "fg3m": null
+  },
+  {
+   "game_date": "2026-04-01",
+   "opp": "BOS",
+   "minutes": 33.0,
+   "did_not_play": false,
+   "pts": 29,
+   "reb": 6,
+   "ast": 7,
+   "fg3m": 3
+  },
+  {
+   "game_date": "2025-03-01",
+   "opp": "BOS",
+   "minutes": 30.0,
+   "did_not_play": false,
+   "pts": 35,
+   "reb": 6,
+   "ast": 7,
+   "fg3m": 3
+  },
+  {
+   "game_date": "2026-10-25",
+   "opp": "BOS",
+   "minutes": 0,
+   "did_not_play": false,
+   "pts": 0,
+   "reb": 0,
+   "ast": 0,
+   "fg3m": 0
+  }
+ ],
+ "hit_rates": [
+  {
+   "stat": "pts",
+   "line": 24.5,
+   "side": "over",
+   "expect": {
+    "l5": [
+     4,
+     5,
+     0
+    ],
+    "l10": [
+     6,
+     10,
+     0
+    ],
+    "l15": [
+     9,
+     14,
+     0
+    ],
+    "season": [
+     7,
+     12,
+     0
+    ],
+    "h2h": [
+     3,
+     5,
+     0
+    ]
+   }
+  },
+  {
+   "stat": "pts",
+   "line": 25,
+   "side": "over",
+   "expect": {
+    "l5": [
+     2,
+     5,
+     2
+    ],
+    "l10": [
+     4,
+     10,
+     2
+    ],
+    "l15": [
+     7,
+     14,
+     2
+    ],
+    "season": [
+     5,
+     12,
+     2
+    ],
+    "h2h": [
+     3,
+     5,
+     0
+    ]
+   }
+  },
+  {
+   "stat": "pts",
+   "line": 24.5,
+   "side": "under",
+   "expect": {
+    "l5": [
+     1,
+     5,
+     0
+    ],
+    "l10": [
+     4,
+     10,
+     0
+    ],
+    "l15": [
+     5,
+     14,
+     0
+    ],
+    "season": [
+     5,
+     12,
+     0
+    ],
+    "h2h": [
+     2,
+     5,
+     0
+    ]
+   }
+  },
+  {
+   "stat": "pra",
+   "line": 35.5,
+   "side": "over",
+   "expect": {
+    "l5": [
+     3,
+     5,
+     0
+    ],
+    "l10": [
+     5,
+     10,
+     0
+    ],
+    "l15": [
+     8,
+     14,
+     0
+    ],
+    "season": [
+     6,
+     12,
+     0
+    ],
+    "h2h": [
+     3,
+     5,
+     0
+    ]
+   }
+  },
+  {
+   "stat": "ra",
+   "line": 9.5,
+   "side": "over",
+   "expect": {
+    "l5": [
+     4,
+     5,
+     0
+    ],
+    "l10": [
+     8,
+     10,
+     0
+    ],
+    "l15": [
+     12,
+     14,
+     0
+    ],
+    "season": [
+     10,
+     12,
+     0
+    ],
+    "h2h": [
+     4,
+     5,
+     0
+    ]
+   }
+  },
+  {
+   "stat": "fg3m",
+   "line": 1.5,
+   "side": "over",
+   "expect": {
+    "l5": [
+     2,
+     5,
+     0
+    ],
+    "l10": [
+     4,
+     10,
+     0
+    ],
+    "l15": [
+     8,
+     14,
+     0
+    ],
+    "season": [
+     6,
+     12,
+     0
+    ],
+    "h2h": [
+     2,
+     5,
+     0
+    ]
+   }
+  }
+ ],
+ "consensus": [
+  {
+   "lines": {
+    "draftkings": 24.5,
+    "fanduel": 24.5,
+    "betmgm": 25.5,
+    "pinnacle": 25.5
+   },
+   "expect": [
+    25.5,
+    2
+   ]
+  },
+  {
+   "lines": {
+    "draftkings": 24.5,
+    "fanduel": 24.5,
+    "betmgm": 25.5
+   },
+   "expect": [
+    24.5,
+    2
+   ]
+  },
+  {
+   "lines": {
+    "draftkings": 23.5,
+    "fanduel": 24.5
+   },
+   "expect": [
+    23.5,
+    1
+   ]
+  },
+  {
+   "lines": {
+    "sleeper": 22.5,
+    "prizepicks": 21.5
+   },
+   "expect": [
+    null,
+    0
+   ]
+  },
+  {
+   "lines": {
+    "pinnacle": 6.5,
+    "draftkings": 6.5,
+    "fanduel": 7.5
+   },
+   "expect": [
+    6.5,
+    2
+   ]
+  }
+ ],
+ "no_vig_over": [
+  {
+   "pairs": [
+    [
+     -110,
+     -110
+    ]
+   ],
+   "expect": 0.5
+  },
+  {
+   "pairs": [
+    [
+     -150,
+     130
+    ]
+   ],
+   "expect": 0.579832
+  },
+  {
+   "pairs": [
+    [
+     -110,
+     -110
+    ],
+    [
+     -150,
+     130
+    ]
+   ],
+   "expect": 0.539916
+  },
+  {
+   "pairs": [
+    [
+     null,
+     -110
+    ]
+   ],
+   "expect": null
+  }
+ ]
+}

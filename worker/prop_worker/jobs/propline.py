@@ -80,6 +80,11 @@ def parse_odds(events: list[dict], now) -> tuple[list[dict], dict]:
     return quotes, counts
 
 
+def baseline() -> str:
+    """What this job collects. A new value starts a fresh trailing average (runner.trailing_average)."""
+    return f"books={','.join(config.BOOK_QUOTE_BOOKS)};markets={','.join(config.PROPLINE_MARKETS)}"
+
+
 def run(ctx: Context) -> JobResult:
     if not config.PROPLINE_API_KEY and not ctx.options.get("propline_key"):
         raise RuntimeError("PROPLINE_API_KEY not set")
@@ -143,7 +148,7 @@ def run(ctx: Context) -> JobResult:
     no_game = sum(1 for v in game_for.values() if v is None)
     if no_game:
         warnings.append(f"{no_game} PropLine event(s) not matched to a game")
-    return JobResult(rows_in=len(quotes), rows_out=len(quotes), expected=upcoming > 0,
+    return JobResult(rows_in=len(quotes), rows_out=len(quotes), expected=upcoming > 0, baseline=baseline(),
                      units=counts["events"] or None, warnings=warnings,
                      meta={**counts, "quotes_new": new_quotes, "quota_remaining": remaining,
                            "unresolved_players": unresolved, "events_unmatched": no_game,
