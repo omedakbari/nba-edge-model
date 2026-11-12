@@ -203,3 +203,82 @@ def test_line_key_ignores_numeric_scale_and_differs_by_line(pg):
                                 (line,)).fetchone()[0]
     from decimal import Decimal
     assert k(Decimal("24.5")) == k(Decimal("24.50")) != k(Decimal("25.5"))
+
+
+def _ladder(pg, game_id, kind, series, mids, event="26NOV04BOSNYK"):
+    """One market per strike; closing mid = the given value (yes ask = mid + 0.01, no ask = 1 - mid + 0.01)."""
+    tickers = []
+    for i, mid in enumerate(mids):
+        t = f"{series}-{event}-S{i}"
+        pg.execute("""insert into kalshi_markets (ticker, event_ticker, series_ticker, market_kind, floor_strike, game_id)
+                      values (%s, %s, %s, %s, %s, %s)""", (t, f"{series}-{event}", series, kind, 200 + i * 5, game_id))
+        pg.execute("""insert into kalshi_quotes (ticker, yes_ask, no_ask, fetched_at, provider_ts)
+                      values (%s, %s, %s, %s, %s)""",
+                   (t, round(mid + 0.01, 2), round(1 - mid + 0.01, 2), TIP - timedelta(minutes=30),
+                    TIP - timedelta(minutes=30)))
+        tickers.append(t)
+    return tickers
+
+
+def test_unused_books_markets_and_alt_lines_are_dropped_at_any_age_before_compaction(pg):
+    seed_players(pg, [(1628973, "Jalen Brunson", "NYK")])
+    old, recent = _game(pg, TIP), _game(pg, RECENT_TIP, home="MIA", away="UTA")
+    start = TIP - timedelta(hours=1)
+    _book(pg, old, [-110, -115], start)                                    # kept book: compacted
+    _book(pg, old, [-110, -115], start, book="fanatics")                   # dropped book, settled
+    gone_recent = _book(pg, recent, [-110], RECENT_TIP - timedelta(hours=1), book="underdog")   # dropped, recent
+    picked = _book(pg, old, [-120], start, book="hardrock")[0]             # dropped book, but a pick used it
+    pg.execute("""insert into picks (game_id, player_id, stat, venue, side, line, book_quote_id)
+                  values (%s, (select player_id from players), 'pts', 'hardrock', 'over', 24.5, %s)""", (old, picked))
+    alt = _book(pg, recent, [-300], RECENT_TIP - timedelta(hours=1))[0]
+    pg.execute("update book_quotes set line_type = 'alternate' where id = %s", (alt,))
+    pg.commit()
+    out = run(pg)
+    assert out.meta["book_rows_dropped_unused"] == 4                       # 2 fanatics + underdog + alt line
+    assert _ids(pg, "book_quotes") == [picked]
+    assert not set(gone_recent) & set(_ids(pg, "book_quotes"))
+    assert [b for b, *_ in _history(pg)] == ["draftkings"]                 # dropped books never reach history
+
+
+def test_spread_and_total_ladders_keep_only_the_strike_closest_to_50c(pg):
+    g = _game(pg, TIP)
+    spread = _ladder(pg, g, "spread", "KXNBASPREAD", [0.85, 0.62, 0.47, 0.30, 0.12])
+    total = _ladder(pg, g, "total", "KXNBATOTAL", [0.71, 0.55, 0.38])
+    props = [_kalshi(pg, g, [0.40], TIP - timedelta(minutes=45), ticker=f"KXNBAPTS-26NOV04BOSNYK-NYKJBRUNSON11-{n}")
+             for n in (20, 25)]
+    pg.commit()
+    out = run(pg)
+    keys = sorted(r[0] for r in pg.execute("select event_key from quote_history where venue = 'kalshi'"))
+    assert keys == sorted([spread[2], total[1], "KXNBAPTS-26NOV04BOSNYK-NYKJBRUNSON11-20",
+                           "KXNBAPTS-26NOV04BOSNYK-NYKJBRUNSON11-25"])
+    assert out.meta["kalshi_strikes_dropped"] == 6 and len(props) == 2
+    assert _ids(pg, "kalshi_quotes") == [] and pg.execute("select count(*) from kalshi_markets").fetchone()[0] == 0
+
+
+def test_old_job_runs_are_deleted(pg):
+    for days in (60, 46, 10):
+        pg.execute("insert into job_runs (job, status, started_at) values ('kalshi', 'green', %s)",
+                   (NOW - timedelta(days=days),))
+    pg.commit()
+    out = run(pg)
+    assert out.meta["job_runs_deleted"] == 2
+    left = pg.execute("select count(*) from job_runs where job = 'kalshi'").fetchone()[0]
+    assert left == 1
+
+
+def test_dry_run_shows_compaction_alone_with_drops_and_a_season_projection(pg):
+    g = _game(pg, TIP)
+    start = TIP - timedelta(hours=1)
+    for book in ("draftkings", "fanatics", "betrivers"):
+        for side in ("over", "under"):
+            _book(pg, g, [-110 - k for k in range(6)], start, side=side, book=book)
+    _ladder(pg, g, "spread", "KXNBASPREAD", [0.8, 0.6, 0.5, 0.3])
+    pg.commit()
+    m = run(pg, dry_run=True).meta
+    # (8 KB pages: with this little data the two "after" figures can round to the same page count)
+    assert m["bytes_before"] > m["bytes_after_compaction_only"] >= m["bytes_after"] > 0
+    p = m["projection"]
+    assert p["games_left"] == prune.config.SEASON_GAMES - 1 and p["season_end_mb"] > 0
+    text = prune.render(m, dry=True)
+    assert "compaction alone" in text and "with the drops" in text and "season projection:" in text
+    assert _ids(pg, "kalshi_quotes") and pg.execute("select count(*) from quote_history").fetchone()[0] == 0

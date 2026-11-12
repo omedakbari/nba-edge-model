@@ -130,7 +130,18 @@ previous one passes.
      - **Prune** (`jobs/prune.py`): implements the approved rule, vacuums afterwards, and turns red when the database passes 400 MB.
    - **Long-term quote storage (approved and built 2026-11-11).** After 2 days, each line folds into one `quote_history` row: opening and closing for both sides, keyed by a 16-byte hash. Rows a pick used stay in full, and settled Kalshi market metadata is deleted (migration 005, `jobs/prune.py`).
      - Dry run on real data (`--as-of`): 646 KB → 202 KB per game, 69% smaller. That's with only about 3 snapshots per line; full game days compact more.
-     - Projection: roughly 270–330 MB for the rest of the season on top of about 76 MB, under the prune job's 400 MB alarm. Next levers if needed: fewer books long-term, or fewer Kalshi strikes.
+     - First projection: roughly 270–330 MB for the rest of the season on top of about 76 MB. Too close to the 400 MB alarm, so:
+   - **Storage drops (2026-11-11).** Data the model never uses is deleted before compaction, at any age, and ingest stops storing it:
+     - Books: keep DraftKings, FanDuel, BetMGM and Pinnacle (the no-vig consensus) plus PrizePicks and Sleeper (pick'em apps that were bet). Fanatics, BetRivers, Hard Rock and Underdog are dropped. Sleeper is new.
+     - Alt and milestone lines and other markets were already skipped at ingest; prune now also deletes any stored ones.
+     - Kalshi spread and total ladders keep one strike per game in history: the one closest to 50¢ at tip-off, which is the market spread or total that Phase 4 uses for blowout risk. Player-prop strikes are all kept.
+     - `job_runs` older than 45 days is deleted. `quote_history` is reindexed after each prune, because random 16-byte keys left its primary key half empty.
+     - Rehearsal (10 games, `--as-of`): 911 KB → 237 KB per game from compaction alone, → 159 KB with the drops (83% smaller). Season projection from `prune --dry-run`: about 250–270 MB at season end, at least 230 MB under the 500 MB cap and about 130 MB under the 400 MB alarm. Sleeper accounts for about 12% of compacted rows (about 20 MB a season).
+   - **Supabase checks (2026-11-11).**
+     - TLS is judged on the client side (`ssl_in_use`). `pg_stat_ssl` through Supavisor describes the pooler's own hop.
+     - Default grants owned by `supabase_admin` show as a WARN in `migrate`, not a FAIL.
+     - The Data API is off.
+     - Underdog's "Deuce McBride" (no id) was mapped to Miles McBride in `xref_overrides.csv`. An override now also closes its open `xref_unmatched` row.
    - **Actions minutes: resolved.** The repo went public on 2026-11-11, so standard runners are free; ingest stays every 15 min.
    - **validate fix (2026-11-11):** it checks last night only and never an older date. It compares whichever `game_logs` source holds that night (ESPN, or `nba_edge_db` where the backfill superseded ESPN), and fails loudly, naming the games, if any of last night's finals has no box score. PropLine events now match on `game_date`, because backfilled games have no start time.
    - **Security hardening (2026-11-11):** see `docs/SECURITY.md`.

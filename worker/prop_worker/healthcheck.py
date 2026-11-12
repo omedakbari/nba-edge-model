@@ -51,21 +51,29 @@ def _timed(name, required, fn, *args):
 # ── individual probes ────────────────────────────────────────────────────────
 
 def probe_postgres(db_url: str, require: bool):
+    """TLS is judged on the CLIENT side (this machine -> Supabase pooler), the hop that crosses the
+    internet. pg_stat_ssl is shown for information only: through Supavisor it describes the
+    pooler -> Postgres hop inside Supabase."""
     if not db_url:
         return (FAIL if require else SKIP), "SUPABASE_DB_URL not set"
-    from .db import connect, is_local
+    from .db import client_tls, connect, is_local
 
     with connect(db_url, connect_timeout=10) as conn:
         version = conn.execute("select version()").fetchone()[0]
-        tls = conn.execute("select ssl from pg_stat_ssl where pid = pg_backend_pid()").fetchone()
+        tls = client_tls(conn)
+        server_row = conn.execute("select ssl from pg_stat_ssl where pid = pg_backend_pid()").fetchone()
         no_rls = [r[0] for r in conn.execute(
             """select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
                where n.nspname = 'public' and c.relkind in ('r', 'p') and not c.relrowsecurity""")]
-    if not (tls and tls[0]) and not is_local(db_url):
-        return FAIL, "connected WITHOUT TLS"
+    local = is_local(db_url)
+    if not tls and not local:
+        return FAIL, "client connection WITHOUT TLS"
     if no_rls:
         return FAIL, f"tables without row-level security: {no_rls}"
-    return PASS, f"{version.split(',')[0]}; TLS {'on' if tls and tls[0] else 'off (local)'}; RLS on every table"
+    server = "on" if server_row and server_row[0] else "off"
+    tls_text = (f"TLS on (checked client side; pg_stat_ssl={server} is the pooler's own hop)" if tls
+                else "TLS off (local)")
+    return PASS, f"{version.split(',')[0]}; {tls_text}; RLS on every table"
 
 
 def probe_espn_scoreboard(session, now_et: datetime):

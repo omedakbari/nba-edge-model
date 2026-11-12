@@ -6,11 +6,16 @@ Run:  python -m prop_worker.migrate            apply pending migrations, then ru
 Each file runs in its own transaction and is recorded in schema_migrations with a sha256.
 If an already-applied file has been edited since, the run stops: write a new migration instead.
 
-Security check (exit 1 if anything fails):
+Security check (exit 1 if anything FAILs; WARN lines don't change the exit code):
   * every table in `public` has row-level security,
   * every view in `public` is security_invoker,
   * the Supabase API roles (anon, authenticated) hold no privilege on any public table, view,
-    sequence or function, and future objects won't grant them any,
+    sequence or function,
+  * future objects won't grant them any: default privileges owned by a role this one can act for
+    (itself, or a role it is a member of) are a FAIL, because migration 004 can and should revoke
+    them. Default privileges owned by a role it can't act for (on Supabase: supabase_admin, the
+    platform's own role) are a WARN naming that role. Only `postgres` can't revoke them, and they
+    apply only to objects that role creates; the checks above still cover every object that exists,
   * the worker's own role can still read and write (a job_runs insert, rolled back).
 """
 
@@ -76,9 +81,25 @@ def apply(conn, migrations) -> list[str]:
     return ran
 
 
-def verify(conn) -> tuple[list[str], list[str]]:
-    """(problems, ok_lines). Read-only except a rolled-back write probe."""
-    problems, ok = [], []
+def _default_grants(conn, role: str) -> list[tuple[str, str, int, bool]]:
+    """[(owner role, object type, privilege count, can this role revoke it)] of default privileges
+    in `public` that would give `role` something on future objects."""
+    kinds = {"r": "tables", "S": "sequences", "f": "functions", "T": "types", "n": "schemas"}
+    rows = conn.execute(
+        """select o.rolname, d.defaclobjtype::text, count(*),
+                  pg_has_role(current_user, d.defaclrole, 'MEMBER')
+           from pg_default_acl d
+           join pg_namespace n on n.oid = d.defaclnamespace
+           join pg_roles o on o.oid = d.defaclrole
+           cross join lateral aclexplode(d.defaclacl) a
+           where n.nspname = 'public' and a.grantee = (select oid from pg_roles where rolname = %s)
+           group by 1, 2, 4 order by 1, 2""", (role,)).fetchall()
+    return [(owner, kinds.get(t, t), n, revocable) for owner, t, n, revocable in rows]
+
+
+def verify(conn) -> tuple[list[str], list[str], list[str]]:
+    """(problems, warnings, ok_lines). Read-only except a rolled-back write probe."""
+    problems, warnings, ok = [], [], []
     no_rls = [r[0] for r in conn.execute(
         """select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
            where n.nspname = 'public' and c.relkind in ('r', 'p') and not c.relrowsecurity order by 1""")]
@@ -95,6 +116,7 @@ def verify(conn) -> tuple[list[str], list[str]]:
     else:
         ok.append("every public view is security_invoker")
 
+    user = conn.execute("select current_user").fetchone()[0]
     present = [r[0] for r in conn.execute("select rolname from pg_roles where rolname = any(%s)", (list(API_ROLES),))]
     for role in present:
         # has_*_privilege answers "can this role do it", whoever granted it (incl. via PUBLIC).
@@ -111,21 +133,31 @@ def verify(conn) -> tuple[list[str], list[str]]:
                where n.nspname = 'public' and c.relkind = 'S'
                  and (has_sequence_privilege(%s, c.oid, 'USAGE') or has_sequence_privilege(%s, c.oid, 'SELECT'))""",
             (role, role)).fetchall()
-        defaults = conn.execute(
-            """select d.defaclobjtype from pg_default_acl d join pg_namespace n on n.oid = d.defaclnamespace
-               cross join lateral aclexplode(d.defaclacl) a
-               where n.nspname = 'public' and a.grantee = (select oid from pg_roles where rolname = %s)""",
-            (role,)).fetchall()
-        if grants or seqs or defaults:
-            problems.append(f"role {role} still has privileges: {len(grants)} table/function grant(s), "
-                            f"{len(seqs)} sequence(s), {len(defaults)} default grant(s) "
-                            f"(e.g. {[g[0] for g in grants[:3]]})")
+        if grants or seqs:
+            problems.append(f"role {role} has privileges on existing objects: {len(grants)} table/function "
+                            f"grant(s), {len(seqs)} sequence(s) (e.g. {[g[0] for g in grants[:3]]})")
         else:
-            ok.append(f"role {role}: no privileges on public tables, views, sequences, functions or future objects")
+            ok.append(f"role {role}: no privileges on any existing public table, view, sequence or function")
+
+        defaults = _default_grants(conn, role)
+        mine = [d for d in defaults if d[3]]
+        theirs = [d for d in defaults if not d[3]]
+        if mine:
+            owners = sorted({d[0] for d in mine})
+            problems.append(f"role {role} would get privileges on future objects created by {owners} "
+                            f"({sum(d[2] for d in mine)} default grant(s)); {user} can revoke these: "
+                            "re-run migration 004's step 4 for that owner")
+        for owner in sorted({d[0] for d in theirs}):
+            parts = ", ".join(f"{kind} {n}" for o, kind, n, _ in theirs if o == owner)
+            warnings.append(f"role {role}: {sum(d[2] for d in theirs if d[0] == owner)} default grant(s) "
+                            f"owned by {owner} ({parts}). {user} isn't a member of {owner}, so it can't "
+                            f"revoke them; they apply only to objects {owner} creates in public, and any "
+                            "such object would still fail the checks above")
+        if not defaults:
+            ok.append(f"role {role}: no default privileges on future objects")
     if not present:
         ok.append(f"no {'/'.join(API_ROLES)} roles here (not Supabase): role checks skipped")
 
-    user = conn.execute("select current_user").fetchone()[0]
     try:
         with conn.transaction(force_rollback=True):
             conn.execute("select count(*) from players").fetchone()
@@ -133,7 +165,7 @@ def verify(conn) -> tuple[list[str], list[str]]:
         ok.append(f"worker role {user} can read and write (probe rolled back)")
     except Exception as exc:  # noqa: BLE001
         problems.append(f"worker role {user} cannot read/write: {type(exc).__name__}: {exc}")
-    return problems, ok
+    return problems, warnings, ok
 
 
 def main(argv=None) -> int:
@@ -157,10 +189,12 @@ def main(argv=None) -> int:
                 "select count(*) from information_schema.tables where table_schema = 'public'").fetchone()[0]
             print(f"applied {len(ran)} migration(s): {', '.join(ran) or 'none pending'}; {tables} public tables/views")
             changed = []
-        problems, ok = verify(conn)
+        problems, warnings, ok = verify(conn)
     print("security check:")
     for line in ok:
         print(f"  OK    {redact(line)}")
+    for line in warnings:
+        print(f"  WARN  {redact(line)}")
     for line in problems:
         print(f"  FAIL  {redact(line)}")
     return 1 if problems or changed else 0

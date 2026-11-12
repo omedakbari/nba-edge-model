@@ -122,6 +122,7 @@ class Linker:
         self.touched: list[tuple] = []
         self.unmatched: dict[tuple[str, str], tuple] = {}
         self.team_updates: dict[int, str] = {}
+        self.resolved: set[tuple[str, str]] = set()      # name-only matches: clear their xref_unmatched row
         self.stats: dict[str, dict[str, int]] = {}
 
     def _count(self, source, key):
@@ -175,12 +176,14 @@ class Linker:
                 return self._miss(External(source, external_id, name, None),
                                   "override_nba_id_not_in_players", [{"nba_id": override}])
             self._count(source, "linked")
+            self.resolved.add((source, external_id))
             return pid
         teams = [t for t in teams if t]
         results = [self.index.match(name, t, stale_before=self.stale_before) for t in teams]
         hits = {r.player_id for r in results if r.player_id is not None}
         if len(hits) == 1:
             self._count(source, "linked")
+            self.resolved.add((source, external_id))
             return hits.pop()
         reason = "ambiguous_between_teams" if hits else (results[0].reason if results else "no_team")
         candidates = [c for r in results for c in r.candidates] or [{"player_id": p} for p in sorted(hits)]
@@ -238,6 +241,19 @@ class Linker:
                     """update xref_unmatched set resolved_at = %s
                        where sport = %s and source = %s and external_id = %s and resolved_at is null""",
                     [(self.now, s, src, e) for s, src, e, *_ in self.new_links])
+            # An override also closes an open row whose source no longer sends that id (e.g. a book
+            # we stopped storing), as long as the override's NBA.com id is a known player.
+            for src, ext_id in c.execute("""select source, external_id from xref_unmatched
+                                            where sport = %s and resolved_at is null""", (self.sport,)).fetchall():
+                nba = self.overrides.get((src, ext_id))
+                if nba and ("nba", nba) in self.xref:
+                    self.resolved.add((src, ext_id))
+            resolved = self.resolved - set(self.unmatched)
+            if resolved:
+                c.cursor().executemany(
+                    """update xref_unmatched set resolved_at = %s
+                       where sport = %s and source = %s and external_id = %s and resolved_at is null""",
+                    [(self.now, self.sport, src, e) for src, e in sorted(resolved)])
             if self.touched:
                 c.cursor().executemany(
                     """update player_xref set external_name = %s, team_abbr = coalesce(%s, team_abbr),
@@ -256,6 +272,7 @@ class Linker:
         if commit:
             c.commit()
         self.new_links, self.touched, self.unmatched, self.team_updates = [], [], {}, {}
+        self.resolved = set()
 
 
 # ── seed (Mac only: reads nba_edge.db) ───────────────────────────────────────

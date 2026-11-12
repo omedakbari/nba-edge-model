@@ -36,10 +36,25 @@ PROPLINE_SPORT = "basketball_nba"
 # PropLine market key -> our stat key (same keys as KALSHI_SERIES values).
 PROPLINE_MARKETS = {"player_points": "pts", "player_rebounds": "reb", "player_assists": "ast",
                     "player_threes": "fg3m", "player_points_rebounds_assists": "pra"}
-# Only these books' main lines go into book_quotes (500 MB cap). Filtered server-side too.
-BOOK_QUOTE_BOOKS = ("draftkings", "fanduel", "betmgm", "fanatics", "betrivers", "hardrock",
-                    "pinnacle", "prizepicks", "underdog")
+# Only these books' main lines go into book_quotes (500 MB cap). Filtered server-side too, and
+# prune deletes stored rows from any other book. Chosen 2026-11-11:
+#   draftkings, fanduel, betmgm, pinnacle  priced books for the no-vig consensus market_blend anchors on
+#                                          (Pinnacle = sharp reference; DK and MGM are in its training data;
+#                                          DK is also where your book singles were placed)
+#   prizepicks, sleeper                    pick'em apps you've bet (pick_results line_source); lines only
+# Dropped: fanatics, betrivers, hardrock (retail books that copy the same lines) and underdog
+# (pick'em you haven't bet). Adding a book back only affects new rows.
+BOOK_QUOTE_BOOKS = ("draftkings", "fanduel", "betmgm", "pinnacle", "prizepicks", "sleeper")
 PROPLINE_QUOTA_WARN = 100          # warn when fewer requests than this are left today
+
+# Storage (prune job). Kalshi game spread/total ladders keep ONE strike per game and series in
+# quote_history: the one closest to 50c at tip-off (that strike is the market's spread / total;
+# the projection engine uses the spread for blowout risk). Player-prop strikes are all kept: they
+# are what you bet. job_runs rows older than JOB_RUNS_KEEP_DAYS are deleted (status uses 7 days,
+# the red-run trailing average the last 20 runs).
+KALSHI_LADDER_ONE_STRIKE = ("spread", "total")
+JOB_RUNS_KEEP_DAYS = 45
+SEASON_GAMES = 1230 + 90           # regular season + play-in and playoffs (typical), for the projection
 
 # Ingest windows
 SCHEDULE_DAYS = range(-1, 6)       # yesterday .. 5 days ahead (Kalshi lists game markets ~5 days out)

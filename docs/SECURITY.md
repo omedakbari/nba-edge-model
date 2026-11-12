@@ -11,7 +11,7 @@ anyone can see, where each secret lives, how to rotate each one, and what to do 
 | GitHub Actions logs | Anyone | Job summaries and errors. Secrets, and every value derived from them (DB host, user, project ref, password), are masked by the first step of every job (`python3 -m prop_worker.masking`), and the worker redacts them again before printing anything |
 | Healthcheck artifact (`healthcheck.json`) | Anyone with a GitHub account, for 7 days | Probe names, PASS/FAIL, latency, redacted details. No hosts, users or keys |
 | ntfy alerts | Anyone who knows the topic name | Job names and red reasons, redacted. The **topic name is the only thing that keeps them private**: ntfy.sh topics have no password |
-| Supabase REST API (`https://<ref>.supabase.co/rest/v1`) | Anyone holding the anon key | Nothing: row-level security is on for every table and `anon` / `authenticated` have no privileges (migration 004) |
+| Supabase REST API (`https://<ref>.supabase.co/rest/v1`) | Nobody: the Data API is turned off (2026-11-11) | Nothing even if it's turned back on: row-level security is on for every table and `anon` / `authenticated` have no privileges (migration 004) |
 
 ## Where each secret lives
 
@@ -24,8 +24,11 @@ anyone can see, where each secret lives, how to rotate each one, and what to do 
 
 ## Protections in place
 
-- **Database:** RLS on every table. The API roles have no privileges on tables, views, sequences or functions, and none on tables created later. Views run as the caller (`security_invoker`), and functions use a fixed `search_path`. `python -m prop_worker.migrate` re-checks all of this and fails if it slips; the healthcheck flags any table without RLS.
-- **Connection:** TLS is required (`sslmode=require`) for every non-local connection. A failed connection's error is redacted, and its exception chain is dropped, so the URL can't reach a log.
+- **Database:** RLS on every table. The API roles have no privileges on tables, views, sequences or functions, and none on tables the worker creates later. Views run as the caller (`security_invoker`), and functions use a fixed `search_path`. `python -m prop_worker.migrate` re-checks all of this and fails if it slips; the healthcheck flags any table without RLS.
+  - **Expected WARN:** `migrate` shows a WARN line per API role for default grants owned by `supabase_admin` (Supabase's own platform role). They hand privileges on objects *that role* creates in `public` to `anon` / `authenticated`. `postgres` isn't a member of `supabase_admin`, so it can't revoke them. That's harmless here: the worker creates everything as `postgres`, the Data API is off, and any object `supabase_admin` did create would still FAIL the RLS and existing-privilege checks. A default grant owned by a role `postgres` *can* act for stays a FAIL.
+- **Connection:** TLS is required (`sslmode=require`) for every non-local connection, so libpq refuses a server that won't encrypt. After connecting, the worker also checks the client side (`conn.pgconn.ssl_in_use`) and closes any remote connection without TLS. A failed connection's error is redacted, and its exception chain is dropped, so the URL can't reach a log.
+  - **Don't judge TLS by `pg_stat_ssl`.** Through Supabase's pooler (Supavisor) it describes the pooler → Postgres hop inside Supabase, so it can say `ssl = false` while your connection is encrypted. The healthcheck shows both, and judges only the client side.
+  - Optional, stricter: `sslmode=require` encrypts but doesn't check the server's certificate. To check it, download the CA certificate (Supabase → Project Settings → Database → SSL Configuration) and add `?sslmode=verify-full&sslrootcert=<path>` to `SUPABASE_DB_URL`. The worker keeps a `verify-*` mode from the URL. CI would need the certificate file too (it's public, so it can be committed).
 - **Workflows:** every action is pinned to a commit SHA, and Dependabot proposes updates. Token permissions are `{}` by default, with jobs granted only `contents: read`. Checkout doesn't keep the token, there are no `pull_request_target` or `workflow_run` triggers, and no `${{ }}` appears inside shell scripts. `tests/test_workflows_security.py` fails if any of this regresses.
 - **Output:** `tests/test_no_secret_leaks.py` plants fake secrets and checks every output path: stdout, step summary, ntfy body, artifact, `job_runs` rows and exceptions. On your Mac it also checks the real `.env` values.
 - **GitHub settings (done 2026-11-11):**
@@ -70,7 +73,7 @@ Every rotation ends the same way:
 
 - **Supabase Security Advisor:** dashboard → your project → **Advisors** (left sidebar) → **Security Advisor** → Refresh. Expected: **0 errors**. "RLS Enabled No Policy" shows as INFO on each table, and that's intended: no policy means no API access at all.
 - **GitHub:** repo → Security tab (secret scanning, Dependabot alerts); Settings → Actions → General (workflow permissions read-only, fork PR approval).
-- **Optional:** Supabase → Project Settings → **API** (the Data API settings; the name varies by dashboard version) → turn the Data API off, or remove `public` from the exposed schemas. Nothing uses it today. Decide again in Phase 3, when the web app chooses how it reads data.
+- **Data API:** turned off 2026-11-11 (Supabase → Project Settings → API). Nothing uses it. Decide again in Phase 3, when the web app chooses how it reads data.
 
 ## Incident log
 

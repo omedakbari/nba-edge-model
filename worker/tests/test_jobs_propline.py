@@ -22,8 +22,11 @@ def _net(events=None, headers=QUOTA):
 
 
 def _ids():
+    """Players the job stores: main lines of our books only."""
     return sorted({(o["player_id"], o["description"]) for e in ODDS for b in e["bookmakers"]
-                   for m in b["markets"] for o in m["outcomes"] if o.get("player_id")})
+                   if b["key"] in config.BOOK_QUOTE_BOOKS
+                   for m in b["markets"] if m.get("line_type") == "main" and m["key"] in config.PROPLINE_MARKETS
+                   for o in m["outcomes"] if o.get("player_id")})
 
 
 def _setup(pg, n=None):
@@ -171,3 +174,35 @@ def test_unchanged_quote_gets_player_id_filled_once_resolvable(pg):
         _x.load_overrides = orig
     assert again.meta["quotes_new"] == 0                     # same prices -> no new rows...
     assert pg.execute("select count(*) from book_quotes where player_id is null").fetchone()[0] == 0   # ...but ids filled
+
+
+def test_nickname_override_resolves_quotes_and_clears_the_report(pg, monkeypatch):
+    # Underdog's 'Deuce McBride' (= Miles McBride): no id, nickname, so name matching can't find him.
+    _setup(pg)
+    odds = _strip_ids(load("propline/odds_bulk_2026-11-10.json"), {"Jalen Brunson": "Deuce Brunson"})
+    run(pg, _net(odds), "propline", propline.run, propline_key="k")
+    open_rows = "select count(*) from xref_unmatched where source = 'propline' and resolved_at is null"
+    assert pg.execute(open_rows).fetchone()[0] == 1
+    from prop_worker import xref as _x
+    monkeypatch.setattr(_x, "load_overrides", lambda *a, **k: {("propline", "name:deuce brunson"): "1628973"})
+    again = run(pg, _net(odds), "propline", propline.run, propline_key="k", now=NOW + timedelta(minutes=15))
+    assert again.meta["unresolved_players"] == 0
+    assert not any("without a resolved player" in w for w in again.warnings)
+    assert pg.execute(open_rows).fetchone()[0] == 0
+    assert pg.execute("select count(*) from book_quotes where player_id is null").fetchone()[0] == 0
+
+
+def test_override_file_maps_deuce_mcbride_to_miles_mcbride():
+    from prop_worker import xref as _x
+    assert _x.load_overrides()[("propline", "name:deuce mcbride")] == "1630540"
+
+
+def test_override_closes_an_open_row_even_when_that_book_stops_sending_it(pg, monkeypatch):
+    _setup(pg)
+    odds = _strip_ids(load("propline/odds_bulk_2026-11-10.json"), {"Jalen Brunson": "Deuce Brunson"})
+    run(pg, _net(odds), "propline", propline.run, propline_key="k")
+    from prop_worker import xref as _x
+    monkeypatch.setattr(_x, "load_overrides", lambda *a, **k: {("propline", "name:deuce brunson"): "1628973"})
+    run(pg, _net(), "propline", propline.run, propline_key="k", now=NOW + timedelta(minutes=15))  # name no longer sent
+    assert pg.execute("""select count(*) from xref_unmatched where source = 'propline'
+                         and resolved_at is null""").fetchone()[0] == 0
