@@ -113,4 +113,13 @@ def test_no_open_markets_on_a_game_day_is_red(pg):
     _setup(pg)
     net = Net([scoreboards(), (lambda u, p: u.endswith("/markets"), Resp({"markets": [], "cursor": ""}))])
     out = run(pg, net, "kalshi", kalshi.run)
-    assert out.status == "red" and "loaded 0 rows on a game day" in out.red_reasons
+    assert out.status == "red" and "loaded 0 rows inside the posting window" in out.red_reasons
+
+
+def test_no_markets_outside_the_posting_window_is_not_red(pg):
+    _setup(pg)
+    net = Net([scoreboards(), (lambda u, p: u.endswith("/markets"), Resp({"markets": [], "cursor": ""}))])
+    for when in (datetime(2026, 11, 10, 9, 30, tzinfo=config.ET),          # before noon ET
+                 datetime(2026, 11, 11, 0, 30, tzinfo=config.ET)):         # after the last tip, same slate
+        out = run(pg, net, "kalshi", kalshi.run, now=when)
+        assert out.status == "green" and out.expected is False, when

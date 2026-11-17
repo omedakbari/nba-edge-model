@@ -26,8 +26,11 @@ What run_daily does, in order: live preflight → grade yesterday → refresh �
   neither shown nor refreshed.
 - Re-running later the same day is fine and useful: the card refreshes each logged leg's p and price
   until its game starts, adds new legs, and marks legs that left the card as dropped.
-- Card only (e.g. close to tip): `cd worker && ../venv/bin/python -m prop_worker.slate --card --log
-  --out ../data/cards/$(date +%F).txt`, then `./venv/bin/python scripts/daily_brief.py` to refresh the brief.
+- Card only (e.g. close to tip), using the same Pacific date run_daily uses for both the slate and the file:
+  `D=$(TZ=America/Los_Angeles date +%F); (cd worker && ../venv/bin/python -m prop_worker.slate --card --log
+  --date $D --out ../data/cards/$D.txt) && ./venv/bin/python scripts/daily_brief.py --date $D`.
+  Without `--date`, the worker's own slate (ET, rolls over at 6 am ET = 3 am PT) is used, which differs
+  from the Pacific date between midnight and 3 am PT.
 - Placed a bet? Optional: `cd worker && ../venv/bin/python -m prop_worker.bets placed <id> [stake]`
   (ids from `bets list`). Unmarked card picks are still graded nightly as recommended-only.
 - Approval is still disabled: picks are diagnostic, stake $0. Card and bets are research-only.

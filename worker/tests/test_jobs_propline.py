@@ -106,7 +106,7 @@ def test_after_last_tip_empty_response_is_not_red(pg):
 def test_empty_response_before_tip_on_a_game_day_is_red(pg):
     _setup(pg)
     out = run(pg, _net(events=[]), "propline", propline.run, propline_key="k")
-    assert out.status == "red" and "loaded 0 rows on a game day" in out.red_reasons
+    assert out.status == "red" and "loaded 0 rows inside the posting window" in out.red_reasons
 
 
 def test_missing_key_is_an_error(pg, monkeypatch):
@@ -206,3 +206,33 @@ def test_override_closes_an_open_row_even_when_that_book_stops_sending_it(pg, mo
     run(pg, _net(), "propline", propline.run, propline_key="k", now=NOW + timedelta(minutes=15))  # name no longer sent
     assert pg.execute("""select count(*) from xref_unmatched where source = 'propline'
                          and resolved_at is null""").fetchone()[0] == 0
+
+
+# ── volume rule "warn" + posting window (market jobs) ──────────────────────
+
+def test_empty_before_the_posting_window_opens_is_not_red(pg):
+    _setup(pg)
+    morning = datetime(2026, 11, 10, 11, 45, tzinfo=config.ET)             # books may not have posted yet
+    out = run(pg, _net(events=[]), "propline", propline.run, propline_key="k", now=morning)
+    assert out.status == "green" and out.expected is False
+    noon = datetime(2026, 11, 10, 12, 0, tzinfo=config.ET)                 # window opens
+    out = run(pg, _net(events=[]), "propline", propline.run, propline_key="k", now=noon)
+    assert out.status == "red" and out.red_reasons == ["loaded 0 rows inside the posting window"]
+
+
+def test_low_ratio_and_fast_run_are_warnings_not_red(pg):
+    _setup(pg)
+    for i in range(config.TRAILING_MIN_RUNS):                              # trailing: 10,000 rows per event
+        pg.execute("""insert into job_runs (sport, job, status, started_at, finished_at, duration_s, is_game_day,
+                                            expected, volume, meta)
+                      values ('nba', 'propline', 'green', %s, %s, 30, true, true, 10000, %s::jsonb)""",
+                   (NOW - timedelta(days=i + 1), NOW - timedelta(days=i + 1),
+                    '{"baseline": "%s"}' % propline.baseline()))
+    pg.commit()
+    from jobkit import ctx
+    from prop_worker.runner import run_job
+    clock = iter([0.0, 0.05])                                              # 0.05 s vs a 30 s median
+    out = run_job(ctx(pg, _net(), NOW, propline_key="k"), "propline", propline.run, clock=lambda: next(clock))
+    assert out.status == "green", out.red_reasons
+    assert any("rows per game vs trailing average 10000.0" in w for w in out.warnings)
+    assert any(w.startswith("finished in 0.05s") for w in out.warnings)

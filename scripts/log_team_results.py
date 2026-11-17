@@ -194,6 +194,47 @@ def fetch_final_scores(game_date: str) -> dict[str, dict]:
 
 # ── Grade one day ─────────────────────────────────────────────────────────────
 
+def _ts(value):
+    try:
+        t = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+    except (TypeError, ValueError):
+        return None
+    return t if t.tzinfo else None
+
+
+def pretip_picks(picks_dir: Path, game_date: str) -> tuple[list[dict], list[dict], set[str]]:
+    """Each game's pick from the newest saved revision generated before that game's tip.
+
+    The original file and every `<date>.revision-*.json` count; a rerun after the injury guard or a
+    line move replaces an earlier pick only if it was saved before tip. Returns (picks to grade,
+    games with no pre-tip revision, revision file names used).
+    """
+    revisions = []
+    for path in [picks_dir / f"{game_date}.json", *picks_dir.glob(f"{game_date}.revision-*.json")]:
+        if not path.exists():
+            continue
+        saved = json.loads(path.read_text())
+        generated = _ts(saved.get('generated_at'))
+        if generated is None:
+            from datetime import timezone
+            generated = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        revisions.append((generated, path.name, saved.get('picks', [])))
+    revisions.sort(key=lambda r: r[0])
+    best: dict[str, tuple] = {}
+    seen: dict[str, dict] = {}
+    for generated, name, picks in revisions:
+        for pick in picks:
+            gid = pick.get('game_id')
+            seen.setdefault(gid, pick)
+            tip = _ts(pick.get('start_time'))
+            if tip is None or generated < tip:
+                best[gid] = (name, pick)                   # later revisions overwrite: newest pre-tip wins
+    order = list(seen)
+    picks = [best[g][1] for g in order if g in best]
+    skipped = [seen[g] for g in order if g not in best]
+    return picks, skipped, {best[g][0] for g in order if g in best}
+
+
 def grade_date(game_date: str) -> list[dict] | None:
     """
     Load picks for game_date, fetch final scores, grade each game.
@@ -205,12 +246,13 @@ def grade_date(game_date: str) -> list[dict] | None:
         print(f"  No picks file found for {game_date}: {picks_path}")
         return None
 
-    with open(picks_path) as f:
-        saved = json.load(f)
-
-    picks = saved.get('picks', [])
+    picks, skipped, used = pretip_picks(PICKS_DIR, game_date)
+    for name in sorted(used):
+        print(f"  Grading from {name}")
+    for p in skipped:
+        print(f"  ⚠️  {p.get('away')} @ {p.get('home')}: no pick file saved before tip; not graded")
     if not picks:
-        print(f"  No picks found in {picks_path}")
+        print(f"  No pre-tip picks found for {game_date}")
         return []
 
     print(f"  Fetching final scores for {game_date}...")

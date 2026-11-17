@@ -148,8 +148,8 @@ def run(ctx: Context) -> JobResult:
     no_game = sum(1 for v in game_for.values() if v is None)
     if no_game:
         warnings.append(f"{no_game} PropLine event(s) not matched to a game")
-    return JobResult(rows_in=len(quotes), rows_out=len(quotes), expected=upcoming > 0, baseline=baseline(),
-                     units=counts["events"] or None, warnings=warnings,
+    return JobResult(rows_in=len(quotes), rows_out=len(quotes), expected=ctx.in_posting_window(), baseline=baseline(),
+                     units=counts["events"] or None, warnings=warnings, volume_rule="warn",
                      meta={**counts, "quotes_new": new_quotes, "quota_remaining": remaining,
                            "unresolved_players": unresolved, "events_unmatched": no_game,
                            "pregame_games_tonight": upcoming})

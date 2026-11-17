@@ -1,6 +1,6 @@
 """bets: ledger writes, nightly grading from game_logs, void rules, Sleeper card aggregation, report."""
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -285,3 +285,48 @@ def test_add_resolves_by_name_with_confirm(world, capsys):
 def test_platform_side_mismatch_is_rejected(world):
     with pytest.raises(ValueError):
         add(world, "Devin Booker", stat="reb", side="over", line=3.5, platform="kalshi")
+
+
+def test_traded_player_absent_from_old_teams_box_is_void_and_stale_pending_expires(world):
+    pg = world
+    # Bench Guy played for PHX on D (0 min), then moved to DEN: grading uses the team at the time
+    traded = add(pg, "Bench Guy", stat="pts", side="over", line=5.5, platform="sleeper")
+    pg.execute("update players set team_abbr = 'DEN' where full_name = 'Bench Guy'")
+    # Not Tonight (DEN) traded to HOU: no log on D, HOU's game is not final -> pending, until 3 days pass
+    nt = add(pg, "Not Tonight", stat="pts", side="over", line=9.5, platform="sleeper")
+    earlier = game(pg, "DEN", "BOS", d=date(2026, 11, 10))
+    box(pg, earlier, pid(pg, "Not Tonight"), "DEN", "BOS", pts=8)          # his last game: for DEN
+    pg.execute("update players set team_abbr = 'HOU' where full_name = 'Not Tonight'")
+    bets.grade_pending(pg, D)
+    assert result(pg, traded)[0] == "void"
+    assert result(pg, nt)[0] == "void"                    # last played for DEN, DEN's D game is final
+    # a bet whose game never got a box score: pending, then void with a note after 3 days
+    late = add(pg, "Reed Sheppard", stat="reb", side="under", line=2.5, platform="sleeper")
+    bets.grade_pending(pg, D)
+    assert result(pg, late) == (None, None)
+    bets.grade_pending(pg, D + timedelta(days=3))
+    r = pg.execute("select result, note from bets where id = %s", (late,)).fetchone()
+    assert r[0] == "void" and "no box score 3+ days" in r[1]
+
+
+def test_dropped_uses_the_logged_game_start_not_the_current_team(world):
+    pg = world
+    tip = datetime(2026, 11, 17, 3, 0, tzinfo=timezone.utc)
+    three = datetime(2026, 11, 16, 23, 0, tzinfo=timezone.utc)
+    pg.execute("update games set start_time = null")       # schedule has no tip times
+    booker, melton = _legs(pg, tip)
+    bets.log_card(pg, D, [booker, melton], now=three - timedelta(hours=2))
+    assert pg.execute("select count(*) from bets where game_start = %s", (tip,)).fetchone()[0] == 2
+    pg.execute("update players set team_abbr = 'BOS' where player_id = %s", (pid(pg, "De'Anthony Melton"),))
+    counts = bets.log_card(pg, D, [booker], now=three)       # Melton (now 'traded') left the card
+    assert counts["dropped"] == 1
+    after = tip + timedelta(minutes=5)
+    assert bets.log_card(pg, D, [], now=after)["dropped"] == 0   # after tip nothing is marked
+
+
+def test_days_window_is_n_dates_including_today():
+    assert bets.window_start(date(2026, 11, 17), 7) == date(2026, 11, 11)
+    assert bets.window_start(date(2026, 11, 17), 1) == date(2026, 11, 17)
+    assert bets.window_start(date(2026, 11, 17), 0) == date(2026, 11, 17)
+    text = bets.report([], 7, date(2026, 11, 17))
+    assert text.startswith("BETS REPORT 7 day(s): 2026-11-11 to 2026-11-17")

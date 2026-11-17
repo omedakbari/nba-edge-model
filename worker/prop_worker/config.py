@@ -70,6 +70,11 @@ RED_MIN_DURATION_S = 2.0
 RED_DURATION_MODE = "relative"
 RED_FAST_FRACTION = 0.25
 RED_TRAILING_FRACTION = 0.5
+# Market jobs (propline, kalshi) use volume_rule="warn": a low rows-per-event ratio or a fast run is a
+# warning, and 0 rows is red only inside the posting window: from POSTING_OPENS_ET (hour, ET) on the
+# slate day until the slate's last tip. Books and Kalshi post at varying times and slate sizes vary,
+# so the ratio rule produced false reds; an empty market while games are still to come is the real alarm.
+POSTING_OPENS_ET = 12
 TRAILING_WINDOW = 20               # last N green, expected, game-day runs of the same job
 TRAILING_MIN_RUNS = 5              # don't judge against fewer than this
 FUTURE_TS_TOLERANCE_S = 120        # provider_ts this far past fetched_at counts as "future"

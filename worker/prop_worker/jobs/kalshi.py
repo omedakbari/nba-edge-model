@@ -162,8 +162,8 @@ def run(ctx: Context) -> JobResult:
     if future:
         warnings.append(f"{future} market(s) with updated_time in the future")
     events = len({r["kalshi_event"] for r in rows})
-    return JobResult(rows_in=len(rows) + len(unparsed), rows_out=len(rows), expected=True,
-                     units=events or None, warnings=warnings,
+    return JobResult(rows_in=len(rows) + len(unparsed), rows_out=len(rows), expected=ctx.in_posting_window(),
+                     units=events or None, warnings=warnings, volume_rule="warn",
                      meta={"per_series": per_series, "quotes_new": new_quotes, "events": events,
                            "no_game": no_game, "no_line": no_line, "unresolved_players": unresolved,
                            "future_provider_ts": future})

@@ -17,8 +17,10 @@ game starts, adds new legs, and marks legs that left the card dropped (see log_c
 
 Grading (from game_logs, i.e. the ESPN box scores the worker ingests):
   value = stat on that ET date (pra = pts+reb+ast, ra = reb+ast); over/yes wins if value > line,
-  under/no if value < line, equal = push. DNP, 0 minutes, or absent from a final game's box score =
-  void. Games not final yet stay ungraded and are retried every night.
+  under/no if value < line, equal = push. DNP, 0 minutes, or absent from the box score of a final
+  game of the team he last played for on/before that date = void. Games not final yet stay ungraded
+  and are retried every night; a bet still without a box score 3 days after its date is voided with
+  a note (postponed game, missing data), so nothing stays pending forever.
   A Sleeper card (card_id) is a loss if any leg loses, void if every leg is void/push, else a win.
 ROI (report): flat 1 unit per bet, only where the payout is known: Kalshi with a price (win pays
 (100 - c) / c), a single Sleeper leg with a multiplier, or a Sleeper card with a multiplier.
@@ -42,6 +44,7 @@ from .names import normalize_name
 from .util import slate_date, utcnow
 
 SIDES = {"over": "over", "o": "over", "under": "under", "u": "under", "yes": "yes", "y": "yes", "no": "no", "n": "no"}
+PENDING_EXPIRE_DAYS = 3        # still no box score this long after the game date -> void with a note
 P_BUCKETS = ((0.80, ".80+"), (0.70, ".70-.80"), (0.60, ".60-.70"), (0.0, "<.60"))
 
 
@@ -112,13 +115,14 @@ def add_bet(conn, *, slate_date: date, player_id: int, stat: str, side: str, lin
 
 _UPSERT_CARD = """
 insert into bets (sport, slate_date, platform, player_id, stat, side, line_or_strike, price_cents,
-                  p_at_placement, source, placed, note, last_logged_at)
+                  p_at_placement, source, placed, note, last_logged_at, game_start)
 values (%(sport)s, %(d)s, %(platform)s, %(player_id)s, %(stat)s, %(side)s, %(line)s, %(price)s, %(p)s,
-        'card', false, %(note)s, %(now)s)
+        'card', false, %(note)s, %(now)s, %(tip)s)
 on conflict (sport, slate_date, source, coalesce(platform, '?'), player_id, stat, side, line_or_strike)
     where source in ('card', 'claude')
 do update set price_cents = excluded.price_cents, p_at_placement = excluded.p_at_placement,
-              note = excluded.note, last_logged_at = excluded.last_logged_at, dropped_at = null
+              note = excluded.note, last_logged_at = excluded.last_logged_at, dropped_at = null,
+              game_start = coalesce(excluded.game_start, bets.game_start)
     where not bets.placed and bets.result is null
 returning id, (xmax = 0) as inserted"""
 
@@ -129,7 +133,8 @@ def log_card(conn, d: date, rows, now: datetime | None = None) -> dict:
     Same slate/player/stat/side/line/platform logged again -> p, price and flags refreshed, while the
     game hasn't started (a placed or graded row is never touched: its p is the one you bet at).
     A new leg -> new row. A leg logged earlier that is no longer on the card -> dropped_at set, only
-    if its game hasn't started (started games always leave the card); it stays in the ledger and is
+    if its game hasn't started (bets.game_start, the tip stored at logging; started games always
+    leave the card); it stays in the ledger and is
     graded like the rest. Returns counts: new, updated, frozen (placed/graded), started, dropped.
     """
     now = now or utcnow()
@@ -144,7 +149,7 @@ def log_card(conn, d: date, rows, now: datetime | None = None) -> dict:
             "sport": config.SPORT, "d": d, "platform": r.platform, "player_id": r.player_id, "stat": r.stat,
             "side": SIDES[r.side.lower()], "line": line,
             "price": round(r.price * 100, 1) if r.price is not None else None, "p": round(r.p, 4),
-            "note": ", ".join(r.flags) or None, "now": now}).fetchone()
+            "note": ", ".join(r.flags) or None, "now": now, "tip": r.tip}).fetchone()
         if row is None:
             counts["frozen"] += 1
         else:
@@ -157,8 +162,10 @@ def log_card(conn, d: date, rows, now: datetime | None = None) -> dict:
              and b.source = 'card' and b.dropped_at is null and b.result is null
              and not (concat_ws('|', b.platform, b.player_id, b.stat, b.side, b.line_or_strike)
                       = any(%(keep)s::text[]))
-             and exists (select 1 from games g where g.sport = b.sport and g.game_date = b.slate_date
-                         and p.team_abbr in (g.home_team, g.away_team) and g.start_time > %(now)s)""",
+             and (b.game_start > %(now)s          -- the leg's own game, stored when it was logged
+                  or (b.game_start is null           -- rows logged before game_start existed
+                      and exists (select 1 from games g where g.sport = b.sport and g.game_date = b.slate_date
+                                  and p.team_abbr in (g.home_team, g.away_team) and g.start_time > %(now)s)))""",
         {"now": now, "sport": config.SPORT, "d": d, "keep": keep}).rowcount
     conn.commit()
     return counts
@@ -223,7 +230,7 @@ def grade_pending(conn, through: date, now: datetime | None = None) -> dict:
                from game_logs gl join games g on g.game_id = gl.game_id
                where gl.sport = %s and gl.player_id = %s and g.game_date = %s""",
             (config.SPORT, pid, d)).fetchone()
-        result = value = None
+        result = value = note = None
         if log:
             dnp, mins, pts, reb, ast, fg3m, status = log
             if dnp or not mins:
@@ -232,19 +239,28 @@ def grade_pending(conn, through: date, now: datetime | None = None) -> dict:
                 value = _value(stat, pts, reb, ast, fg3m)
                 result = outcome(value, side, float(line)) if value is not None else None
         else:
-            # absent from the box score of a final game his team played that night -> DNP
+            # absent from the box score of a final game his team played that night -> DNP. "His team"
+            # = the team of his latest game on or before that date (a trade later doesn't matter),
+            # else players.team_abbr.
+            then = conn.execute(
+                """select gl.team_abbr from game_logs gl join games g on g.game_id = gl.game_id
+                   where gl.sport = %s and gl.player_id = %s and g.game_date <= %s
+                   order by g.game_date desc limit 1""", (config.SPORT, pid, d)).fetchone()
             absent = conn.execute(
                 """select 1 from games g where g.sport = %s and g.game_date = %s and g.status = 'final'
                      and %s in (g.home_team, g.away_team)
                      and exists (select 1 from game_logs x where x.game_id = g.game_id)""",
-                (config.SPORT, d, team)).fetchone()
+                (config.SPORT, d, then[0] if then else team)).fetchone()
             if absent:
                 result = "void"
+            elif (through - d).days >= PENDING_EXPIRE_DAYS:
+                result, note = "void", f"no box score {PENDING_EXPIRE_DAYS}+ days after the game date"
         if result is None:
             counts["pending"] += 1
             continue
-        conn.execute("update bets set result = %s, actual_value = %s, graded_at = %s where id = %s",
-                     (result, value, now, bid))
+        conn.execute("""update bets set result = %s, actual_value = %s, graded_at = %s,
+                                note = case when %s::text is null then note else concat_ws('; ', note, %s::text) end
+                         where id = %s""", (result, value, now, note, note, bid))
         counts[result] += 1
     return dict(counts)
 
@@ -339,12 +355,18 @@ def _summ(bets: list[Graded]) -> dict:
             "roi_n": len(rets), "roi": sum(rets) / len(rets) if rets else None}
 
 
+def window_start(today: date, days: int) -> date:
+    """--days N = N slate dates ending today (today counts as one)."""
+    return today - timedelta(days=max(days, 1) - 1)
+
+
 def report(bets: list[Graded], days: int, today: date) -> str:
     groups = [("platform", lambda b: b.platform or "unknown"), ("stat", lambda b: b.stat),
               ("side", lambda b: b.side), ("source", lambda b: b.source), ("p bucket", lambda b: p_bucket(b.p)),
               ("placed", lambda b: "placed" if b.placed else "recommended only")]
     head = f"  {'':<18} {'bets':>4} {'W-L':>7} {'hit':>5} {'push/void':>9} {'open':>4} {'ROI (n)':>12}"
-    out = [f"BETS REPORT last {days} day(s) through {today}  (research-only; ROI = flat 1u where payout known)",
+    out = [f"BETS REPORT {days} day(s): {window_start(today, days)} to {today}  "
+           f"(research-only; ROI = flat 1u where payout known)",
            head]
 
     def line(label, s):
@@ -457,7 +479,7 @@ def main(argv=None, conn=None, inp=input) -> int:
             cx.commit()
             print(f"added bet {bid}" if bid else "already logged")
         elif args.cmd == "list":
-            since = args.date or (today - timedelta(days=args.days) if args.days else today)
+            since = args.date or (window_start(today, args.days) if args.days else today)
             print(render_list(fetch(cx, since, args.date)))
         elif args.cmd == "void":
             print("voided" if set_void(cx, args.id) else f"no bet {args.id}")
@@ -470,7 +492,7 @@ def main(argv=None, conn=None, inp=input) -> int:
             cx.commit()
             print(f"graded: {counts}")
         elif args.cmd == "report":
-            print(report(fetch(cx, today - timedelta(days=args.days)), args.days, today))
+            print(report(fetch(cx, window_start(today, args.days)), args.days, today))
         return 0
 
     try:

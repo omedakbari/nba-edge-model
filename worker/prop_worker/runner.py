@@ -11,6 +11,9 @@ Every job is a function  run(ctx) -> JobResult.  The runner:
                 - its rows per game/event fell under half its trailing average
                   (only runs with the same `baseline` count: a job sets one when what it collects
                   changes, e.g. propline's book list, so older runs don't make the new level look low)
+              A job with volume_rule="warn" (propline, kalshi) is red only for 0 rows; the duration
+              and trailing-average checks become warnings. Such jobs set expected from
+              Context.in_posting_window(), so 0 rows outside the posting window isn't red either.
        green  otherwise
   4. updates the job_runs row, and after all jobs sends one ntfy push listing every red/error run,
   5. exits non-zero if any run was red or error.
@@ -43,6 +46,7 @@ class JobResult:
     warnings: list[str] = field(default_factory=list)
     meta: dict = field(default_factory=dict)
     baseline: str = ""                    # what was collected; trailing average only compares equal ones
+    volume_rule: str = "red"              # "red" | "warn": duration / trailing-average checks only warn
 
 
 @dataclass
@@ -89,6 +93,14 @@ class Context:
             }
         return self._teams
 
+    def in_posting_window(self) -> bool:
+        """From POSTING_OPENS_ET on the slate's own day until its last scheduled tip."""
+        if self.now_et.date() != self.slate or self.now_et.hour < config.POSTING_OPENS_ET:
+            return False
+        return self.conn.execute(
+            """select count(*) from games where sport = %s and game_date = %s and start_time > %s
+               and status = 'scheduled'""", (config.SPORT, self.slate, self.now)).fetchone()[0] > 0
+
     def games_on(self, d: date) -> int:
         return self.conn.execute(
             """select count(*) from games where sport = %s and game_date = %s
@@ -132,18 +144,22 @@ def too_fast(duration_s: float, median_s: float | None, n: int) -> bool:
 
 def judge(result: JobResult, duration_s: float, is_game_day: bool, trailing: float | None,
           trailing_n: int, median_s: float | None = None) -> tuple[list[str], float | None]:
+    """Red reasons and volume. With result.volume_rule == "warn" the duration and trailing-average
+    findings are appended to result.warnings instead (only 0 rows stays red)."""
     reasons = list(result.red_reasons)
+    soft = reasons if result.volume_rule == "red" else result.warnings
     volume = (result.rows_out / result.units) if result.units else None
     if is_game_day and result.expected:
         if result.rows_out == 0:
-            reasons.append("loaded 0 rows on a game day")
+            reasons.append("loaded 0 rows on a game day" if result.volume_rule == "red"
+                           else "loaded 0 rows inside the posting window")
         if too_fast(duration_s, median_s, trailing_n):
             usual = f", usual {median_s:.2f}s" if median_s is not None else ""
-            reasons.append(f"finished in {duration_s:.2f}s (< {config.RED_MIN_DURATION_S:g}s{usual}) on a game day")
+            soft.append(f"finished in {duration_s:.2f}s (< {config.RED_MIN_DURATION_S:g}s{usual}) on a game day")
         if (volume is not None and trailing is not None and trailing_n >= config.TRAILING_MIN_RUNS
                 and volume < config.RED_TRAILING_FRACTION * trailing):
-            reasons.append(f"loaded {volume:.1f} rows per game vs trailing average {trailing:.1f} "
-                           f"(< {config.RED_TRAILING_FRACTION:.0%})")
+            soft.append(f"loaded {volume:.1f} rows per game vs trailing average {trailing:.1f} "
+                        f"(< {config.RED_TRAILING_FRACTION:.0%})")
     return reasons, volume
 
 
