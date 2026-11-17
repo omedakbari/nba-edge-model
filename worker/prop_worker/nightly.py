@@ -1,6 +1,6 @@
-"""Nightly (6am ET): finish last night's box scores, validate them, prune quotes, grade (placeholder).
+"""Nightly (6am ET): finish last night's box scores, validate them, prune quotes, grade picks and bets.
 
-Run:  python -m prop_worker.nightly [--jobs schedule,boxscores,validate,prune,grade]
+Run:  python -m prop_worker.nightly [--jobs schedule,boxscores,validate,prune,grade,bets]
                                      [--only-at-et-hour 6] [--no-alert]
 
 schedule + boxscores first so games that ended after the last 1am ingest run are loaded before the
@@ -14,13 +14,13 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .jobs import boxscores, grade, prune, schedule, validate
+from .jobs import bets_grade, boxscores, grade, prune, schedule, validate
 from .runner import run_all
 from .schedule_window import at_hour
 from .util import utcnow
 
 JOBS = {"schedule": schedule.run, "boxscores": boxscores.run, "validate": validate.run,
-        "prune": prune.run, "grade": grade.run}
+        "prune": prune.run, "grade": grade.run, "bets": bets_grade.run}
 
 
 def main(argv=None, now=None) -> int:

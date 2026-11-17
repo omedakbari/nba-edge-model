@@ -32,10 +32,11 @@ def main():
 
 
 def card(day):
-    """Final step: the research-only shortlist from the worker's PropLine/Sleeper/Kalshi data (Supabase)."""
+    """Final step: the research-only shortlist from the worker's PropLine/Sleeper/Kalshi data (Supabase).
+    Every printed leg is logged in the bets ledger (source=card, placed=false) and graded nightly."""
     out = ROOT/'data/cards'/f'{day}.txt'
     print(f'\n── card (research-only) ──', flush=True)
-    rc = subprocess.run([sys.executable, '-m', 'prop_worker.slate', '--card', '--date', day, '--out', str(out)],
+    rc = subprocess.run([sys.executable, '-m', 'prop_worker.slate', '--card', '--date', day, '--out', str(out), '--log'],
                         cwd=ROOT/'worker').returncode
     print(f'Card: {out}' if rc == 0 else f'Card failed (exit {rc}); nothing written', flush=True)
     return rc

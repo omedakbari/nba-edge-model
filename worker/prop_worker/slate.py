@@ -3,8 +3,10 @@
 Run (Mac, against Supabase):
   python -m prop_worker.slate [--date 2026-11-12] [--team NYK] [--stat pts] [--min-hit 60]
                               [--side over|under] [--include-injured] [--limit 50] [--json]
-  python -m prop_worker.slate --card [--date ...] [--out data/cards/2026-11-12.txt]
-                              research-only shortlist instead of the board (rules: prop_worker/card.py)
+  python -m prop_worker.slate --card [--date ...] [--out data/cards/2026-11-12.txt] [--log]
+                              research-only shortlist instead of the board (rules: prop_worker/card.py);
+                              --log also records every printed leg in the bets ledger (source=card),
+                              the one write this module makes, on its own connection
 
 It only reads: the connection is read-only (every transaction is BEGIN READ ONLY), so it can't change
 a table even by mistake. It doesn't touch migrations, jobs or workflows, and records no job_runs row.
@@ -318,7 +320,7 @@ def parse_min_hit(v: str) -> float:
     return x
 
 
-def main(argv=None, conn=None) -> int:
+def main(argv=None, conn=None, log_conn=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--date", type=date.fromisoformat, help="ET game date (default: today's slate)")
     ap.add_argument("--team", help="team abbreviation, either side of the game (e.g. NYK)")
@@ -330,6 +332,7 @@ def main(argv=None, conn=None) -> int:
     ap.add_argument("--json", action="store_true", help="print JSON instead of the table")
     ap.add_argument("--card", action="store_true", help="print only the research-only shortlist (prop_worker/card.py)")
     ap.add_argument("--out", help="with --card: also write the card to this file")
+    ap.add_argument("--log", action="store_true", help="with --card: log every printed leg as a recommended bet")
     args = ap.parse_args(argv)
     now = utcnow()
     d = args.date or slate_date(now)
@@ -349,6 +352,14 @@ def main(argv=None, conn=None) -> int:
             if args.out:
                 Path(args.out).parent.mkdir(parents=True, exist_ok=True)
                 Path(args.out).write_text(text + "\n")
+            if args.log:
+                from .bets import log_card
+                if log_conn is not None:
+                    new, old = log_card(log_conn, d, shown)
+                else:
+                    with connect() as w:
+                        new, old = log_card(w, d, shown)
+                print(f"logged {new} new card leg(s) to bets ({old} already logged)", file=sys.stderr)
             if not info["games"]:
                 print(f"no games on {d}", file=sys.stderr)
             return 0

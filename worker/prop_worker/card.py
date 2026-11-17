@@ -12,6 +12,7 @@ Sleeper legs (one per player/stat that has a Sleeper line):
   p_blend   0.35 * p_hist + 0.65 * nv       nv = no-vig P(over) at the consensus line
             no nv -> 0.5 + (p_hist - 0.5) / 2, flagged "no market"
   side      over if p_blend >= .5 else under;  p = max(p_blend, 1 - p_blend);  kept if p >= .62
+            ("slp hard" legs only if p >= .68; the footer counts the ones this hides)
   Caveat: when Sleeper's line differs, nv is still the consensus line's number (no line-shift model).
 Kalshi strikes (line 3.5 = "4+"):
   pk        0.35 * (h10_at_strike + .5) / (n10 + 1) + 0.65 * yes_mid
@@ -41,6 +42,7 @@ from .hitrates import GameLine, hit_rates, played, stat_value
 PT = ZoneInfo("America/Los_Angeles")
 W_HIST, W_MKT = 0.35, 0.65
 SLEEPER_MIN_P = 0.62
+SLP_HARD_MIN_P = 0.68
 KALSHI_MIN_P = 0.68
 KALSHI_MIN_EDGE = 0.05
 KALSHI_MAX_PRICE = 0.85
@@ -140,7 +142,7 @@ def _game(p) -> str:
 def build_rows(props, *, before: date, season_start: date, h2h_since: date, now: datetime | None = None,
                ) -> tuple[list[Row], dict]:
     """props: slate.Prop list from slate.build (needs .games and .kalshi_all)."""
-    stats = {"excluded_injured": 0, "started": 0, "stale": 0}
+    stats = {"excluded_injured": 0, "started": 0, "stale": 0, "slp_hard_hidden": 0}
     seen_all = [b["seen"] for p in props for b in p.books.values() if b.get("seen")]
     seen_all += [k["seen"] for p in props for k in getattr(p, "kalshi_all", p.kalshi) if k.get("seen")]
     fresh_after = max(seen_all) - timedelta(minutes=STALE_MIN) if seen_all else None
@@ -181,6 +183,9 @@ def build_rows(props, *, before: date, season_start: date, h2h_since: date, now:
                         flags.append("market disagrees")
                     if on_the_line(last10, line, side):
                         flags.append("on the line")
+                    if "slp hard" in flags and prob < SLP_HARD_MIN_P - 1e-9:
+                        stats["slp_hard_hidden"] += 1
+                        continue
                     rows.append(Row(p.tip, _game(p), p.name, p.stat, "sleeper", side, line, prob, flags=flags,
                                     player_id=p.player_id))
 
@@ -250,7 +255,7 @@ def render(rows: list[Row], cut: int, *, slate: str, stats: dict) -> str:
         out.append("(nothing clears the thresholds)")
     out.append(f"{len(rows)} shown" + (f", {cut} cut by stat priority/p" if cut else "") +
                f"; hidden: {stats['excluded_injured']} injured (OUT/D/Q/GTD), {stats['started']} started, "
-               f"{stats['stale']} stale quotes")
+               f"{stats['stale']} stale quotes, {stats.get('slp_hard_hidden', 0)} slp hard < {SLP_HARD_MIN_P:.2f}")
     out.append("price/max: Kalshi ask / most to pay (p - 5c). slp = Sleeper pick'em leg. "
                "slp soft/hard: Sleeper line easier/harder than consensus for this side.")
     return "\n".join(out)

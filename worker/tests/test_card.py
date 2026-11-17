@@ -195,3 +195,21 @@ def test_render_stays_under_60_lines_and_says_research_only():
     assert len(lines) < 60 and cut == 150
     assert "RESEARCH-ONLY (UNVALIDATED)" in lines[0]
     assert "4:00p" in lines[4] and "LAL@PHX" in lines[4]
+
+
+def test_slp_hard_legs_need_p_068_and_the_footer_counts_them():
+    # over 4.5 at Sleeper vs consensus 3.5 (harder); 8 of 15 over 4.5, market .80 at 3.5 -> p ~.71: shown
+    vals = [5, 6, 5, 3, 6, 5, 2, 5, 3, 6, 2, 3, 2, 3, 5]
+    shown = prop(vals, sleeper=4.5, consensus=3.5, nv=0.80)
+    rows, stats = rows_for(shown)
+    (r,) = [r for r in rows if r.platform == "sleeper"]
+    assert "slp hard" in r.flags and r.p >= 0.68 and stats["slp_hard_hidden"] == 0
+    # same leg with a weaker market -> p in [.62, .68): hidden and counted
+    weak = prop(vals, sleeper=4.5, consensus=3.5, nv=0.70)
+    rows, stats = rows_for(weak)
+    assert not [r for r in rows if r.platform == "sleeper"] and stats["slp_hard_hidden"] == 1
+    # a soft or equal line at the same p stays
+    soft = prop(vals, sleeper=4.5, consensus=5.5, nv=0.70)
+    assert [r for r in rows_for(soft)[0] if r.platform == "sleeper"]
+    text = card.render([], 0, slate=str(D), stats=stats)
+    assert "1 slp hard < 0.68" in text
