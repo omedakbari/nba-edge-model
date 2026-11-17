@@ -38,6 +38,7 @@ dashboard/app_before_claude_fix.py
 data/picks/
 data/team_picks/
 data/market_picks/
+data/cards/
 
 # Runtime outputs / diagnostics
 data/diagnostics/

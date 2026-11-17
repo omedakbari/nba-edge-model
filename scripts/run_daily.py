@@ -27,7 +27,18 @@ def main():
     result = subprocess.run([sys.executable,'-u',str(ROOT/'nba.py'),'daily'],cwd=ROOT).returncode
     if result:
         return result
-    return subprocess.run([sys.executable, str(ROOT/'scripts/report_market_diagnostics.py')],cwd=ROOT).returncode
+    diag = subprocess.run([sys.executable, str(ROOT/'scripts/report_market_diagnostics.py')],cwd=ROOT).returncode
+    return card(day) or diag
+
+
+def card(day):
+    """Final step: the research-only shortlist from the worker's PropLine/Sleeper/Kalshi data (Supabase)."""
+    out = ROOT/'data/cards'/f'{day}.txt'
+    print(f'\n── card (research-only) ──', flush=True)
+    rc = subprocess.run([sys.executable, '-m', 'prop_worker.slate', '--card', '--date', day, '--out', str(out)],
+                        cwd=ROOT/'worker').returncode
+    print(f'Card: {out}' if rc == 0 else f'Card failed (exit {rc}); nothing written', flush=True)
+    return rc
 
 
 if __name__=='__main__':raise SystemExit(main())

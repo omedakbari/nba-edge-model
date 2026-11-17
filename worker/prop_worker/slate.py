@@ -3,6 +3,8 @@
 Run (Mac, against Supabase):
   python -m prop_worker.slate [--date 2026-11-12] [--team NYK] [--stat pts] [--min-hit 60]
                               [--side over|under] [--include-injured] [--limit 50] [--json]
+  python -m prop_worker.slate --card [--date ...] [--out data/cards/2026-11-12.txt]
+                              research-only shortlist instead of the board (rules: prop_worker/card.py)
 
 It only reads: the connection is read-only (every transaction is BEGIN READ ONLY), so it can't change
 a table even by mistake. It doesn't touch migrations, jobs or workflows, and records no job_runs row.
@@ -65,6 +67,9 @@ class Prop:
     ref: str = ""
     rates: dict = field(default_factory=dict)
     injury: dict | None = None
+    kalshi_all: list = field(default_factory=list)   # every strike (kalshi keeps the 3 nearest), for --card
+    games: list = field(default_factory=list)        # GameLine history used for hit rates, for --card
+    matchup: str = ""                                # 'AWAY@HOME'
 
 
 # ── reading ─────────────────────────────────────────────────────────────────
@@ -191,6 +196,7 @@ def build(conn, d: date, *, side: str = "over") -> tuple[list[Prop], dict]:
         if team not in (g["home"], g["away"]) and recent and recent[0][1] in (g["home"], g["away"]):
             team = recent[0][1]
         p.name, p.team = name, team
+        p.matchup = f"{g['away']}@{g['home']}"
         p.opp = g["away"] if team == g["home"] else g["home"] if team == g["away"] else None
         for b in p.books.values():               # under price only counts at the over's line
             over, under = b.pop("over"), b.pop("under")
@@ -208,14 +214,16 @@ def build(conn, d: date, *, side: str = "over") -> tuple[list[Prop], dict]:
             if priced:
                 p.ref_line, p.ref = min(priced, key=lambda k: abs(k["yes_ask"] - 0.5))["line"], "ksh"
         games_played = [t[0] for t in recent]
+        p.games = games_played
         if p.ref_line is not None:
             p.rates = hit_rates(games_played, p.stat, p.ref_line, before=d, season_start=start, opp=p.opp,
                                 h2h_since=h2h_since, side=side)
+        for k in p.kalshi:
+            k["l10"] = hit_rates(games_played, p.stat, k["line"], before=d, season_start=start, opp=p.opp,
+                                 h2h_since=h2h_since, side=side)["l10"]
+        p.kalshi_all = sorted(p.kalshi, key=lambda k: k["line"])
         if p.kalshi and p.ref_line is not None:
             near = sorted(p.kalshi, key=lambda k: (abs(k["line"] - p.ref_line), k["line"]))[:KALSHI_NEAR]
-            for k in near:
-                k["l10"] = hit_rates(games_played, p.stat, k["line"], before=d, season_start=start, opp=p.opp,
-                                     h2h_since=h2h_since, side=side)["l10"]
             p.kalshi = sorted(near, key=lambda k: k["line"])
         p.injury = injuries.get(p.player_id)
     info = {"date": d.isoformat(), "games": len(games), "side": side,
@@ -320,10 +328,30 @@ def main(argv=None, conn=None) -> int:
     ap.add_argument("--include-injured", action="store_true", help="show players listed Q/D/GTD/OUT")
     ap.add_argument("--limit", type=int, help="show only the top N")
     ap.add_argument("--json", action="store_true", help="print JSON instead of the table")
+    ap.add_argument("--card", action="store_true", help="print only the research-only shortlist (prop_worker/card.py)")
+    ap.add_argument("--out", help="with --card: also write the card to this file")
     args = ap.parse_args(argv)
-    d = args.date or slate_date(utcnow())
+    now = utcnow()
+    d = args.date or slate_date(now)
 
     def go(c) -> int:
+        if args.card:
+            from pathlib import Path
+
+            from . import card
+            props, info = build(read_only(c), d, side="over")
+            rows, stats = card.build_rows(props, before=d, season_start=date.fromisoformat(info["season_start"]),
+                                          h2h_since=date.fromisoformat(info["h2h_since"]),
+                                          now=now if d == slate_date(now) else None)
+            shown, cut = card.shortlist(rows)
+            text = card.render(shown, cut, slate=d.isoformat(), stats=stats)
+            print(text)
+            if args.out:
+                Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+                Path(args.out).write_text(text + "\n")
+            if not info["games"]:
+                print(f"no games on {d}", file=sys.stderr)
+            return 0
         props, info = build(read_only(c), d, side=args.side)
         shown, dropped = select(props, team=args.team, stat=args.stat, min_hit=args.min_hit,
                                 include_injured=args.include_injured)
