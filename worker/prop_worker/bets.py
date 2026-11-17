@@ -12,7 +12,8 @@ Run (Mac, against Supabase):
   python -m prop_worker.bets report [--days 7]
 
 Logged automatically: every leg `slate --card --log` prints (run_daily does this) as source=card,
-placed=false, with its p and Kalshi ask. A re-run doesn't duplicate (first logging wins).
+placed=false, with its p and Kalshi ask. Re-running it the same day refreshes p / price until the
+game starts, adds new legs, and marks legs that left the card dropped (see log_card).
 
 Grading (from game_logs, i.e. the ESPN box scores the worker ingests):
   value = stat on that ET date (pra = pts+reb+ast, ra = reb+ast); over/yes wins if value > line,
@@ -109,18 +110,58 @@ def add_bet(conn, *, slate_date: date, player_id: int, stat: str, side: str, lin
     return row[0] if row else None
 
 
-def log_card(conn, d: date, rows) -> tuple[int, int]:
-    """Log every printed card leg (card.Row) as source=card, placed=false. Returns (new, already logged)."""
-    new = 0
+_UPSERT_CARD = """
+insert into bets (sport, slate_date, platform, player_id, stat, side, line_or_strike, price_cents,
+                  p_at_placement, source, placed, note, last_logged_at)
+values (%(sport)s, %(d)s, %(platform)s, %(player_id)s, %(stat)s, %(side)s, %(line)s, %(price)s, %(p)s,
+        'card', false, %(note)s, %(now)s)
+on conflict (sport, slate_date, source, coalesce(platform, '?'), player_id, stat, side, line_or_strike)
+    where source in ('card', 'claude')
+do update set price_cents = excluded.price_cents, p_at_placement = excluded.p_at_placement,
+              note = excluded.note, last_logged_at = excluded.last_logged_at, dropped_at = null
+    where not bets.placed and bets.result is null
+returning id, (xmax = 0) as inserted"""
+
+
+def log_card(conn, d: date, rows, now: datetime | None = None) -> dict:
+    """Log the printed card legs (card.Row) as source=card, placed=false, and keep them current.
+
+    Same slate/player/stat/side/line/platform logged again -> p, price and flags refreshed, while the
+    game hasn't started (a placed or graded row is never touched: its p is the one you bet at).
+    A new leg -> new row. A leg logged earlier that is no longer on the card -> dropped_at set, only
+    if its game hasn't started (started games always leave the card); it stays in the ledger and is
+    graded like the rest. Returns counts: new, updated, frozen (placed/graded), started, dropped.
+    """
+    now = now or utcnow()
+    counts = {"new": 0, "updated": 0, "frozen": 0, "started": 0, "dropped": 0}
+    keep = []
     for r in rows:
-        side = r.side.lower()
-        bid = add_bet(conn, slate_date=d, player_id=r.player_id, stat=r.stat, side=side, line=r.line,
-                      source="card", platform=r.platform,
-                      price_cents=round(r.price * 100, 1) if r.price is not None else None,
-                      p=round(r.p, 4), note=", ".join(r.flags) or None)
-        new += bid is not None
+        if r.tip is not None and r.tip <= now:
+            counts["started"] += 1
+            continue
+        line = float(r.line)
+        row = conn.execute(_UPSERT_CARD, {
+            "sport": config.SPORT, "d": d, "platform": r.platform, "player_id": r.player_id, "stat": r.stat,
+            "side": SIDES[r.side.lower()], "line": line,
+            "price": round(r.price * 100, 1) if r.price is not None else None, "p": round(r.p, 4),
+            "note": ", ".join(r.flags) or None, "now": now}).fetchone()
+        if row is None:
+            counts["frozen"] += 1
+        else:
+            counts["new" if row[1] else "updated"] += 1
+        keep.append(f"{r.platform}|{r.player_id}|{r.stat}|{SIDES[r.side.lower()]}|{line:.1f}")
+    counts["dropped"] = conn.execute(
+        """update bets b set dropped_at = %(now)s
+           from players p
+           where p.player_id = b.player_id and b.sport = %(sport)s and b.slate_date = %(d)s
+             and b.source = 'card' and b.dropped_at is null and b.result is null
+             and not (concat_ws('|', b.platform, b.player_id, b.stat, b.side, b.line_or_strike)
+                      = any(%(keep)s::text[]))
+             and exists (select 1 from games g where g.sport = b.sport and g.game_date = b.slate_date
+                         and p.team_abbr in (g.home_team, g.away_team) and g.start_time > %(now)s)""",
+        {"now": now, "sport": config.SPORT, "d": d, "keep": keep}).rowcount
     conn.commit()
-    return new, len(rows) - new
+    return counts
 
 
 def set_placed(conn, bet_id: int, stake: float | None) -> int:

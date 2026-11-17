@@ -355,11 +355,11 @@ def main(argv=None, conn=None, log_conn=None) -> int:
             if args.log:
                 from .bets import log_card
                 if log_conn is not None:
-                    new, old = log_card(log_conn, d, shown)
+                    counts = log_card(log_conn, d, shown, now=now)
                 else:
                     with connect() as w:
-                        new, old = log_card(w, d, shown)
-                print(f"logged {new} new card leg(s) to bets ({old} already logged)", file=sys.stderr)
+                        counts = log_card(w, d, shown, now=now)
+                print("bets ledger: " + ", ".join(f"{v} {k}" for k, v in counts.items()), file=sys.stderr)
             if not info["games"]:
                 print(f"no games on {d}", file=sys.stderr)
             return 0

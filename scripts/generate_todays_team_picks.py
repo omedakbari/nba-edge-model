@@ -16,6 +16,9 @@ Confidence tiers:
   STRONG:  |gap| >= STRONG_SPREAD_EDGE (5.5 pts) or ML edge >= STRONG_ML_EDGE (12%)
   LEAN:    |gap| >= MIN_SPREAD_EDGE (3.5 pts) or ML edge >= MIN_ML_EDGE (7%)
   MONITOR: 2 <= |gap| < 3.5 — not a pick, but flag for awareness
+  INJURY_BLIND: recent Out/Doubtful (played in last 14 days) include a top-2 scorer, >= 20% of team
+           points or >= 60 mpg, so the game's
+           spread/total STRONG/LEAN is downgraded to MONITOR (src/models/injury_guard.py)
 
 Output:
   Console table + optional JSON to data/team_picks/YYYY-MM-DD.json
@@ -581,7 +584,8 @@ def print_summary_table(analyses: list[dict]) -> None:
             tier_m = '○ MONITOR'
         else:
             tier_m = '— PASS'
-        print(f"  {game_str:<30} {tier_m:<8} {sp_pick:<22} {ml_pick:<20} {ou_pick_str:<16} {edge_str}")
+        blind = '  INJURY_BLIND ' + ','.join(a['injury_blind']['teams']) if a.get('injury_blind') else ''
+        print(f"  {game_str:<30} {tier_m:<8} {sp_pick:<22} {ml_pick:<20} {ou_pick_str:<16} {edge_str}{blind}")
 
     if ou_picks:
         print(f"\n  O/U picks ({len(ou_picks)}):")
@@ -936,6 +940,21 @@ def main():
         analyses.append(a)
 
     conn.close()
+
+    # Injury guard: the ratings don't know who is out
+    from src.models import injury_guard
+    teams = {t for a in analyses for t in (a['home'], a['away'])}
+    flags, guard_source, guard_errors = injury_guard.team_flags(date.fromisoformat(target_date), teams, DB_PATH)
+    for err in guard_errors:
+        print(f"  injury guard: {err}")
+    print(f"  Injury guard ({guard_source}): "
+          f"{sum(1 for f in flags.values() if f)} of {len(teams)} team(s) INJURY_BLIND")
+    for a in analyses:
+        injury_guard.apply_guard(a, flags, guard_source)
+        if a.get('injury_blind'):
+            print(f"  ⚠️  {injury_guard.describe(a)}")
+    if guard_source == 'none':
+        print("  ⚠️  injury guard had no source: no game was checked for absences")
 
     # Print detailed blocks for every scheduled game
     print(f"\n{'─'*76}")

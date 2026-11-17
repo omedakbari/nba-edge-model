@@ -190,18 +190,71 @@ def test_p_buckets():
 
 # ── card logging and CLI ────────────────────────────────────────────────────
 
+def _legs(pg, tip):
+    return [card.Row(tip, "GSW@PHX", "Devin Booker", "reb", "kalshi", "NO", 3.5, 0.71, 0.62, 0.66, ["on the line"],
+                     pid(pg, "Devin Booker")),
+            card.Row(tip, "GSW@PHX", "De'Anthony Melton", "reb", "sleeper", "over", 3.5, 0.64,
+                     player_id=pid(pg, "De'Anthony Melton"))]
+
+
 def test_every_card_leg_is_logged_once(world):
     pg = world
-    rows = [card.Row(None, "GSW@PHX", "Devin Booker", "reb", "kalshi", "NO", 3.5, 0.71, 0.62, 0.66, ["on the line"],
-                     pid(pg, "Devin Booker")),
-            card.Row(None, "GSW@PHX", "De'Anthony Melton", "reb", "sleeper", "over", 3.5, 0.64, player_id=pid(pg, "De'Anthony Melton"))]
-    assert bets.log_card(pg, D, rows) == (2, 0)
-    assert bets.log_card(pg, D, rows) == (0, 2)                          # run_daily re-run: no duplicates
+    tip = datetime(2026, 11, 17, 3, 0, tzinfo=timezone.utc)
+    noon = datetime(2026, 11, 16, 20, 0, tzinfo=timezone.utc)
+    assert bets.log_card(pg, D, _legs(pg, tip), now=noon)["new"] == 2
+    assert bets.log_card(pg, D, _legs(pg, tip), now=noon)["updated"] == 2       # re-run: no duplicates
     got = pg.execute("""select platform, side, line_or_strike, price_cents, p_at_placement, source, placed, note
                         from bets order by id""").fetchall()
     assert [(g[0], g[1], float(g[2]), g[3] and float(g[3]), float(g[4]), g[5], g[6], g[7]) for g in got] == [
         ("kalshi", "no", 3.5, 62.0, 0.71, "card", False, "on the line"),
         ("sleeper", "over", 3.5, None, 0.64, "card", False, None)]
+
+
+def test_relog_refreshes_until_tip_adds_new_marks_dropped_and_freezes_placed(world):
+    pg = world
+    tip = datetime(2026, 11, 17, 3, 0, tzinfo=timezone.utc)                    # 7 pm PT
+    pg.execute("update games set start_time = %s", (tip,))
+    noon = datetime(2026, 11, 16, 20, 0, tzinfo=timezone.utc)
+    three = datetime(2026, 11, 16, 23, 0, tzinfo=timezone.utc)
+    after = datetime(2026, 11, 17, 3, 30, tzinfo=timezone.utc)                # 30 min after tip
+    booker, melton = _legs(pg, tip)
+    bets.log_card(pg, D, [booker, melton], now=noon)
+    ids = dict(pg.execute("select player_id, id from bets").fetchall())
+
+    # 3 pm: Booker's price moved, Melton fell off the card, Jokic is new
+    booker2 = card.Row(tip, "GSW@PHX", "Devin Booker", "reb", "kalshi", "NO", 3.5, 0.75, 0.66, 0.70, [],
+                       pid(pg, "Devin Booker"))
+    jokic = card.Row(tip, "BOS@DEN", "Nikola Jokić", "ast", "kalshi", "YES", 7.5, 0.80, 0.72, 0.75, [],
+                     pid(pg, "Nikola Jokić"))
+    counts = bets.log_card(pg, D, [booker2, jokic], now=three)
+    assert counts == {"new": 1, "updated": 1, "frozen": 0, "started": 0, "dropped": 1}
+    b = pg.execute("""select price_cents, p_at_placement, note, last_logged_at, dropped_at from bets
+                      where id = %s""", (ids[pid(pg, "Devin Booker")],)).fetchone()
+    assert (float(b[0]), float(b[1]), b[2], b[3], b[4]) == (66.0, 0.75, None, three, None)
+    dropped_at, p_m = pg.execute("select dropped_at, p_at_placement from bets where id = %s",
+                                 (ids[pid(pg, "De'Anthony Melton")],)).fetchone()
+    assert dropped_at == three and float(p_m) == 0.64                         # left in place, p unchanged
+    assert pg.execute("select count(*) from bets").fetchone()[0] == 3
+
+    # placed rows are frozen at the p you bet at; a returning leg clears dropped
+    bets.set_placed(pg, ids[pid(pg, "Devin Booker")], 10)
+    booker3 = card.Row(tip, "GSW@PHX", "Devin Booker", "reb", "kalshi", "NO", 3.5, 0.60, 0.55, 0.55, [],
+                       pid(pg, "Devin Booker"))
+    counts = bets.log_card(pg, D, [booker3, jokic, melton], now=three)
+    assert counts["frozen"] == 1 and counts["updated"] == 2
+    assert float(pg.execute("select price_cents from bets where id = %s",
+                            (ids[pid(pg, "Devin Booker")],)).fetchone()[0]) == 66.0
+    assert pg.execute("select dropped_at from bets where id = %s",
+                      (ids[pid(pg, "De'Anthony Melton")],)).fetchone()[0] is None
+
+    # after tip: nothing is refreshed, added, or marked dropped (started games leave the card)
+    late = card.Row(tip, "GSW@PHX", "De'Anthony Melton", "reb", "sleeper", "over", 3.5, 0.90,
+                    player_id=pid(pg, "De'Anthony Melton"))
+    counts = bets.log_card(pg, D, [late], now=after)
+    assert counts == {"new": 0, "updated": 0, "frozen": 0, "started": 1, "dropped": 0}
+    assert float(pg.execute("select p_at_placement from bets where id = %s",
+                            (ids[pid(pg, "De'Anthony Melton")],)).fetchone()[0]) == 0.64
+    assert pg.execute("select count(*) from bets where dropped_at is not null").fetchone()[0] == 0
 
 
 def test_placed_with_and_without_stake(world):
