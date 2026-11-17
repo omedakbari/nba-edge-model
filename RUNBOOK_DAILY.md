@@ -6,19 +6,34 @@
 
 ---
 
-## 2026-27 regular season: current daily run (updated 2026-11-16)
+## 2026-27 regular season: current daily run (updated 2026-11-17)
 
 ```bash
 cd ~/projects/nba-edge-model
-./venv/bin/python scripts/run_daily.py   # live preflight → grade yesterday → refresh → market props + team picks → stacks → diagnostics
-(cd worker && ../venv/bin/python -m prop_worker.slate)   # read-only phone-app slate: lines, Kalshi strikes, hit rates, injuries
-./venv/bin/python scripts/report_clv.py  # closing-line value so far (no profit claim)
+./venv/bin/python scripts/run_daily.py
 ```
 
-- Run it **before the first tip** of the day. A run after a game has started finds almost no fresh
-  quotes (2026-11-14 ran at 4:13 PM PT and got 0 eligible props).
-- Approval is still disabled: picks are diagnostic, stake $0. Outputs: `data/market_picks/`, `data/team_picks/`, `data/fair/`.
-- The cloud ingest (GitHub Actions + cron-job.org) and the `com.omedakbari.nba-closing` LaunchAgent run on their own.
+Then attach **only** `data/cards/YYYY-MM-DD_brief.txt` to chat (run_daily prints its path last). It is
+under 8 KB and holds everything needed: yesterday's graded team picks, the bets ledger for the last
+7 days, today's team PICK SUMMARY with INJURY_BLIND flags, and the research-only card.
+
+What run_daily does, in order: live preflight → grade yesterday → refresh → market props + team picks
+(with the injury guard) → stacks → diagnostics → card (`prop_worker.slate --card --log`, written to
+`data/cards/YYYY-MM-DD.txt`; every printed leg is logged to the bets ledger) → brief.
+
+- Run it **before the first tip**. A run after a game has started finds almost no fresh quotes
+  (2026-11-14 ran at 4:13 PM PT and got 0 eligible props), and card legs for started games are
+  neither shown nor refreshed.
+- Re-running later the same day is fine and useful: the card refreshes each logged leg's p and price
+  until its game starts, adds new legs, and marks legs that left the card as dropped.
+- Card only (e.g. close to tip): `cd worker && ../venv/bin/python -m prop_worker.slate --card --log
+  --out ../data/cards/$(date +%F).txt`, then `./venv/bin/python scripts/daily_brief.py` to refresh the brief.
+- Placed a bet? Optional: `cd worker && ../venv/bin/python -m prop_worker.bets placed <id> [stake]`
+  (ids from `bets list`). Unmarked card picks are still graded nightly as recommended-only.
+- Approval is still disabled: picks are diagnostic, stake $0. Card and bets are research-only.
+- The cloud ingest (GitHub Actions + cron-job.org), the 6am ET nightly (box scores, validation,
+  bet grading) and the `com.omedakbari.nba-closing` LaunchAgent run on their own.
+- Phase 2 gate: `cd worker && ../venv/bin/python -m prop_worker.status --days 4`.
 - Everything below this section predates 2026-27 and is kept for reference.
 
 ---

@@ -28,7 +28,18 @@ def main():
     if result:
         return result
     diag = subprocess.run([sys.executable, str(ROOT/'scripts/report_market_diagnostics.py')],cwd=ROOT).returncode
-    return card(day) or diag
+    rc = card(day) or diag
+    brief(day)
+    return rc
+
+
+def brief(day):
+    """Last: the one small file to attach to chat (yesterday's results, bets, today's picks, card)."""
+    out = ROOT/'data/cards'/f'{day}_brief.txt'
+    rc = subprocess.run([sys.executable, str(ROOT/'scripts/daily_brief.py'), '--date', day], cwd=ROOT,
+                        stdout=subprocess.DEVNULL).returncode
+    print(f'\nBrief (attach this file to chat): {out}' if rc == 0 else f'\nBrief failed (exit {rc})', flush=True)
+    return rc
 
 
 def card(day):
