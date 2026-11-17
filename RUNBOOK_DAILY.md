@@ -6,6 +6,23 @@
 
 ---
 
+## 2026-27 regular season: current daily run (updated 2026-11-16)
+
+```bash
+cd ~/projects/nba-edge-model
+./venv/bin/python scripts/run_daily.py   # live preflight → grade yesterday → refresh → market props + team picks → stacks → diagnostics
+(cd worker && ../venv/bin/python -m prop_worker.slate)   # read-only phone-app slate: lines, Kalshi strikes, hit rates, injuries
+./venv/bin/python scripts/report_clv.py  # closing-line value so far (no profit claim)
+```
+
+- Run it **before the first tip** of the day. A run after a game has started finds almost no fresh
+  quotes (2026-11-14 ran at 4:13 PM PT and got 0 eligible props).
+- Approval is still disabled: picks are diagnostic, stake $0. Outputs: `data/market_picks/`, `data/team_picks/`, `data/fair/`.
+- The cloud ingest (GitHub Actions + cron-job.org) and the `com.omedakbari.nba-closing` LaunchAgent run on their own.
+- Everything below this section predates 2026-27 and is kept for reference.
+
+---
+
 ## Daily commands (all you need to know)
 
 The `nba` shell command works from any directory, any season phase:

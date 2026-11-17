@@ -16,6 +16,10 @@ sources agree again):
 
 Red: no official report in the last 2 h, the PDF doesn't parse, or the official report has rows
 but none could be stored. An ESPN failure is red too, but the official rows are still stored.
+
+No rows-per-game volume check: how many players are listed has nothing to do with how many games
+are on (one healthy 9-game night listed 14 rows/game against a 32.8 trailing average), so the
+runner's trailing-average rule would only produce false reds. The job reports units=None.
 """
 
 from __future__ import annotations
@@ -142,6 +146,7 @@ def run(ctx: Context) -> JobResult:
     espn_rows: list[dict] = []
     filed_teams_tonight: set[str] = set()
     pdf_ok = False
+    for_slate = True                     # the official report is for ctx.slate (see the rollover note below)
     tonight = ctx.conn.execute(
         "select home_team, away_team from games where sport = %s and game_date = %s",
         (config.SPORT, ctx.slate)).fetchall()
@@ -151,7 +156,16 @@ def run(ctx: Context) -> JobResult:
     url, slot = find_latest_pdf(ctx.session, ctx.now_et)
     if url is None:
         red.append(f"no official injury report in the last {config.INJURY_PDF_MAX_AGE_SLOTS * 15} min")
-    else:
+    elif slot.date() != ctx.slate:
+        # Between midnight and the slate rollover (SLATE_ROLLOVER_HOURS) the newest PDF is already the
+        # next day's report while the slate is still last night's. Its rows are valid and are stored,
+        # but they say nothing about last night's teams: comparing them would flag every ESPN 'Out'
+        # player as missing_in_nba (and resolve real flags). So: store, but don't flag, and mark the
+        # run not expected so the game-day rules (0 rows, too fast) don't judge it either.
+        for_slate = False
+        warnings.append(f"latest official report is for {slot.date()}, slate is {ctx.slate}: "
+                        "rows stored, flags skipped")
+    if url is not None:
         r = ctx.session.get(url)
         r.raise_for_status()
         report = parse_report(r.content)
@@ -202,7 +216,7 @@ def run(ctx: Context) -> JobResult:
     linker.flush(commit=False)
 
     flagged = resolved = 0
-    if pdf_ok and espn_rows:
+    if pdf_ok and espn_rows and for_slate:
         tonight_nba = {r["player_key"]: r for r in nba_rows if r["game_date"] == ctx.slate}
         espn_tonight = {r["player_key"]: r for r in espn_rows if r["team_abbr"] in playing}
         flags = compare(tonight_nba, espn_tonight, filed_teams_tonight)
@@ -213,10 +227,10 @@ def run(ctx: Context) -> JobResult:
     unresolved = sum(r["player_id"] is None for r in nba_rows + espn_rows)
     if unresolved:
         warnings.append(f"{unresolved} injury row(s) stored without a player_id (see xref report)")
-    meta.update(espn_rows=len(espn_rows), new_nba=new_nba, new_espn=new_espn, flags_open=flagged,
-                flags_resolved=resolved, unresolved_players=unresolved)
+    meta.update(pdf_for_slate=for_slate, espn_rows=len(espn_rows), new_nba=new_nba, new_espn=new_espn,
+                flags_open=flagged, flags_resolved=resolved, unresolved_players=unresolved)
     return JobResult(rows_in=len(nba_rows) + len(espn_rows), rows_out=len(nba_rows) + len(espn_rows),
-                     expected=True, units=ctx.games_on(ctx.slate) or None, red_reasons=red,
+                     expected=for_slate, units=None, red_reasons=red,       # no volume check (see docstring)
                      warnings=warnings, meta=meta)
 
 
