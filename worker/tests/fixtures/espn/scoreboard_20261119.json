@@ -1,0 +1,70 @@
+{
+ "events": [
+  {
+   "id": "401910022",
+   "date": "2026-11-20T01:00Z",
+   "name": "LA Clippers at San Antonio Spurs",
+   "season": {
+    "year": 2027,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0.0",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401910022",
+     "date": "2026-11-20T01:00Z",
+     "competitors": [
+      {
+       "homeAway": "home",
+       "winner": true,
+       "team": {
+        "id": "24",
+        "abbreviation": "SA",
+        "displayName": "San Antonio Spurs"
+       },
+       "score": "124"
+      },
+      {
+       "homeAway": "away",
+       "winner": false,
+       "team": {
+        "id": "12",
+        "abbreviation": "LAC",
+        "displayName": "LA Clippers"
+       },
+       "score": "112"
+      }
+     ],
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0.0",
+      "period": 4,
+      "type": {
+       "id": "3",
+       "name": "STATUS_FINAL",
+       "state": "post",
+       "completed": true,
+       "description": "Final",
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

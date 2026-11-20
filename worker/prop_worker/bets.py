@@ -216,14 +216,15 @@ def _value(stat: str, pts, reb, ast, fg3m) -> float | None:
     return None if any(v is None for v in parts) else float(sum(parts))
 
 
-def grade_pending(conn, through: date, now: datetime | None = None) -> dict:
-    """Grade every ungraded bet with slate_date <= through. Returns counts."""
+def grade_pending(conn, through: date, now: datetime | None = None, ids: list[int] | None = None) -> dict:
+    """Grade every ungraded bet with slate_date <= through (only these bet ids, if given). Returns counts."""
     now = now or utcnow()
     counts = defaultdict(int)
     pending = conn.execute("""select b.id, b.slate_date, b.player_id, b.stat, b.side, b.line_or_strike, p.team_abbr
                               from bets b join players p on p.player_id = b.player_id
-                              where b.sport = %s and b.result is null and b.slate_date <= %s""",
-                           (config.SPORT, through)).fetchall()
+                              where b.sport = %s and b.result is null and b.slate_date <= %s
+                                and (%s::bigint[] is null or b.id = any(%s::bigint[]))""",
+                           (config.SPORT, through, ids, ids)).fetchall()
     for bid, d, pid, stat, side, line, team in pending:
         log = conn.execute(
             """select gl.did_not_play, gl.min, gl.pts, gl.reb, gl.ast, gl.fg3m, g.status
@@ -263,6 +264,33 @@ def grade_pending(conn, through: date, now: datetime | None = None) -> dict:
                          where id = %s""", (result, value, now, note, note, bid))
         counts[result] += 1
     return dict(counts)
+
+
+# game_logs column -> bet stats graded from it. Minutes decide void (0 / DNP), so they touch every stat.
+AFFECTED_BY = {"pts": ("pts", "pra"), "reb": ("reb", "pra", "ra"), "ast": ("ast", "pra", "ra"),
+               "fg3m": ("fg3m",), "min": STATS}
+
+
+def regrade(conn, player_id: int, d: date, column: str, reason: str,
+            now: datetime | None = None) -> list[tuple[int, str, str | None]]:
+    """Re-grade the already-graded bets on (player, date) whose stat depends on `column`, after a stored
+    stat was corrected. Hand-voided bets are left alone. Returns [(bet id, old result, new result)]."""
+    stats = AFFECTED_BY.get(column, ())
+    if not stats:
+        return []
+    old = conn.execute(
+        """select id, result from bets
+           where sport = %s and player_id = %s and slate_date = %s and stat = any(%s) and result is not null
+             and coalesce(note, '') not like '%%voided by hand%%'
+           order by id""", (config.SPORT, player_id, d, list(stats))).fetchall()
+    if not old:
+        return []
+    ids = [r[0] for r in old]
+    conn.execute("""update bets set result = null, actual_value = null, graded_at = null,
+                           note = concat_ws('; ', note, %s::text) where id = any(%s)""", (reason, ids))
+    grade_pending(conn, d, now=now, ids=ids)
+    new = dict(conn.execute("select id, result from bets where id = any(%s)", (ids,)).fetchall())
+    return [(bid, res, new.get(bid)) for bid, res in old]
 
 
 # ── reporting ───────────────────────────────────────────────────────────────

@@ -17,7 +17,16 @@ ESPN), played rows only, chosen with a seed derived from the date so a re-run ch
 Against nba_edge_db only ESPN rows are sampled (comparing nba_edge.db with itself proves nothing).
 Compared: pts reb ast fg3m fg3a fgm fga ftm fta oreb dreb stl blk tov pf exactly; minutes within 1
 (ESPN reports whole minutes); plus/minus too against nba_edge_db.
-Red on ANY mismatch, including a sampled player missing from the second source.
+Severity (per date):
+  YELLOW  every mismatch is blk, stl or tov off by exactly 1, and there are at most 2 of them.
+          Logged as a warning; the run stays green and the job exits 0.
+  RED     any mismatch on pts / reb / ast / fg3m (or any other column), any |diff| >= 2, minutes off
+          by more than 1, a sampled player missing from the second source, or more than 2 mismatches.
+
+Rechecks: every stat mismatch on an ESPN row is stored in validate_rechecks. The next nightly run
+(the first one validating a later date) re-fetches that game's ESPN box score first. If ESPN's
+value changed, game_logs is updated and graded bets on that player / stat / date are regraded
+(bets.regrade). Rows from nba_edge_db are never overwritten, so they are not queued.
 """
 
 from __future__ import annotations
@@ -30,6 +39,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from .. import config
+from ..bets import regrade
 from ..names import Candidate, PlayerIndex, normalize_name
 from ..runner import Context, JobResult, run_all
 from ..util import et_date, parse_ts
@@ -41,6 +51,9 @@ PROPLINE_STATS = {"points": "pts", "rebounds": "reb", "assists": "ast", "threes"
                   "defensive_rebounds": "dreb", "steals": "stl", "blocks": "blk", "turnovers": "tov",
                   "personal_fouls": "pf", "minutes": "min"}
 MINUTES_TOLERANCE = 1.0
+YELLOW_STATS = ("blk", "stl", "tov")     # a single one of these off by 1 is scorer noise, not a broken feed
+MAX_MISMATCHES_YELLOW = 2                # more than this on one date is red whatever the stats
+RECHECK_COLUMNS = frozenset(EXACT) | {"min"}
 DEFAULT_SQLITE = Path(__file__).resolve().parents[3] / "data" / "nba_edge.db"
 
 
@@ -73,23 +86,130 @@ def sample(ctx: Context, d, n: int, sources=("espn", "nba_edge_db")) -> list[dic
     return random.Random(f"validate:{d.isoformat()}").sample(rows, min(n, len(rows)))
 
 
-def compare(espn: dict, other: dict | None, label: str, with_plus_minus: bool = False) -> list[str]:
+def diffs(espn: dict, other: dict | None, label: str, with_plus_minus: bool = False) -> list[dict]:
+    """Mismatches as {"text", "stat", "espn", "other", "diff"}; stat/diff are None when there is no
+    number to compare (player or stat missing in the second source)."""
     who = f"{espn['name']} ({espn['team']})"
     if other is None:
-        return [f"{who}: not found in {label}"]
+        return [_mm(f"{who}: not found in {label}")]
     out = []
     for c in EXACT + (("plus_minus",) if with_plus_minus else ()):
         a, b = espn.get(c), other.get(c)
         if b is None:
-            out.append(f"{who}: {c} missing in {label}")
-        elif a is None or int(a) != int(round(float(b))):
-            out.append(f"{who}: {c} ESPN {a} vs {label} {b}")
+            out.append(_mm(f"{who}: {c} missing in {label}", c, a))
+        elif a is None:
+            out.append(_mm(f"{who}: {c} ESPN {a} vs {label} {b}", c, a, b))
+        elif int(a) != int(round(float(b))):
+            out.append(_mm(f"{who}: {c} ESPN {a} vs {label} {b}", c, a, b, abs(int(a) - int(round(float(b))))))
     m_e, m_o = espn.get("min"), other.get("min")
     if m_o is None or m_e is None:
-        out.append(f"{who}: minutes ESPN {m_e} vs {label} {m_o}")
+        out.append(_mm(f"{who}: minutes ESPN {m_e} vs {label} {m_o}", "min", m_e, m_o))
     elif abs(float(m_e) - float(m_o)) > MINUTES_TOLERANCE:
-        out.append(f"{who}: minutes ESPN {m_e} vs {label} {m_o} (> {MINUTES_TOLERANCE:g})")
+        out.append(_mm(f"{who}: minutes ESPN {m_e} vs {label} {m_o} (> {MINUTES_TOLERANCE:g})", "min", m_e, m_o,
+                       abs(float(m_e) - float(m_o))))
     return out
+
+
+def _mm(text, stat=None, espn=None, other=None, diff=None) -> dict:
+    return {"text": text, "stat": stat, "espn": espn, "other": other, "diff": diff}
+
+
+def compare(espn: dict, other: dict | None, label: str, with_plus_minus: bool = False) -> list[str]:
+    return [m["text"] for m in diffs(espn, other, label, with_plus_minus)]
+
+
+def mismatch_severity(m: dict) -> str:
+    return "yellow" if m.get("stat") in YELLOW_STATS and m.get("diff") == 1 else "red"
+
+
+def date_severity(mismatches: list[dict]) -> str:
+    """green (none) | yellow (1-2 mismatches, each blk/stl/tov off by 1) | red (anything else)."""
+    if not mismatches:
+        return "green"
+    if len(mismatches) > MAX_MISMATCHES_YELLOW or any(mismatch_severity(m) == "red" for m in mismatches):
+        return "red"
+    return "yellow"
+
+
+# ── rechecks: re-fetch ESPN for last run's mismatches ─────────────────────────
+
+_QUEUE = """
+insert into validate_rechecks (sport, game_id, player_id, stat, stored_value, other_value, other_label,
+                               severity, found_on, found_at)
+values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+on conflict (sport, game_id, player_id, stat) do nothing"""
+
+
+def queue_rechecks(ctx: Context, d, items: list[tuple[dict, dict]], label: str) -> int:
+    """Store (pick, mismatch) pairs that have a stat to re-fetch, for ESPN rows only."""
+    n = 0
+    for p, m in items:
+        if p["source"] != "espn" or m["stat"] not in RECHECK_COLUMNS:
+            continue
+        other = m["other"]
+        n += ctx.conn.execute(_QUEUE, (config.SPORT, p["game_id"], p["player_id"], m["stat"], m["espn"],
+                                       float(other) if other is not None else None, label,
+                                       mismatch_severity(m), d, ctx.now)).rowcount
+    return n
+
+
+def run_rechecks(ctx: Context, d) -> tuple[list[dict], list[str]]:
+    """Recheck every open mismatch found on a date before d. Returns (results, warnings)."""
+    from .boxscores import parse_summary
+
+    open_ = ctx.conn.execute(
+        """select r.id, r.game_id, r.player_id, r.stat, r.stored_value, r.found_on, g.espn_event_id,
+                  p.full_name, x.external_id
+           from validate_rechecks r join games g using (game_id) join players p on p.player_id = r.player_id
+           left join player_xref x on x.player_id = r.player_id and x.source = 'espn'
+           where r.sport = %s and r.checked_at is null and r.found_on < %s
+           order by r.found_on, r.game_id, r.id""", (config.SPORT, d)).fetchall()
+    results, warnings, summaries = [], [], {}
+    for rid, game_id, pid, stat, stored, found_on, event_id, name, espn_id in open_:
+        if game_id not in summaries:
+            try:
+                r = ctx.session.get(f"{config.ESPN_BASE}/summary", params={"event": event_id})
+                r.raise_for_status()
+                summaries[game_id] = parse_summary(r.json(), ctx.teams["by_espn_abbr"])
+            except Exception as exc:  # noqa: BLE001 — left open, retried next run
+                summaries[game_id] = None
+                warnings.append(f"recheck: ESPN {event_id} fetch failed ({type(exc).__name__}); retried next run")
+        if summaries[game_id] is None:
+            continue
+        rows, problems = summaries[game_id]
+        row = next((x for x in rows if espn_id and x["espn_athlete_id"] == str(espn_id)), None)
+        new = row.get(stat) if row else None
+        changed = new is not None and (stored is None or float(new) != float(stored))
+        if problems:
+            outcome = "espn_problem"
+        elif row is None or new is None:
+            outcome = "not_in_espn"
+        else:
+            outcome = "updated" if changed else "unchanged"
+        regraded = []
+        if outcome == "updated":
+            ctx.conn.execute(f"""update game_logs set {stat} = %s, fetched_at = %s
+                                 where sport = %s and game_id = %s and player_id = %s and source = 'espn'""",
+                             (new, ctx.now, config.SPORT, game_id, pid))
+            regraded = regrade(ctx.conn, pid, found_on, stat,
+                               f"regraded {ctx.now_et:%Y-%m-%d}: ESPN corrected {stat} {_num(stored)} -> {new}",
+                               now=ctx.now)
+            flips = [f"bet {b} {o}->{n}" for b, o, n in regraded if o != n]
+            warnings.append(f"recheck: {name} {stat} on {found_on} ESPN corrected {_num(stored)} -> {new}; "
+                            f"{len(regraded)} bet(s) regraded" + (f" ({', '.join(flips)})" if flips else ""))
+        elif outcome in ("espn_problem", "not_in_espn"):
+            warnings.append(f"recheck: {name} {stat} on {found_on}: {outcome.replace('_', ' ')}")
+        ctx.conn.execute("""update validate_rechecks set checked_at = %s, outcome = %s, espn_value = %s,
+                                   bets_regraded = %s where id = %s""",
+                         (ctx.now, outcome, new, len(regraded), rid))
+        results.append({"player": name, "stat": stat, "date": found_on.isoformat(), "stored": _num(stored),
+                        "espn_now": new, "outcome": outcome,
+                        "regraded": [{"bet": b, "was": o, "now": n} for b, o, n in regraded]})
+    return results, warnings
+
+
+def _num(v):
+    return None if v is None else (int(v) if float(v).is_integer() else float(v))
 
 
 # ── second source: PropLine ──────────────────────────────────────────────────
@@ -179,10 +299,11 @@ def run(ctx: Context) -> JobResult:
         """select count(*) filter (where status not in ('postponed', 'canceled')),
                   count(*) filter (where status = 'final')
            from games where sport = %s and game_date = %s""", (config.SPORT, d)).fetchone()
-    meta = {"date": d.isoformat(), "against": against, "games": scheduled, "finals": finals}
+    rechecks, warnings = run_rechecks(ctx, d)
+    meta = {"date": d.isoformat(), "against": against, "games": scheduled, "finals": finals, "rechecks": rechecks}
     if not scheduled:
-        return JobResult(0, 0, expected=False, meta={**meta, "skipped": f"no games on {d}"})
-    red, warnings = [], []
+        return JobResult(0, 0, expected=False, warnings=warnings, meta={**meta, "skipped": f"no games on {d}"})
+    red = []
     if finals < scheduled:
         warnings.append(f"{scheduled - finals} of {scheduled} game(s) on {d} not final yet")
     missing = missing_box_scores(ctx, d)
@@ -206,21 +327,29 @@ def run(ctx: Context) -> JobResult:
     else:
         raise ValueError(f"unknown --against {against!r}")
 
-    mismatches = list(problems)
+    found_mm = [_mm(t) for t in problems]           # no PropLine event etc.: always red
+    pairs = []
     checked = []
     for p in picks:
         if p["player_id"] not in found:          # second source unavailable for this night: already a problem
             continue
-        diffs = compare(p, found[p["player_id"]], label, with_plus_minus=against == "nba_edge_db")
-        mismatches += diffs
-        checked.append({"player": p["name"], "team": p["team"], "source": p["source"], "ok": not diffs})
+        ds = diffs(p, found[p["player_id"]], label, with_plus_minus=against == "nba_edge_db")
+        found_mm += ds
+        pairs += [(p, m) for m in ds]
+        checked.append({"player": p["name"], "team": p["team"], "source": p["source"], "ok": not ds})
     matched = sum(c["ok"] for c in checked)
-    if mismatches:
-        red.append(f"{len(mismatches)} mismatch(es) vs {label} on {d}: " + "; ".join(mismatches[:8]))
+    mismatches = [m["text"] for m in found_mm]
+    severity = date_severity(found_mm)
+    summary = f"{len(mismatches)} mismatch(es) vs {label} on {d}: " + "; ".join(mismatches[:8])
+    if severity == "red":
+        red.append(summary)
+    elif severity == "yellow":
+        warnings.append(f"YELLOW: {summary}")
+    queued = queue_rechecks(ctx, d, pairs, label)
     return JobResult(rows_in=len(picks), rows_out=matched, expected=True, units=None,
                      red_reasons=red, warnings=warnings,
-                     meta={**meta, "players": checked, "mismatches": mismatches,
-                           "row_sources": sorted({p["source"] for p in picks})})
+                     meta={**meta, "players": checked, "mismatches": mismatches, "mismatch_severity": severity,
+                           "rechecks_queued": queued, "row_sources": sorted({p["source"] for p in picks})})
 
 
 def main(argv=None) -> int:
@@ -239,7 +368,7 @@ def main(argv=None) -> int:
     for c in (outs[0].meta or {}).get("players", []):
         print(f"  {'OK      ' if c['ok'] else 'MISMATCH'} {c['player']} ({c['team']}, row from {c['source']})")
     for w in outs[0].warnings:
-        print(f"  warning: {w}")
+        print(f"  {w}" if w.startswith("YELLOW") else f"  warning: {w}")
     for r in outs[0].red_reasons:
         print(f"  RED: {r}")
     for m in (outs[0].meta or {}).get("mismatches", []):
