@@ -151,3 +151,26 @@ def test_an_errored_run_does_not_block_a_retry(pg, monkeypatch):
 def test_workflow_passes_the_gap_guard():
     text = (Path(__file__).resolve().parents[2] / ".github/workflows/ingest.yml").read_text()
     assert "--window 09:00-01:00 --min-gap-minutes 10" in text
+
+
+def test_nightly_late_run_still_works_once_per_day(capsys, monkeypatch):
+    # GitHub started the 6am ET cron at 1-3pm ET every day in Nov 2026; those runs must still do the work.
+    ran, seen = [], []
+    monkeypatch.setattr(nightly, "run_all", lambda *a, **k: (ran.append(1), (0, []))[1])
+    monkeypatch.setattr(nightly, "ran_since", lambda since: (seen.append(since), bool(ran))[1])
+    assert nightly.main(["--from-et-hour", "6"], now=utc(2026, 11, 20, 18, 18)) == 0     # 1:18 pm EST
+    assert ran == [1] and seen[0].hour == 6 and seen[0].day == 20
+    assert nightly.main(["--from-et-hour", "6"], now=utc(2026, 11, 20, 19, 1)) == 0      # second cron, later
+    assert ran == [1] and "already ran" in capsys.readouterr().out
+
+
+def test_nightly_before_6am_et_does_nothing(capsys, monkeypatch):
+    monkeypatch.setattr(nightly, "run_all", lambda *a, **k: (_ for _ in ()).throw(AssertionError("ran")))
+    monkeypatch.setattr(nightly, "ran_since", lambda since: (_ for _ in ()).throw(AssertionError("db")))
+    assert nightly.main(["--from-et-hour", "6"], now=utc(2026, 11, 20, 10, 0)) == 0      # 5am EST
+    assert "before 6:00 ET" in capsys.readouterr().out
+
+
+def test_nightly_workflow_uses_from_hour_gate():
+    text = (Path(__file__).resolve().parents[2] / ".github/workflows/nightly.yml").read_text()
+    assert "--from-et-hour 6" in text and "--only-at-et-hour" not in text

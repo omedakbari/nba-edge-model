@@ -59,3 +59,12 @@ def test_flip_name(raw, name):
 def test_garbage_pdf_raises_so_the_job_errors_loudly():
     with pytest.raises(Exception):
         parse_report(b"%PDF-1.4 not really")
+
+
+def test_reason_wrapped_onto_a_page_with_no_player_rows_joins_previous_row():
+    # 2026-11-19 8 PM: Reaves' reason ran onto page 9, which held only 'Bone Bruise' (ingest RED).
+    r = parse_report((FIXTURES / "injury_report_2026-11-19_08_00PM.pdf").read_bytes())
+    assert r.problems == []
+    reaves = {x.player_name: x for x in r.rows}["Austin Reaves"]
+    assert reaves.reason.endswith("Contusion / Bone Bruise")
+    assert reaves.team_name == "Los Angeles Lakers"

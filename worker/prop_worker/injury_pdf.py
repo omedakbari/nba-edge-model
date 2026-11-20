@@ -120,6 +120,9 @@ def parse_report(content: bytes) -> Report:
                     fragments.append((top, cells))
             for top, cells in fragments:
                 if not anchors:
+                    if set(cells) == {"reason"} and rows:   # reason wrapped past a page break
+                        rows[-1].reason = f"{rows[-1].reason} {cells['reason']}".strip()
+                        continue
                     problems.append(f"page {page_no}: text with no player row: {cells}")
                     continue
                 nearest = min(anchors, key=lambda a: abs(a["top"] - top))
