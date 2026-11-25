@@ -656,6 +656,27 @@ def run_report(from_date: str | None = None, to_date: str | None = None) -> None
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
+def catch_up(market: bool = True, save: bool = True, since: str | None = None) -> list[str]:
+    """Grade every ungraded saved-picks date after the last success (or from --since); warn on lag."""
+    from src.utils import grading
+    from src.utils.slate import slate_today
+    from src.utils.step_status import warn
+    folder = PICKS_DIR.parent / 'market_picks' if market else PICKS_DIR
+    today = slate_today().isoformat()
+    files = grading.pick_file_dates(folder)
+    graded = grading.market_graded_dates(DB_PATH, folder)
+    dates = grading.to_grade(files, graded, today, since)
+    print(f"  Catch-up: {len(dates)} ungraded date(s): {', '.join(dates) or 'none'}")
+    for d in dates:
+        print(f"\n  Grading picks for {d}...")
+        grade_date(d, market=market, save=save)
+    graded = grading.market_graded_dates(DB_PATH, folder) | (set(dates) if not save else set())
+    lag = grading.lag_warning('market props', files, graded, today, DB_PATH)
+    if lag:
+        warn(lag)
+    return dates
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Grade daily picks and report calibration")
     parser.add_argument('--date',      help='Date to grade: YYYY-MM-DD')
@@ -665,12 +686,19 @@ def main() -> None:
                         help='Show calibration report across all graded dates')
     parser.add_argument('--market', action='store_true', help='Grade saved market-price candidates')
     parser.add_argument('--no-save', action='store_true', help='Grade and print only; write nothing (dry run)')
+    parser.add_argument('--catch-up', action='store_true',
+                        help='with --market: grade every ungraded date since the last success (src/utils/grading.py)')
+    parser.add_argument('--since', help='with --catch-up: start here (YYYY-MM-DD) instead of the last success')
     parser.add_argument('--from',     dest='from_date', help='Report start date YYYY-MM-DD')
     parser.add_argument('--to',       dest='to_date',   help='Report end date YYYY-MM-DD')
     args = parser.parse_args()
 
     if args.report:
         run_report(args.from_date, args.to_date)
+        return
+
+    if args.catch_up:
+        catch_up(market=args.market, save=not args.no_save, since=args.since)
         return
 
     if not args.date:

@@ -5,10 +5,14 @@ Run (Mac, against Supabase):
 
 Per slate date D (ET):
   pick time   the slate's first tip minus PICK_LEAD_MIN (the card runs before the first game)
-  quote       the newest kalshi_quotes row fetched in [pick time - STALE_MIN, pick time]   (kind 'intraday')
-              or, for games whose intraday rows were compacted by prune, the OPENING quote from
-              quote_history when it was first seen at or before pick time                    (kind 'opening')
-              Closing prices and anything seen after pick time are never used.
+  quote       the price IN EFFECT at pick time: the newest kalshi_quotes row fetched at or before pick
+              time (rows are stored only when the price changes; last_seen_at is bumped while it holds),
+              kept only if it was still being seen within STALE_MIN of pick time          (kind 'intraday')
+              else the archived pick-time snapshot (kalshi_pick_snapshots, when that table exists and
+              the nightly archive step is on)                                              (kind 'archived')
+              else, for games prune already compacted, the OPENING quote from quote_history when it was
+              first seen at or before pick time                                            (kind 'opening')
+              Closing prices and anything first stored after pick time are never used.
   history     game_logs strictly before D (the same L10 hit rate at the strike the card uses)
   pk          card.p_kalshi(h10, n10, mid): the card's raw P(YES)
   outcome     the player's stat in that game (DNP / no box score -> row skipped)
@@ -59,18 +63,35 @@ def slates(conn, since: date, until: date) -> dict[date, dict]:
     return out
 
 
+PICK_TIME_SQL = """
+    select m.ticker, m.game_id, m.player_id, m.stat, m.line, q.yes_ask, q.no_ask, q.fetched_at, q.last_seen_at
+    from kalshi_markets m
+    join lateral (select yes_ask, no_ask, fetched_at, last_seen_at from kalshi_quotes k
+                  where k.sport = m.sport and k.ticker = m.ticker and k.fetched_at <= %(pick)s
+                  order by k.fetched_at desc, k.id desc limit 1) q on true
+    where m.sport = %(s)s and m.market_kind = 'player_prop' and m.game_id = any(%(g)s)
+      and m.player_id is not null and m.line is not null and q.last_seen_at >= %(from)s"""
+
+
+def pick_time_rows(conn, gids: list[int], pick: datetime) -> list[tuple]:
+    """(ticker, game_id, player_id, stat, line, yes_ask, no_ask, fetched_at, last_seen_at): the price in effect
+    at pick time per strike, if it was still being seen within STALE_MIN of pick. Shared with the archive job."""
+    return conn.execute(PICK_TIME_SQL, {"s": config.SPORT, "g": gids, "pick": pick,
+                                        "from": pick - timedelta(minutes=STALE_MIN)}).fetchall()
+
+
 def intraday_quotes(conn, gids: list[int], pick: datetime) -> list[tuple]:
-    """(game_id, player_id, stat, line, yes_ask, no_ask, fetched_at): newest quote per strike before pick."""
+    """(game_id, player_id, stat, line, yes_ask, no_ask, fetched_at) at pick time."""
+    return [r[1:8] for r in pick_time_rows(conn, gids, pick)]
+
+
+def archived_quotes(conn, gids: list[int]) -> list[tuple]:
+    """Same shape from kalshi_pick_snapshots (sql/011), if the table exists."""
+    if conn.execute("select to_regclass('public.kalshi_pick_snapshots')").fetchone()[0] is None:
+        return []
     return conn.execute(
-        """select m.game_id, m.player_id, m.stat, m.line, q.yes_ask, q.no_ask, q.fetched_at
-           from kalshi_markets m
-           join lateral (select yes_ask, no_ask, fetched_at from kalshi_quotes k
-                         where k.sport = m.sport and k.ticker = m.ticker
-                           and k.fetched_at <= %(pick)s and k.fetched_at >= %(from)s
-                         order by k.fetched_at desc, k.id desc limit 1) q on true
-           where m.sport = %(s)s and m.market_kind = 'player_prop' and m.game_id = any(%(g)s)
-             and m.player_id is not null and m.line is not null""",
-        {"s": config.SPORT, "g": gids, "pick": pick, "from": pick - timedelta(minutes=STALE_MIN)}).fetchall()
+        """select game_id, player_id, stat, line, yes_ask, no_ask, fetched_at from kalshi_pick_snapshots
+           where sport = %s and game_id = any(%s)""", (config.SPORT, gids)).fetchall()
 
 
 def opening_quotes(conn, gids: list[int], pick: datetime) -> list[tuple]:
@@ -144,14 +165,18 @@ def build(conn, since: date, until: date) -> list[dict]:
         gids = list(s["games"])
         intra = intraday_quotes(conn, gids, s["pick"])
         have = {q[0] for q in intra}
+        archived = [q for q in archived_quotes(conn, gids) if q[0] not in have]
+        have |= {q[0] for q in archived}
         opening = [q for q in opening_quotes(conn, gids, s["pick"]) if q[0] not in have]
-        pids = sorted({q[1] for q in intra + opening})
+        pids = sorted({q[1] for q in intra + archived + opening})
         if not pids:
             continue
         hist = logs(conn, pids, date(season_start(d).year - 1, 10, 1), d)
         rows += rows_for_slate(d, s, intra, "intraday", hist)
+        rows += rows_for_slate(d, s, archived, "archived", hist)
         rows += rows_for_slate(d, s, opening, "opening", hist)
-        print(f"{d}: {len(intra)} intraday + {len(opening)} opening quotes", file=sys.stderr)
+        print(f"{d}: {len(intra)} intraday + {len(archived)} archived + {len(opening)} opening quotes",
+              file=sys.stderr)
     return rows
 
 

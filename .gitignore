@@ -84,3 +84,7 @@ data/*.db-wal
 
 # dashboard-launched daily runs (logs + pointer)
 data/runs/
+
+# Kalshi replay for card calibration: private, rebuilt by `python -m src.models.calibration --refit`
+# (user backup in ~/data/backups). Never in the public repo.
+data/calibration/

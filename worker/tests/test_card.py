@@ -195,7 +195,7 @@ def test_render_stays_under_60_lines_and_says_research_only():
     assert len(lines) < 60 and cut == 150
     assert "RESEARCH-ONLY (UNVALIDATED)" in lines[0]
     assert "4:00p" in lines[5] and "LAL@PHX" in lines[5]
-    assert lines[2].startswith("p = UNCALIBRATED")
+    assert lines[2].startswith("p = UNCALIBRATED")             # no calibration label passed
 
 
 def test_slp_hard_legs_need_p_068_and_the_footer_counts_them():

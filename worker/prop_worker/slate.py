@@ -442,10 +442,14 @@ def main(argv=None, conn=None, log_conn=None) -> int:
             rows, stats = card.build_rows(props, before=d, season_start=date.fromisoformat(info["season_start"]),
                                           h2h_since=date.fromisoformat(info["h2h_since"]), now=live, cal=cal)
             excluded = stats.pop("excluded")
+            from .jobs.injuries import is_two_way
             excluded += [{"player": u["name"], "player_id": None, "team": u["team"], "game": "", "stat": "",
-                          "venue": "", "line": None, "reason": "injury name not matched",
-                          "detail": f"{u['status']} ({u['source']} as of {u['as_of']}) — name not in roster; "
-                                    "any prop for this player is unprotected"}
+                          "venue": "",  "line": None,
+                          "reason": "not in roster ingest — two-way" if is_two_way(u.get("reason"))
+                          else "injury name not matched",
+                          "detail": f"{u['status']} ({u['source']} as of {u['as_of']}; {u.get('reason') or ''})"
+                                    + ("" if is_two_way(u.get("reason")) else
+                                       " — name not in roster; any prop for this player is unprotected")}
                          for u in info["injury"]["unmatched"]]
             shown, cut = card.shortlist(rows)
             text = card.render(shown, cut, slate=d.isoformat(), stats=stats, excluded=excluded,
@@ -457,6 +461,9 @@ def main(argv=None, conn=None, log_conn=None) -> int:
                 Path(args.out).with_suffix(".json").write_text(json.dumps(
                     card.to_dict(shown, cut, slate=d.isoformat(), stats=stats, excluded=excluded,
                                  injury=info["injury"], calibration=cal.label()), default=str, indent=1) + "\n")
+            if cal.missing:
+                warn(f"card: calibration artifact missing ({cal.path}); Kalshi legs withheld "
+                     f"({stats.get('kalshi_withheld', 0)} strikes), Sleeper p is raw", step="Prop card")
             for why in card_warnings(info, rows, stats):
                 warn(why, step="Prop card")
             if args.log:

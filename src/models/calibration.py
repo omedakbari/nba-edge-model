@@ -1,8 +1,11 @@
 """Card calibration: raw card p -> calibrated p (AUDIT_2026-11-24.md item 4; DECISIONS.md D9-D13).
 
+Refit:   ./venv/bin/python -m src.models.calibration --refit      (rebuild the replay from Supabase, read-only,
+         through yesterday, then fit; run it as new graded slates arrive, at least weekly)
 Fit:     ./venv/bin/python -m src.models.calibration --fit [--replay data/calibration/kalshi_replay.csv]
-         (build the replay first: cd worker && ../venv/bin/python -m prop_worker.replay)
 Report:  ./venv/bin/python -m src.models.calibration --report
+Health:  health() -> warnings when the artifact is missing, older than MAX_AGE_DAYS, or fit on fewer than
+         MIN_SLATES slates (shown on the Today page and as a run WARN).
 
 Kalshi (venue 'kalshi'): fitted on the no-lookahead replay of the card's own Kalshi formula
   (worker/prop_worker/replay.py). Each strike gives two candidate sides (YES at p = pk, price = yes ask;
@@ -40,6 +43,8 @@ ARTIFACT = ROOT / 'data/processed/models/card_calibration.json'
 TEST_FROM = '2026-11-18'          # ~6 most recent slates; only 13 slates of Kalshi history exist
 MIN_FIT = 5000                    # fit rows per stat for its own map; else pooled (D11: per-stat maps were unstable at ~1-2k rows)
 SHRINK_K = 100                    # Sleeper ledger offset shrink: n / (n + K)
+MAX_AGE_DAYS = 7                  # health: refit at least weekly
+MIN_SLATES = 20                   # health: a fit on fewer slates is provisional
 BUCKETS = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 1.0001]
 STATS = ('pts', 'reb', 'ast', 'fg3m', 'pra')
 EPS = 1e-4
@@ -195,6 +200,11 @@ def kalshi_report(a: pd.DataFrame, maps: dict, iso_maps: dict | None = None) -> 
         for stat in ('all',) + STATS:
             g = frame if stat == 'all' else frame[frame['stat'] == stat]
             if g.empty:
+                if subset.endswith('(calibrated rules)'):       # report "0 legs" explicitly, per stat
+                    out.append({'venue': 'kalshi', 'subset': subset, 'stat': stat, 'raw': reliability([], []),
+                                'calibrated': reliability([], []), 'isotonic_p_only_brier': None,
+                                'market_mid_brier': None, 'mean_price': None, 'pnl_per_contract_after_fee': None,
+                                'clears_card_rules_raw': 0, 'clears_card_rules_calibrated': 0})
                 continue
             y, raw, cal, price = g['y'].values, g['p'].values, g['cal'].values, g['price_s'].values
             fee = 0.07 * price * (1 - price)
@@ -284,7 +294,7 @@ def fit_all(replay: pd.DataFrame, ledger: pd.DataFrame) -> dict:
     return {
         'fit_date': datetime.now(timezone.utc).isoformat(timespec='seconds'),
         'kalshi': {'maps': shipped, 'source': 'replay (worker/prop_worker/replay.py), card region only',
-                   'dates': [dates[0], dates[-1]], 'n_region': int(len(region)),
+                   'dates': [dates[0], dates[-1]], 'n_region': int(len(region)), 'n_slates': int(len(dates)),
                    'n_players_games': int(replay.groupby(['game_id', 'player_id']).ngroups),
                    'time_split': {'fit': [dates[0], max(d for d in dates if d < TEST_FROM)],
                                   'test': [TEST_FROM, dates[-1]], 'n_fit': int(len(fit_part)),
@@ -293,6 +303,41 @@ def fit_all(replay: pd.DataFrame, ledger: pd.DataFrame) -> dict:
         'report': {'kalshi_test': kalshi_report(a, held_out_maps, held_out_iso),
                    'ledger': ledger_report(ledger, shipped, sleeper)},
     }
+
+
+def health(path: Path = ARTIFACT, now: datetime | None = None) -> list[str]:
+    """Warnings for the Today page / run log: missing, stale (> MAX_AGE_DAYS) or thin (< MIN_SLATES)."""
+    now = now or datetime.now(timezone.utc)
+    try:
+        art = json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return [f"calibration artifact missing ({Path(path).relative_to(ROOT) if Path(path).is_relative_to(ROOT) else path}): "
+                "card withholds Kalshi legs; run `python -m src.models.calibration --refit`"]
+    out = []
+    age = (now - datetime.fromisoformat(art['fit_date'])).total_seconds() / 86400
+    if age > MAX_AGE_DAYS:
+        out.append(f"calibration fit is {age:.0f} days old (> {MAX_AGE_DAYS}); run `python -m src.models.calibration --refit`")
+    k = art.get('kalshi', {})
+    n_slates = k.get('n_slates')
+    if n_slates is None or n_slates < MIN_SLATES:
+        out.append(f"calibration fit on {n_slates if n_slates is not None else '?'} slates (< {MIN_SLATES}): provisional")
+    return out
+
+
+def refit(until: date | None = None) -> int:
+    """Rebuild the replay from Supabase (read-only) through yesterday, then fit and save."""
+    import subprocess
+    cmd = [sys.executable, '-m', 'prop_worker.replay', '--since', '2026-10-01', '--out', str(REPLAY)]
+    if until:
+        cmd += ['--until', until.isoformat()]
+    rc = subprocess.run(cmd, cwd=ROOT / 'worker').returncode
+    if rc:
+        print(f'replay failed (exit {rc}); artifact unchanged')
+        return rc
+    art = fit_all(pd.read_csv(REPLAY), load_ledger())
+    print(f'saved {save(art)}')
+    print_report(art)
+    return 0
 
 
 def save(art: dict, path: Path = ARTIFACT) -> Path:
@@ -304,6 +349,7 @@ def save(art: dict, path: Path = ARTIFACT) -> Path:
 def print_report(art: dict) -> None:
     k = art['kalshi']
     print(f"card calibration fit {art['fit_date']}  Kalshi replay {k['dates'][0]}..{k['dates'][1]} "
+          f"({k.get('n_slates', '?')} slates) "
           f"(card region n={k['n_region']}, {k['n_players_games']} player-games); "
           f"time split fit {k['time_split']['fit']} test {k['time_split']['test']}")
     for s, m in k['maps'].items():
@@ -313,6 +359,9 @@ def print_report(art: dict) -> None:
     print(f"  sleeper  {sl['method']:9s} n={sl['n']} offset={sl.get('offset')} (raw {sl.get('raw_offset')})")
     for r in art['report']['kalshi_test'] + art['report']['ledger']:
         raw, cal = r['raw']['overall'], (r['calibrated'] or {}).get('overall')
+        if not raw['n']:
+            print(f"  {r['venue']:7s} {r['stat']:5s} {r['subset'][:32]:32s} n=    0 (no legs)")
+            continue
         c = f"cal p {cal['pred']:.3f} B {cal['brier']:.4f}" if cal else 'cal -'
         extra = (f" | iso B {r['isotonic_p_only_brier']} mid B {r['market_mid_brier']} | price {r['mean_price']:.3f} "
                  f"pnl/contract {r['pnl_per_contract_after_fee']:+.3f} | pass rules raw {r['clears_card_rules_raw']}"
@@ -323,10 +372,18 @@ def print_report(art: dict) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument('--refit', action='store_true', help='rebuild the replay from Supabase (read-only), then fit')
     ap.add_argument('--fit', action='store_true', help='fit from the replay CSV + ledger and save the artifact')
+    ap.add_argument('--health', action='store_true', help='print calibration health warnings (exit 3 if any)')
     ap.add_argument('--report', action='store_true', help='print the saved artifact report')
     ap.add_argument('--replay', type=Path, default=REPLAY)
     args = ap.parse_args(argv)
+    if args.refit:
+        return refit()
+    if args.health:
+        w = health()
+        print('\n'.join(w) or 'calibration OK')
+        return 3 if w else 0
     if args.fit:
         art = fit_all(pd.read_csv(args.replay), load_ledger())
         print(f'saved {save(art)}')

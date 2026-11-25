@@ -31,12 +31,13 @@ def test_isotonic_and_offset_and_identity():
     assert apply({"method": "isotonic", "x": [0.5, 0.9], "y": [0.5, 0.7]}, 0.7) == pytest.approx(0.6)
     assert apply({"method": "isotonic", "x": [0.5, 0.9], "y": [0.5, 0.7]}, 0.99) == pytest.approx(0.7)
     assert Calibrator(ART)("sleeper", "pts", 0.70) == pytest.approx(0.65)
-    assert Calibrator(None)("kalshi", "pts", 0.8, 0.7) == 0.8 and not Calibrator(None).ok
+    assert Calibrator.identity()("kalshi", "pts", 0.8, 0.7) == 0.8 and not Calibrator.identity().missing
 
 
 def test_missing_artifact_is_identity_and_says_so(tmp_path):
     c = Calibrator.load(tmp_path / "nope.json")
-    assert not c.ok and c.label().startswith("UNCALIBRATED")
+    assert c.missing and c.label().startswith("UNCALIBRATED (raw p): calibration artifact missing")
+    assert "nope.json" in c.label() and "Kalshi legs withheld" in c.label()
     p = tmp_path / "a.json"
     p.write_text(json.dumps(ART))
     assert Calibrator.load(p).ok and "Kalshi replay 2026-11-11..2026-11-23" in Calibrator.load(p).label()
@@ -92,3 +93,12 @@ def test_ledger_note_keeps_raw_p_and_mid():
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from src.models.calibration import _note_float
     assert _note_float(card_note(r), "p_raw=") == 0.8443 and _note_float(card_note(r), "mid=") == 0.59
+
+
+def test_missing_artifact_fails_closed_no_kalshi_legs(tmp_path):
+    missing = Calibrator.load(tmp_path / "nope.json")
+    pr = prop([10] * 10, kalshi=[(8.5, 0.70, 0.10)], sleeper=8.5, consensus=8.5, nv=0.6)
+    rows, stats = card.build_rows([pr], before=D, season_start=SZN, h2h_since=H2H, cal=missing)
+    assert all(r.platform == "sleeper" for r in rows) and stats["kalshi_withheld"] == 1
+    ident, _ = card.build_rows([pr], before=D, season_start=SZN, h2h_since=H2H, cal=Calibrator.identity())
+    assert any(r.platform == "kalshi" for r in ident)                    # identity is explicit raw, not missing

@@ -17,7 +17,7 @@ from test_slate import D, SEEN, TIP, game, injury, kalshi, logs, pid
 def raw_calibration(monkeypatch):
     """These tests are about exclusions; pin calibration to identity so a fitted artifact can't change them."""
     from prop_worker.calibration import Calibrator
-    monkeypatch.setattr(Calibrator, "load", classmethod(lambda cls, path=None: cls(None)))
+    monkeypatch.setattr(Calibrator, "load", classmethod(lambda cls, path=None: cls.identity()))
 
 
 @pytest.fixture
@@ -107,3 +107,18 @@ def test_stale_quote_exclusion_reports_age():
                                   "venue": "Kalshi", "line": "4+", "reason": "stale quote",
                                   "detail": "quote 50 min older than newest"}]
     assert card.STALE_MIN == 45
+
+
+def test_two_way_unmatched_name_gets_its_own_reason(nov24, pg, tmp_path):
+    pg.execute("""insert into injuries (source, player_key, player_id, external_name, team_abbr, game_date, status,
+                                        reason, fetched_at, last_seen_at)
+                  values ('nba_pdf', 'DET:isaac jones', null, 'Isaac Jones', 'DET', %s, 'Out',
+                          'G League - Two-Way', %s, %s)""", (D, SEEN, SEEN))
+    pg.commit()
+    out = tmp_path / "card.txt"
+    assert slate.main(["--card", "--date", D.isoformat(), "--out", str(out)], conn=pg) == 0
+    ex = {e["player"]: e for e in json.loads(out.with_suffix(".json").read_text())["excluded"]}
+    assert ex["Isaac Jones"]["reason"] == "not in roster ingest — two-way"
+    assert "unprotected" not in ex["Isaac Jones"]["detail"] and "G League - Two-Way" in ex["Isaac Jones"]["detail"]
+    pg.rollback()
+    pg.read_only = False

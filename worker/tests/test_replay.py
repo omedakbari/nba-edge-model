@@ -18,9 +18,11 @@ def _market(pg, gid, player, line, ticker):
                (ticker, line, player, gid))
 
 
-def _quote(pg, ticker, yes, no, at):
-    pg.execute("insert into kalshi_quotes (ticker, yes_ask, no_ask, fetched_at) values (%s, %s, %s, %s)",
-               (ticker, yes, no, at))
+def _quote(pg, ticker, yes, no, at, seen=None):
+    qid = pg.execute("""insert into kalshi_quotes (ticker, yes_ask, no_ask, fetched_at) values (%s, %s, %s, %s)
+                        returning id""", (ticker, yes, no, at)).fetchone()[0]
+    if seen is not None:                       # what ingest does while the price holds
+        pg.execute("update kalshi_quotes set last_seen_at = %s where id = %s", (seen, qid))
 
 
 def _history(pg, gid, player, line, open_yes, open_no, close_yes, close_no, opened_at):
@@ -55,6 +57,13 @@ def slate(pg):
     _market(pg, g1, a, 24.5, "TA")
     _quote(pg, "TA", 0.60, 0.42, PICK - timedelta(minutes=30))
     _quote(pg, "TA", 0.95, 0.06, PICK + timedelta(minutes=15))
+    # E: price set long before pick but unchanged and still seen at pick -> it IS the pick-time price
+    seed_players(pg, [(5, "E Five", "NYK")])
+    e = pid(pg, "E Five")
+    logs(pg, e, "NYK", [(2 * i + 2, "ATL", 30) for i in range(10)])
+    _box(pg, g1, e, "NYK", "BOS", 26)
+    _market(pg, g1, e, 24.5, "TE")
+    _quote(pg, "TE", 0.70, 0.32, PICK - timedelta(hours=5), seen=PICK + timedelta(minutes=10))
     # B: only a quote older than the stale window -> no row
     _market(pg, g1, b, 24.5, "TB")
     _quote(pg, "TB", 0.60, 0.42, PICK - timedelta(minutes=replay.STALE_MIN + 5))
@@ -63,13 +72,14 @@ def slate(pg):
     # D: compacted, but first seen AFTER pick -> unusable
     _history(pg, g2, d4, 24.5, 0.55, 0.47, 0.01, 0.99, PICK + timedelta(minutes=5))
     pg.commit()
-    return {"a": a, "b": b, "c": c, "d": d4}
+    return {"a": a, "b": b, "c": c, "d": d4, "e": e}
 
 
 def test_only_pick_time_quotes_and_opening_prices(slate, pg):
     rows = replay.build(pg, D, D)
     by = {r["player_id"]: r for r in rows}
-    assert set(by) == {slate["a"], slate["c"]}
+    assert set(by) == {slate["a"], slate["c"], slate["e"]}
+    assert (by[slate["e"]]["yes_ask"], by[slate["e"]]["quote_kind"]) == (0.70, "intraday")   # unchanged price held
     a, c = by[slate["a"]], by[slate["c"]]
     assert (a["quote_kind"], a["yes_ask"], a["no_ask"], a["quote_age_min"]) == ("intraday", 0.60, 0.42, 30.0)
     assert (c["quote_kind"], c["yes_ask"], c["no_ask"]) == ("opening", 0.55, 0.47)       # not 0.99 / 0.02 close
@@ -95,6 +105,6 @@ def test_cli_writes_csv(slate, pg, tmp_path):
     out = tmp_path / "r.csv"
     assert replay.main(["--since", D.isoformat(), "--until", D.isoformat(), "--out", str(out)], conn=pg) == 0
     lines = out.read_text().splitlines()
-    assert lines[0].split(",") == replay.FIELDS and len(lines) == 3
+    assert lines[0].split(",") == replay.FIELDS and len(lines) == 4
     pg.rollback()
     pg.read_only = False

@@ -54,7 +54,8 @@ def render(st) -> None:
     k = art['kalshi']
     pooled = k['maps']['_pooled']
     st.markdown(
-        f"Fit **{art['fit_date'][:16].replace('T', ' ')} UTC**. Kalshi: no-lookahead replay of the card formula on "
+        f"Fit **{art['fit_date'][:16].replace('T', ' ')} UTC** on **{k.get('n_slates', '?')} slates**. "
+        f"Kalshi: no-lookahead replay of the card formula on "
         f"{k['dates'][0]} → {k['dates'][1]} ({k['n_region']:,} candidate sides in the card region, "
         f"{k['n_players_games']:,} player-games). Time split: fit {k['time_split']['fit'][0]} → "
         f"{k['time_split']['fit'][1]}, **tested on {k['time_split']['test'][0]} → {k['time_split']['test'][1]}** "
@@ -62,6 +63,9 @@ def render(st) -> None:
         f"b_mid {pooled.get('b_mid', 0):.2f}, b_dev {pooled.get('b_dev', 0):+.2f}). "
         f"Sleeper: `{art['sleeper']['method']}` {art['sleeper'].get('offset', 0):+.4f} from n={art['sleeper']['n']} "
         "graded ledger legs (shrunk). See DECISIONS.md D9–D13.")
+    from src.models.calibration import MAX_AGE_DAYS, MIN_SLATES, health
+    for w in health():
+        st.warning(f"{w}  (refit at least every {MAX_AGE_DAYS} days; under {MIN_SLATES} slates is provisional)")
     df = summary_frame(art)
     st.dataframe(df, hide_index=True, width='stretch', column_config={
         c: {'format': '%.3f'} for c in ('hit rate', 'raw p', 'cal p')})

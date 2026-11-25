@@ -537,13 +537,22 @@ def main():
                         help='Print cumulative performance report')
     parser.add_argument('--no-save', action='store_true',
                         help='Print grades but do not write to results_log.csv')
+    parser.add_argument('--catch-up', action='store_true',
+                        help='Grade every ungraded picks file since the last successful grade (src/utils/grading.py)')
+    parser.add_argument('--since', help='with --catch-up: start here (YYYY-MM-DD) instead of the last success')
     args = parser.parse_args()
 
     if args.report:
         print_full_report()
         return
 
-    if args.all:
+    if args.catch_up:
+        from src.utils import grading
+        today = slate_today().isoformat()
+        dates = grading.to_grade(grading.pick_file_dates(PICKS_DIR), grading.team_graded_dates(RESULTS_LOG),
+                                 today, args.since)
+        print(f"  Catch-up: {len(dates)} ungraded date(s): {', '.join(dates) or 'none'}")
+    elif args.all:
         files = sorted(PICKS_DIR.glob('20??-??-??.json'))
         dates = [f.stem for f in files]
         print(f"  Grading {len(dates)} pick file(s)...")
@@ -570,6 +579,16 @@ def main():
             append_results(finalized)
         else:
             print("\n  All results still PENDING — nothing written to log.")
+
+    if args.catch_up:
+        from src.utils import grading
+        from src.utils.step_status import warn
+        graded = grading.team_graded_dates(RESULTS_LOG)
+        if args.no_save:                         # dry run: count what WOULD have been written
+            graded |= {r['game_date'] for r in all_results if r.get('spread_result') != 'PENDING'}
+        lag = grading.lag_warning('team', grading.pick_file_dates(PICKS_DIR), graded, slate_today().isoformat())
+        if lag:
+            warn(lag)
 
     if not args.report and RESULTS_LOG.exists():
         print(f"\n  Run with --report for cumulative stats.\n")

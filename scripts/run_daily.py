@@ -63,7 +63,7 @@ def main(argv=None):
             print('\nDry run: brief skipped (it would overwrite today\'s brief)', flush=True)
         else:
             brief(day)
-        health_warnings = worker_health()
+        health_warnings = worker_health() + calibration_health()
         return finish(rc, read_warnings(warn_path) + health_warnings)
     finally:
         os.environ.pop(WARN_ENV, None)
@@ -99,6 +99,14 @@ def worker_health():
         return [{'step': 'Worker health', 'reason': f"Supabase job_runs unreadable: {health['error']}"}]
     return [{'step': 'Worker health', 'reason': f"{j['job']} RED: " + '; '.join(j['reasons'] or [j['status']])}
             for j in health['jobs'] if j['level'] == 'red']
+
+
+def calibration_health():
+    """Card calibration artifact: missing / stale / thin fit -> run warnings."""
+    from src.models.calibration import health
+    warns = health()
+    print('\n── calibration ──\n' + ('\n'.join(f'WARN: {w}' for w in warns) or 'calibration OK'), flush=True)
+    return [{'step': 'Calibration', 'reason': w} for w in warns]
 
 
 def brief(day):

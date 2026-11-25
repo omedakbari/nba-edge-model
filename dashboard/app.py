@@ -39,8 +39,9 @@ BLEND_WEIGHT = BLEND_L10_WEIGHT  # unified value — see config/settings.py
 TEAM_PICKS_DIR = PROJECT_ROOT / "data" / "team_picks"
 TEAM_RESULTS_LOG = TEAM_PICKS_DIR / "results_log.csv"
 
-STAT_LABELS = {"pts": "Points", "reb": "Rebounds", "ast": "Assists"}
-CALIBRATED_STATS = ["pts", "reb", "ast"]
+STAT_LABELS = {"pts": "Points", "reb": "Rebounds", "ast": "Assists", "fg3m": "3-pointers made",
+               "pra": "Pts+Reb+Ast", "reb_ast": "Reb+Ast"}
+CALIBRATED_STATS = ["pts", "reb", "ast", "fg3m", "pra", "reb_ast"]
 
 
 # ---------------------------------------------------------------------------
@@ -515,7 +516,14 @@ elif page == "Overview":
 # PAGE: BACKTEST RESULTS
 # ---------------------------------------------------------------------------
 elif page == "Backtest Results":
-    st.title("Backtest Results — 2024-25 Season")
+    st.title("Backtest Results")
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import backtest_view
+    backtest_view.render(st)
+    st.divider()
+    st.header("Legacy: 2024-25 at L10 lines (IN-SAMPLE for the current models)")
+    st.caption("The current models were refit on 2019-20 → 2025-26, so 2024-25 is training data, and the L10 "
+               "average is not a real market line. Kept for comparison only.")
 
     all_results = {}
     errors = {}
@@ -619,7 +627,11 @@ elif page == "Calibration":
     st.title("Model Calibration")
     _render_card_calibration()
     st.divider()
-    st.header("ML regression models (2024-25 test set)")
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import backtest_view
+    backtest_view.render(st, buckets=True)
+    st.divider()
+    st.header("Legacy: ML models on 2024-25 (IN-SAMPLE for the current models)")
     st.markdown(
         "A well-calibrated model means: when it predicts 70% probability, "
         "the event actually happens ~70% of the time."

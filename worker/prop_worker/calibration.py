@@ -1,7 +1,9 @@
 """calibration: apply the card calibration artifact (fit by src/models/calibration.py) without sklearn.
 
-Artifact: data/processed/models/card_calibration.json. Missing or unreadable -> identity (calibrated p =
-raw p) and the card says "UNCALIBRATED". Methods (same math as src/models/calibration.apply_map):
+Artifact: data/processed/models/card_calibration.json (fit locally; gitignored; the cloud never builds the
+card, DECISIONS.md D14). Missing or unreadable -> FAIL CLOSED: `missing` is True, the card withholds every
+Kalshi leg, labels Sleeper legs "UNCALIBRATED (raw p)" and warns (the run goes WARN). Calibrator.identity()
+is the explicit raw-p calibrator for tests and research only. Methods (same math as src/models/calibration.apply_map):
   logit2    p_cal = sigmoid(b0 + b_mid * logit(mid) + b_dev * (p_raw - mid) / w_hist)   (Kalshi; mid = side's mid)
   isotonic  piecewise-linear interpolation through (x, y), clipped at the ends
   offset    clip(p_raw + offset, .01, .99)                                              (Sleeper)
@@ -52,16 +54,26 @@ def apply(m: dict, p: float, mid: float | None = None) -> float:
 
 
 class Calibrator:
-    def __init__(self, artifact: dict | None):
+    def __init__(self, artifact: dict | None, path: Path | None = None):
         self.art = artifact or {}
         self.ok = bool(artifact)
+        self.missing = not artifact                 # fail closed: card withholds Kalshi legs
+        self.path = path or ARTIFACT
+
+    @classmethod
+    def identity(cls) -> "Calibrator":
+        """Explicit raw p (tests / research). Never what the live card uses when the artifact is missing."""
+        c = cls({"identity": True})
+        c.ok = False
+        c.missing = False
+        return c
 
     @classmethod
     def load(cls, path: Path = ARTIFACT) -> "Calibrator":
         try:
-            return cls(json.loads(Path(path).read_text()))
+            return cls(json.loads(Path(path).read_text()), path)
         except (OSError, ValueError):
-            return cls(None)
+            return cls(None, path)
 
     def _map(self, venue: str, stat: str) -> dict:
         if not self.ok:
@@ -79,8 +91,10 @@ class Calibrator:
         return 1 - apply(m, 1 - p, None if mid is None else 1 - mid)
 
     def label(self) -> str:
+        if self.missing:
+            return f"UNCALIBRATED (raw p): calibration artifact missing ({self.path}); Kalshi legs withheld"
         if not self.ok:
-            return "UNCALIBRATED (no data/processed/models/card_calibration.json)"
+            return "raw p (identity calibrator)"
         k = self.art.get("kalshi", {})
         return (f"calibrated {self.art.get('fit_date', '?')[:10]}: Kalshi replay {k.get('dates', ['?', '?'])[0]}.."
                 f"{k.get('dates', ['?', '?'])[1]} n={k.get('n_region', '?')}; Sleeper ledger n="

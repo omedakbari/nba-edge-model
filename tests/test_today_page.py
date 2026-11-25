@@ -126,3 +126,24 @@ def test_calibration_view_frames():
     b = V.bucket_frame(art['report']['kalshi_test'][0])
     assert list(b['p']) == ['raw'] and b.loc[0, 'bucket'] == '0.70-0.75'
     assert V.load(Path('/nonexistent.json')) is None
+
+
+def test_backtest_view_frames():
+    import backtest_view as V
+    rep = {'stats': {'pts': {'season': '2026-27', 'in_sample': False,
+                             'counts': {'rows_in': 10, 'rows_scored': 8, 'dropped_min_L10': 2, 'dropped_no_actual': 0,
+                                        'rows_with_null_features': 8},
+                             'mae': 5.4, 'thresholds': {'overall': {'n': 56, 'pred': .62, 'hit': .59, 'brier': .24,
+                                                                    'logloss': .67}, 'buckets': []},
+                             'l10_line': {'overall': {'n': 8, 'pred': .6, 'hit': .5, 'brier': .25, 'logloss': .7}}},
+                     'ra': {'error': 'no season'}}}
+    df = V.model_frame(rep)
+    assert list(df['stat']) == ['pts', 'ra'] and bool(df.loc[0, 'held out']) is True and df.loc[0, 'N+ hit'] == .59
+    art = {'report': {'kalshi_test': [
+        {'subset': 'card selected (raw rules)', 'stat': 'pts', 'raw': {'overall': {'n': 34, 'hit': .676}},
+         'mean_price': .701, 'pnl_per_contract_after_fee': -.039},
+        {'subset': 'card selected (calibrated rules)', 'stat': 'pts', 'raw': {'overall': {'n': 0, 'hit': None}},
+         'mean_price': None, 'pnl_per_contract_after_fee': None},
+        {'subset': 'card region (raw p - ask > 0)', 'stat': 'pts', 'raw': {'overall': {'n': 9, 'hit': .4}}}]}}
+    c = V.card_frame(art)
+    assert list(c['rules']) == ['raw (old card)', 'calibrated'] and list(c['legs']) == [34, 0]

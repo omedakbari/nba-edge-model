@@ -119,3 +119,26 @@ def test_save_and_note_parsing(tmp_path, art):
     assert p.exists() and 'fit_date' in p.read_text()
     assert C._note_float('on the line, p_raw=0.8443, mid=0.7100', 'mid=') == 0.71
     assert C._p_raw_from_note('market disagrees') is None and C._p_raw_from_note(None) is None
+
+
+def test_health_missing_stale_thin(tmp_path, art):
+    from datetime import datetime, timedelta, timezone
+    assert 'artifact missing' in C.health(tmp_path / 'nope.json')[0]
+    p = C.save(dict(art, fit_date='2026-11-01T00:00:00+00:00'), tmp_path / 'a.json')
+    now = datetime(2026, 11, 25, tzinfo=timezone.utc)
+    w = C.health(p, now)
+    assert any('24 days old' in x for x in w) and any('13 slates (< 20)' in x for x in w)
+    fresh = dict(art, fit_date=(now - timedelta(days=1)).isoformat(),
+                 kalshi=dict(art['kalshi'], n_slates=C.MIN_SLATES))
+    assert C.health(C.save(fresh, tmp_path / 'b.json'), now) == []
+
+
+def test_artifact_records_slate_count(art):
+    assert art['kalshi']['n_slates'] == 13
+
+
+def test_refit_stops_if_replay_fails(monkeypatch, tmp_path):
+    import subprocess
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **k: type('R', (), {'returncode': 1})())
+    monkeypatch.setattr(C, 'ARTIFACT', tmp_path / 'a.json')
+    assert C.refit() == 1 and not (tmp_path / 'a.json').exists()

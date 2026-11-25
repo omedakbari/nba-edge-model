@@ -242,8 +242,9 @@ def cmd_daily(_args):
     if dry:
         print('  DRY RUN: grading is not written, data refresh is skipped, boards are not saved.')
 
-    run(['scripts/log_pick_results.py', '--date', yesterday, '--market'] + no_save, 'Market props — yesterday')
-    run(['scripts/log_team_results.py',  '--date', yesterday] + no_save, 'Team picks — yesterday')
+    # Catch-up grading: every ungraded date since the last success, not just yesterday (src/utils/grading.py).
+    run(['scripts/log_pick_results.py', '--market', '--catch-up'] + no_save, 'Market props — grading')
+    run(['scripts/log_team_results.py', '--catch-up'] + no_save, 'Team picks — grading')
 
     if dry:
         print(f"\n  Dry run — data refresh skipped")

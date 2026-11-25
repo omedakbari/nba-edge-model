@@ -46,8 +46,8 @@ TIER_RANK = {"STRONG": 0, "LEAN": 1, "MONITOR": 2, "NONE": 3, "PASS": 3}
 # Section markers printed by run_daily.py / nba.py daily, in order.
 STAGES = [
     ("Live evidence:", "Archiving live data"),
-    ("Market props — yesterday", "Grading yesterday's props"),
-    ("Team picks — yesterday", "Grading yesterday's team picks"),
+    ("Market props — ", "Grading props (catch-up)"),          # '— yesterday' in logs before 2026-11-25
+    ("Team picks — ", "Grading team picks (catch-up)"),
     ("Player props — market prices and EV", "Pricing player props"),
     ("Team spread / ML picks", "Building team board"),
     ("Player + game prop stack screen", "Screening stacks"),
@@ -459,6 +459,14 @@ def _health_strip(day: str) -> None:
         if notes:
             st.markdown('<div class="healthnote">' + "<br>".join(f"⚠ {_esc(n)}" for n in notes) + "</div>",
                         unsafe_allow_html=True)
+    try:
+        from src.models.calibration import health as cal_health
+        cal_warn = cal_health()
+    except Exception as exc:  # noqa: BLE001
+        cal_warn = [f"calibration health check failed: {type(exc).__name__}"]
+    if cal_warn:
+        st.markdown('<div class="healthnote">' + "<br>".join(f"⚠ Calibration: {_esc(w)}" for w in cal_warn)
+                    + "</div>", unsafe_allow_html=True)
     feeds = feed_lines(day)
     if feeds:
         bad = any(" 0/" in f for f in feeds)

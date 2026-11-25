@@ -104,3 +104,51 @@ change for a proper column: `sql/proposed_2026-11-24_bets_p_raw.sql` (not applie
 **Consequence (2026-11-24 slate):** the calibrated card shows 0 Kalshi legs where the raw card showed 8.
 On the test split, the raw card's selected Kalshi legs lost 3.6¢ per contract after fees. The hit-rate history
 adds no information over the Kalshi price in this sample.
+
+## Phase 3: cloud safety, replay archive, refit cadence, grading, backtest (2026-11-25)
+
+**D14. The card is built only on the Mac; a missing calibration artifact fails closed.** No workflow runs
+`prop_worker.slate --card` (ingest, nightly, tests and healthcheck don't touch it), so the cloud never needs
+the gitignored `card_calibration.json`. If the artifact is missing anywhere, `Calibrator.load()` returns a
+*missing* calibrator: the card withholds every Kalshi leg (`stats.kalshi_withheld`), labels Sleeper p
+"UNCALIBRATED (raw p)", the card step goes WARN naming the file, and the Today page and run log carry a
+calibration WARN. `Calibrator.identity()` is the explicit raw-p calibrator for tests and research only.
+How the cloud would get the map if it ever builds the card: **a Supabase `model_artifacts` row**
+(`sql/012_model_artifacts.sql`), upserted by the local refit and read-only in the cloud. Rejected:
+committing the JSON (the repo is public and the report embeds ledger and replay aggregates) and refitting in the
+nightly (it would need sklearn plus the private replay in CI). Not built now because no cloud consumer exists.
+
+**D15. Pick-time Kalshi snapshots are archived before prune.** Prune compacts intraday quotes 2 days after
+tip into opening and closing prices only, which loses the pick-time price the replay needs.
+- New nightly job `pick_snapshots`, ordered before `prune`. It copies the price in effect at each slate's
+  pick time (first tip − 60 min) for every player-prop strike into `kalshi_pick_snapshots`
+  (`sql/011_kalshi_pick_snapshots.sql`). It's idempotent per slate and ticker.
+- The replay reads it ahead of opening quotes.
+- OFF until the SQL is applied: `config.PICK_SNAPSHOTS_ENABLED` (env `NBA_PICK_SNAPSHOTS`). When off, it's a
+  green no-op; when on with the table missing, it's red and names the migration.
+- Also fixed in the replay: `kalshi_quotes` stores a row only when the price changes. The pick-time price is
+  the newest row fetched at or before pick time that was still seen within 45 min, not "a row fetched inside
+  the window". The old query dropped every held price. Replay rows went from 20,152 to 22,048 over 14 slates.
+
+**D16. Two-way / G League injury rows aren't a mapping problem.** Reasons matching "two-way" or "G League"
+don't count toward the injuries job's "stored without a player_id" warning (listed in
+`meta.two_way_not_in_roster`). The card lists them as "not in roster ingest — two-way". They aren't added to
+the roster ingest.
+
+**D17. Catch-up grading.** Both graders take `--catch-up [--since D]`: every date with a picks file that is
+before today, after the last successful grade and not yet graded (`src/utils/grading.py`). `nba daily` uses it
+in place of "yesterday". It's idempotent: graded dates are skipped and writers dedupe. Lag = game days with
+box scores after the last success, up to yesterday; more than 1 is a WARN naming each day and why. Holes
+before the last success (11-21 → 11-23: no picks were saved) can't be graded and don't count. Backfilled
+11-20 (9 games, no picks) and 11-24 (BOS −10.5 LEAN won ATS; DAL@DEN UNDER STRONG won).
+Market props: every market file since 11-15 holds 0 picks (no +EV candidates), so there is nothing to grade.
+
+**D18. Backtest = the held-out season only.** All six models were refit on 2019-20 → 2025-26
+(`test_season: None`), so the old "2024-25 test set" pages were in-sample. They're kept, labelled
+IN-SAMPLE. `src/backtest/model_backtest.py` scores 2026-27 at Kalshi N+ thresholds (7 strikes around each
+projection) and at the legacy L10 line. Null features are never filtered: every row with a box score and
+min_L10 ≥ 20 is scored and every drop is counted (test asserts in = scored + counted drops).
+
+**D19. Worker health: intraday jobs aren't stale overnight.** injuries, kalshi, propline and schedule are
+checked for staleness only from 13:00 ET (posting opens at 12:00) to midnight. A 5-hour gap at 2 AM PT was a
+false yellow.

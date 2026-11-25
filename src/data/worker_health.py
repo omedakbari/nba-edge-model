@@ -18,6 +18,10 @@ LOOKBACK_DAYS = 3
 # Expected cadence: market/injury jobs every ~15 min on game days, nightly jobs once a day.
 STALE_H = {'injuries': 2, 'kalshi': 2, 'propline': 2, 'schedule': 6, 'rosters': 30, 'boxscores': 30,
            'validate': 30, 'grade': 30, 'bets': 30, 'prune': 30}
+# Intraday jobs only keep a ~15-min cadence on game days from posting open (12:00 ET); overnight a 5-hour gap is
+# normal, so their staleness is only checked from ACTIVE_FROM_ET to midnight ET (2026-11-25: false yellows at 2 am PT).
+INTRADAY = {'injuries', 'kalshi', 'propline', 'schedule'}
+ACTIVE_FROM_ET = 13
 LEVEL = {'green': 'green', 'ok': 'green', 'red': 'red', 'failed': 'red', 'error': 'red',
          'yellow': 'yellow', 'warn': 'yellow', 'warning': 'yellow'}
 
@@ -44,7 +48,9 @@ def summarize(rows, now: datetime | None = None) -> list[dict]:
         reasons = _reasons(red, warns, err)
         if level == 'green' and reasons:
             level = 'yellow'                                   # green run that still logged warnings
-        if age_h is not None and age_h > STALE_H.get(job, 30) and level == 'green':
+        from zoneinfo import ZoneInfo
+        active = job not in INTRADAY or now.astimezone(ZoneInfo('America/New_York')).hour >= ACTIVE_FROM_ET
+        if active and age_h is not None and age_h > STALE_H.get(job, 30) and level == 'green':
             level = 'yellow'
             reasons.append(f'no run for {age_h:.0f} h')
         jobs.append({'job': job, 'status': status, 'started_at': started.isoformat() if started else None,

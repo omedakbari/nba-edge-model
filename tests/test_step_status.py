@@ -178,3 +178,13 @@ def test_pick_grader_no_save_writes_nothing(tmp_path, monkeypatch):
     assert sqlite3.connect(db).execute('select count(*) from pick_results').fetchone()[0] == 0
     L.grade_date('2026-11-20', market=True, save=True)
     assert sqlite3.connect(db).execute('select count(*) from pick_results').fetchone()[0] == 1
+
+
+def test_intraday_jobs_not_stale_overnight():
+    from src.data.worker_health import summarize
+    night = datetime(2026, 11, 25, 10, 30, tzinfo=timezone.utc)          # 5:30 am ET
+    evening = datetime(2026, 11, 25, 23, 30, tzinfo=timezone.utc)        # 6:30 pm ET
+    rows = lambda now: [('kalshi', 'green', now - timedelta(hours=5), 1, 1, None, None, None),
+                        ('validate', 'green', now - timedelta(hours=31), 1, 1, None, None, None)]
+    assert {j['job']: j['level'] for j in summarize(rows(night), night)} == {'kalshi': 'green', 'validate': 'yellow'}
+    assert {j['job']: j['level'] for j in summarize(rows(evening), evening)}['kalshi'] == 'yellow'

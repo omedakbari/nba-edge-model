@@ -1,6 +1,6 @@
 """Nightly (6am ET): finish last night's box scores, validate them, prune quotes, grade picks and bets.
 
-Run:  python -m prop_worker.nightly [--jobs schedule,boxscores,validate,prune,grade,bets]
+Run:  python -m prop_worker.nightly [--jobs schedule,boxscores,validate,pick_snapshots,prune,grade,bets]
                                      [--from-et-hour 6] [--no-alert]
 
 schedule + boxscores first so games that ended after the last 1am ingest run are loaded before the
@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .jobs import bets_grade, boxscores, grade, prune, schedule, validate
+from .jobs import bets_grade, boxscores, grade, pick_snapshots, prune, schedule, validate
 from .runner import run_all
 from .schedule_window import at_hour
 from . import config
@@ -24,8 +24,9 @@ from .db import connect
 from .util import utcnow
 
 JOBS = {"schedule": schedule.run, "boxscores": boxscores.run, "validate": validate.run,
+        "pick_snapshots": pick_snapshots.run,          # BEFORE prune: archive pick-time Kalshi prices (D15)
         "prune": prune.run, "grade": grade.run, "bets": bets_grade.run}
-NIGHTLY_ONLY = ("validate", "prune", "grade", "bets")       # schedule/boxscores also run every ingest
+NIGHTLY_ONLY = ("validate", "pick_snapshots", "prune", "grade", "bets")       # schedule/boxscores also run every ingest
 
 
 def ran_since(since) -> bool:

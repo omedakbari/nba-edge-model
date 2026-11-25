@@ -40,6 +40,15 @@ ESPN_ID = re.compile(r"/id/(\d+)")
 DTD_COMPATIBLE = {"Questionable", "Doubtful", "Probable"}
 
 
+TWO_WAY = re.compile(r"two[- ]way|g league", re.I)
+
+
+def is_two_way(reason: str | None) -> bool:
+    """Two-way / G League players aren't in the roster ingest by design (DECISIONS.md D16): an unmapped row
+    for one is expected, not an xref problem, so it doesn't raise the 'without a player_id' warning."""
+    return bool(reason and TWO_WAY.search(reason))
+
+
 def player_key(team: str, name: str) -> str:
     return f"{team}:{normalize_name(name)}"
 
@@ -224,11 +233,14 @@ def run(ctx: Context) -> JobResult:
 
     if pdf_ok and report.rows and not nba_rows:
         red.append("official report had rows but none could be stored")
-    unresolved = sum(r["player_id"] is None for r in nba_rows + espn_rows)
+    unmapped = [r for r in nba_rows + espn_rows if r["player_id"] is None]
+    two_way = [r for r in unmapped if is_two_way(r.get("reason"))]
+    unresolved = len(unmapped) - len(two_way)
     if unresolved:
         warnings.append(f"{unresolved} injury row(s) stored without a player_id (see xref report)")
     meta.update(pdf_for_slate=for_slate, espn_rows=len(espn_rows), new_nba=new_nba, new_espn=new_espn,
-                flags_open=flagged, flags_resolved=resolved, unresolved_players=unresolved)
+                flags_open=flagged, flags_resolved=resolved, unresolved_players=unresolved,
+                two_way_not_in_roster=sorted({f"{r['external_name']} ({r['team_abbr']})" for r in two_way}))
     return JobResult(rows_in=len(nba_rows) + len(espn_rows), rows_out=len(nba_rows) + len(espn_rows),
                      expected=for_slate, units=None, red_reasons=red,       # no volume check (see docstring)
                      warnings=warnings, meta=meta)

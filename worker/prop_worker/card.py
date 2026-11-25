@@ -180,11 +180,14 @@ def _game(p) -> str:
 def build_rows(props, *, before: date, season_start: date, h2h_since: date, now: datetime | None = None,
                cal: Calibrator | None = None) -> tuple[list[Row], dict]:
     """props: slate.Prop list from slate.build (needs .games and .kalshi_all).
-    cal: calibration to apply (slate.main passes Calibrator.load()); None = identity (raw p).
+    cal: calibration to apply (slate.main passes Calibrator.load()); None = Calibrator.identity() (raw p,
+         tests/research). A MISSING artifact (cal.missing) fails closed: no Kalshi legs at all.
 
     Returns (rows, stats); stats["excluded"] lists every hidden prop/quote with its reason."""
-    cal = cal if cal is not None else Calibrator(None)
+    cal = cal if cal is not None else Calibrator.identity()
     stats = {"excluded_injured": 0, "started": 0, "stale": 0, "slp_hard_hidden": 0, "team_mismatch": 0}
+    if cal.missing:
+        stats["kalshi_withheld"] = 0
     excluded: list[dict] = []
     rows: list[Row] = []
     seen_all = [b["seen"] for p in props for b in p.books.values() if b.get("seen")]
@@ -255,7 +258,10 @@ def build_rows(props, *, before: date, season_start: date, h2h_since: date, now:
                                     p_raw=prob_raw, edge=None if nv_side is None else prob - nv_side,
                                     mid=nv_side))
 
-        # Kalshi strikes
+        # Kalshi strikes (none without a calibration artifact: fail closed)
+        if cal.missing:
+            stats["kalshi_withheld"] += len(getattr(p, "kalshi_all", p.kalshi))
+            continue
         for k in getattr(p, "kalshi_all", p.kalshi):
             if fresh_after is not None and k.get("seen") and k["seen"] < fresh_after:
                 stats["stale"] += 1
