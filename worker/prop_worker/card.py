@@ -52,7 +52,7 @@ from zoneinfo import ZoneInfo
 from . import config
 from . import injury_status as injury_rules
 from .calibration import Calibrator
-from .hitrates import GameLine, hit_rates, played, stat_value
+from .hitrates import GameLine, _rate, hit_rates, played, stat_value
 
 PT = ZoneInfo("America/Los_Angeles")
 W_HIST = config.CARD_HIST_WEIGHT          # config/model.yaml
@@ -126,6 +126,25 @@ def kalshi_pick_calibrated(pk: float, yes_ask: float | None, no_ask: float | Non
     return best
 
 
+def leg_stats(games: list[GameLine], stat: str, line: float, side: str, *, before: date, season_start: date,
+              opp: str | None, h2h_since: date) -> dict:
+    """The board's per-leg context, at the leg's own line and side ('over'/'under'; Kalshi YES = over the
+    strike's .5 line, NO = under): L5 / L10 / L20 / season / H2H as 'hits/n', the last 10 values (newest
+    first) and the average minutes over those 10 games."""
+    past = sorted((g for g in games if played(g) and g.game_date < before), key=lambda g: g.game_date, reverse=True)
+
+    def xn(gs):
+        r = _rate(gs, stat, line, side)
+        return f"{r.hits}/{r.n}" if r.n else ""
+    l10 = past[:10]
+    mins = [g.minutes for g in l10 if g.minutes is not None]
+    return {"l5": xn(past[:5]), "l10": xn(l10), "l20": xn(past[:20]),
+            "season": xn([g for g in past if g.game_date >= season_start]),
+            "h2h": xn([g for g in past if opp and g.opp == opp and g.game_date >= h2h_since]),
+            "l10_values": [stat_value(g, stat) for g in l10],
+            "min_l10": round(sum(mins) / len(mins), 1) if mins else None}
+
+
 def hinge(line: float, side: str) -> int:
     """The value at which this bet loses by the smallest margin (or pushes, on a whole line)."""
     if float(line).is_integer():
@@ -164,6 +183,7 @@ class Row:
     team: str | None = None
     opp: str | None = None
     injury: dict | None = None
+    ctx: dict | None = None              # leg_stats(): hit rates at THIS line/side, L10 values, MIN L10
     p_raw: float | None = None           # the formula's p before calibration (p is calibrated)
     edge: float | None = None            # calibrated p - Kalshi ask, or - no-vig P for the side (Sleeper)
     mid: float | None = None             # market mid / no-vig for the chosen side
@@ -190,6 +210,7 @@ def build_rows(props, *, before: date, season_start: date, h2h_since: date, now:
         stats["kalshi_withheld"] = 0
     excluded: list[dict] = []
     rows: list[Row] = []
+    ladders: list[dict] = []
     seen_all = [b["seen"] for p in props for b in p.books.values() if b.get("seen")]
     seen_all += [k["seen"] for p in props for k in getattr(p, "kalshi_all", p.kalshi) if k.get("seen")]
     newest_seen = max(seen_all) if seen_all else None
@@ -255,8 +276,15 @@ def build_rows(props, *, before: date, season_start: date, h2h_since: date, now:
                         continue
                     rows.append(Row(p.tip, _game(p), p.name, p.stat, "sleeper", side, line, prob, flags=flags,
                                     player_id=p.player_id, team=p.team, opp=p.opp, injury=p.injury,
+                                    ctx=leg_stats(games, p.stat, line, side, before=before, season_start=season_start,
+                                                  opp=p.opp, h2h_since=h2h_since),
                                     p_raw=prob_raw, edge=None if nv_side is None else prob - nv_side,
                                     mid=nv_side))
+
+        # Full Kalshi ladder for the board (every strike, not just the shown legs)
+        strikes = getattr(p, "kalshi_all", p.kalshi)
+        if strikes:
+            ladders.append(ladder(p, strikes, rates, cal, fresh_after))
 
         # Kalshi strikes (none without a calibration artifact: fail closed)
         if cal.missing:
@@ -285,9 +313,29 @@ def build_rows(props, *, before: date, season_start: date, h2h_since: date, now:
                 flags.append("on the line")
             rows.append(Row(p.tip, _game(p), p.name, p.stat, "kalshi", side, float(k["line"]), prob, price,
                             round(prob - KALSHI_MIN_EDGE, 2), flags, p.player_id, p.team, p.opp, p.injury,
-                            p_raw=prob_raw, edge=prob - price, mid=side_mid))
+                            p_raw=prob_raw, edge=prob - price, mid=side_mid,
+                            ctx=leg_stats(games, p.stat, float(k["line"]), "over" if side == "YES" else "under",
+                                          before=before, season_start=season_start, opp=p.opp, h2h_since=h2h_since)))
     stats["excluded"] = excluded
+    stats["ladders"] = ladders
     return rows, stats
+
+
+def ladder(p, strikes: list[dict], rates, cal: Calibrator, fresh_after) -> dict:
+    """Every Kalshi strike for one player/stat: asks, mid, L10 at the strike, raw and calibrated P(YES).
+    Calibrated p is None when the artifact is missing (fail closed) or there's no mid."""
+    out = []
+    for k in sorted(strikes, key=lambda k: k["line"]):
+        mid = yes_mid(k.get("yes_ask"), k.get("no_ask"))
+        l10 = rates(k["line"])["l10"]
+        pk = p_kalshi(l10.hits, l10.n, mid) if (mid is not None and l10.n) else None
+        p_cal = None if (pk is None or cal.missing) else round(cal("kalshi", p.stat, pk, mid), 4)
+        out.append({"strike": _strike(k["line"]), "yes_ask": k.get("yes_ask"), "no_ask": k.get("no_ask"),
+                    "mid": round(mid, 4) if mid is not None else None, "l10": f"{l10.hits}/{l10.n}" if l10.n else "",
+                    "p_raw_yes": round(pk, 4) if pk is not None else None, "p_cal_yes": p_cal,
+                    "stale": bool(fresh_after is not None and k.get("seen") and k["seen"] < fresh_after)})
+    return {"player": p.name, "player_id": p.player_id, "team": p.team, "opp": p.opp, "game": _game(p),
+            "tip": p.tip.isoformat() if p.tip else None, "stat": STAT_LABEL.get(p.stat, p.stat), "strikes": out}
 
 
 def _strike(line: float) -> int:
@@ -320,7 +368,7 @@ def _cents(v: float) -> str:
 
 
 def to_dict(rows: list[Row], cut: int, *, slate: str, stats: dict, excluded: list[dict] | None = None,
-            injury: dict | None = None, calibration: str | None = None) -> dict:
+            injury: dict | None = None, calibration: str | None = None, ladders: list[dict] | None = None) -> dict:
     """Same shortlist as render(), structured for the dashboard (data/cards/<date>.json)."""
     legs = [{"tip": r.tip.isoformat() if r.tip else None, "tip_pt": _tip(r.tip).strip(), "game": r.game,
              "player": r.player, "player_id": r.player_id, "team": r.team, "opp": r.opp,
@@ -330,9 +378,13 @@ def to_dict(rows: list[Row], cut: int, *, slate: str, stats: dict, excluded: lis
              "p_raw": round(r.p_raw, 4) if r.p_raw is not None else None,
              "edge": round(r.edge, 4) if r.edge is not None else None,
              "mid": round(r.mid, 4) if r.mid is not None else None, "price": r.price, "max_price": r.max_price,
-             "flags": list(r.flags), "injury": r.injury} for r in rows]
+             "flags": list(r.flags), "injury": r.injury,
+             "market": f"{STAT_LABEL.get(r.stat, r.stat)} {_line(r)}" if r.platform == "kalshi"
+             else f"{STAT_LABEL.get(r.stat, r.stat)} {r.side} {r.line:g}",
+             **({k: v for k, v in (r.ctx or {}).items()})} for r in rows]
     return {"slate": slate, "research_only": True, "stake": 0, "shown": len(rows), "cut": cut,
-            "stats": {k: v for k, v in stats.items() if k != "excluded"}, "legs": legs,
+            "stats": {k: v for k, v in stats.items() if k not in ("excluded", "ladders")}, "legs": legs,
+            "kalshi_ladders": list(ladders or []),
             "excluded": list(excluded or []), "injury": injury, "calibration": calibration}
 
 

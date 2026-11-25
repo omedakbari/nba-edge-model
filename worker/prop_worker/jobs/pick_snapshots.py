@@ -5,8 +5,8 @@ min, worker/prop_worker/replay.py) has passed, copies the price in effect at pic
 strike (replay.pick_time_rows: newest row stored at/before pick, still seen within 45 min) into
 kalshi_pick_snapshots. Idempotent: (sport, slate_date, ticker) is the key; an archived slate is skipped.
 
-OFF by default: needs sql/011_kalshi_pick_snapshots.sql applied and config.PICK_SNAPSHOTS_ENABLED. When off it
-records a green, not-expected run. When on but the table is missing it is red, naming the migration.
+Needs migration 011_kalshi_pick_snapshots (applied 2026-11-25) and config.PICK_SNAPSHOTS_ENABLED (on by default;
+NBA_PICK_SNAPSHOTS=0 disables). Disabled -> a green, not-expected run. Table missing -> red, naming the migration.
 """
 from __future__ import annotations
 
@@ -36,9 +36,9 @@ def slates_to_archive(conn, today, lookback: int = LOOKBACK_DAYS) -> dict:
 def run(ctx: Context) -> JobResult:
     if not config.PICK_SNAPSHOTS_ENABLED:
         return JobResult(0, 0, expected=False,
-                         meta={"disabled": "set PICK_SNAPSHOTS_ENABLED after applying sql/011_kalshi_pick_snapshots.sql"})
+                         meta={"disabled": "NBA_PICK_SNAPSHOTS=0"})
     if ctx.conn.execute("select to_regclass('public.kalshi_pick_snapshots')").fetchone()[0] is None:
-        return JobResult(0, 0, red_reasons=["kalshi_pick_snapshots table missing: apply sql/011_kalshi_pick_snapshots.sql"])
+        return JobResult(0, 0, red_reasons=["kalshi_pick_snapshots table missing: apply worker/migrations/011_kalshi_pick_snapshots.sql (prop_worker.migrate)"])
     rows_in = rows_out = 0
     archived = {}
     for d, (pick_at, gids) in sorted(slates_to_archive(ctx.conn, ctx.slate).items()):

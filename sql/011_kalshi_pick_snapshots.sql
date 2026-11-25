@@ -1,7 +1,5 @@
--- PROPOSED MIGRATION, NOT APPLIED (Phase 3 is read-only against Supabase). DECISIONS.md D15.
--- Apply:  cp sql/011_kalshi_pick_snapshots.sql worker/migrations/011_kalshi_pick_snapshots.sql
---         cd worker && ../venv/bin/python -m prop_worker.migrate          (then --status to confirm)
--- Then turn the nightly step on: worker/prop_worker/config.py PICK_SNAPSHOTS_ENABLED default "0" -> "1".
+-- APPLIED 2026-11-25 as worker/migrations/011_kalshi_pick_snapshots.sql (that copy is the one migrate tracks;
+-- don't edit it). This file is the reviewed original. DECISIONS.md D15. Nightly step on by default since then.
 --
 -- kalshi_pick_snapshots: the Kalshi price IN EFFECT at each slate's pick time (first tip - 60 min) for every
 -- player-prop strike, archived by the nightly job pick_snapshots BEFORE prune compacts intraday quotes into

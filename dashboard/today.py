@@ -381,6 +381,13 @@ CSS = """
 .step.ok {background:rgba(34,197,94,.12); border-color:rgba(34,197,94,.45);}
 .step.fail {background:rgba(239,68,68,.14); border-color:rgba(239,68,68,.55);}
 .step.warn {background:rgba(245,158,11,.16); border-color:rgba(245,158,11,.6);}
+.hgrid {display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:.45rem; margin:.4rem 0 .6rem;}
+.htile {border-radius:8px; padding:.4rem .55rem; border:1px solid rgba(128,128,128,.35); font-size:.78rem;}
+.htile.ok {background:rgba(34,197,94,.10); border-color:rgba(34,197,94,.45);}
+.htile.warn {background:rgba(245,158,11,.14); border-color:rgba(245,158,11,.55);}
+.htile.fail {background:rgba(239,68,68,.14); border-color:rgba(239,68,68,.6);}
+.htile .hname {font-weight:600;}
+.htile .hlast {opacity:.7; font-size:.72rem;}
 .healthnote {font-size:.78rem; opacity:.85; margin:-.6rem 0 .8rem; line-height:1.5;}
 .grid {display:grid; grid-template-columns:repeat(auto-fill, minmax(330px, 1fr)); gap:14px;}
 .gcard {border:1px solid rgba(128,128,128,.28); border-radius:12px; padding:14px 16px;
@@ -445,33 +452,56 @@ def job_chips(health: dict) -> tuple[str, list[str]]:
     return "".join(chips), notes
 
 
-def _health_strip(day: str) -> None:
-    """Worker jobs from Supabase (read-only) + sportsbook feed pass counts. Silent failures go yellow/red."""
-    health = worker_jobs()
-    if not health["ok"]:
-        st.markdown(f'<div class="steps"><span class="step warn">! worker jobs unknown</span></div>'
-                    f'<div class="healthnote">Supabase job_runs unreadable: {_esc(health["error"])}</div>',
-                    unsafe_allow_html=True)
-    else:
-        chips, notes = job_chips(health)
-        st.markdown(f'<div class="steps"><span class="step" style="border:none;opacity:.7">Worker jobs</span>'
-                    f'{chips}</div>', unsafe_allow_html=True)
-        if notes:
-            st.markdown('<div class="healthnote">' + "<br>".join(f"⚠ {_esc(n)}" for n in notes) + "</div>",
-                        unsafe_allow_html=True)
+def _local_max_game_date() -> str | None:
+    import sqlite3
+    db = ROOT / "data" / "nba_edge.db"
+    if not db.exists():
+        return None
+    with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as c:
+        return c.execute("select max(game_date) from game_logs").fetchone()[0]
+
+
+def health_tiles(day: str, state: dict | None) -> list[dict]:
+    """Inputs for dashboard/health_view.sources(), each read defensively (a broken source is a tile, not a crash)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import health_view
+    from src.utils import grading
+    today = date.fromisoformat(day)
+    lag, team_last = [], None
     try:
-        from src.models.calibration import health as cal_health
-        cal_warn = cal_health()
+        team_graded = grading.team_graded_dates()
+        team_last = max(team_graded, default=None)
+        for kind, folder, graded in (("team", ROOT / "data" / "team_picks", team_graded),
+                                     ("market props", ROOT / "data" / "market_picks", grading.market_graded_dates())):
+            w = grading.lag_warning(kind, grading.pick_file_dates(folder), graded, day)
+            if w:
+                lag.append(w)
     except Exception as exc:  # noqa: BLE001
-        cal_warn = [f"calibration health check failed: {type(exc).__name__}"]
-    if cal_warn:
-        st.markdown('<div class="healthnote">' + "<br>".join(f"⚠ Calibration: {_esc(w)}" for w in cal_warn)
-                    + "</div>", unsafe_allow_html=True)
-    feeds = feed_lines(day)
-    if feeds:
-        bad = any(" 0/" in f for f in feeds)
-        st.markdown(f'<div class="healthnote">{"⚠ " if bad else ""}Sportsbook feed (legacy "Model +EV" table only; '
-                    f'the card uses PropLine): {_esc(" · ".join(feeds))}</div>', unsafe_allow_html=True)
+        lag.append(f"grading check failed: {type(exc).__name__}")
+    try:
+        from src.models.calibration import health as cal_health, ARTIFACT
+        cal_warn = cal_health()
+        fit = json.loads(ARTIFACT.read_text()).get("fit_date") if ARTIFACT.exists() else None
+    except Exception as exc:  # noqa: BLE001
+        cal_warn, fit = [f"calibration health check failed: {type(exc).__name__}"], None
+    run = None
+    if state is not None:
+        run = {"exit": state.get("exit"), "started": state.get("started"), "dry": "DRY RUN:" in (state.get("text") or "")}
+    return health_view.sources(health=worker_jobs(), today=today, local_max_game_date=_local_max_game_date(),
+                               card=card(day), feed_lines=feed_lines(day), grading_lag=lag, team_last_graded=team_last,
+                               calibration_warnings=cal_warn, calibration_fit=fit, run=run)
+
+
+def _health_panel(day: str, state: dict | None) -> None:
+    """Top of Today: one tile per data source (green / yellow / red, last success); problems spelled out below."""
+    tiles = health_tiles(day, state)            # also puts dashboard/ on sys.path
+    import health_view
+    st.markdown(health_view.panel_html(tiles, _esc, _ago), unsafe_allow_html=True)
+    bad = [t for t in tiles if t["level"] != "green"]
+    if bad:
+        st.markdown('<div class="healthnote">' + "<br>".join(
+            f"{health_view.ICON[t['level']]} <b>{_esc(t['source'])}</b>: {_esc(t['detail'])}" for t in bad)
+            + "</div>", unsafe_allow_html=True)
 
 
 def _progress_panel(state: dict) -> None:
@@ -528,6 +558,8 @@ def render() -> None:
             else:
                 st.toast("A run is already in progress.")
 
+    _health_panel(day, state)
+
     st.markdown('<div class="ribbon"><b>Research-only.</b> Probabilities are unvalidated, approval and sizing '
                 'are disabled (stake $0). Strength labels describe model-vs-market disagreement, not confidence. '
                 'Always check injury and lineup news before acting.</div>', unsafe_allow_html=True)
@@ -556,7 +588,6 @@ def render() -> None:
                 st.markdown('<div class="healthnote">' + "<br>".join(
                     f"⚠ <b>{_esc(label)}</b>: {_esc(why)}" for label, why in warned) + "</div>",
                     unsafe_allow_html=True)
-    _health_strip(day)
 
     views = sorted(((a, game_view(a)) for a in games), key=lambda av: av[1]["sort"])
     the_card = card(day) or {}
@@ -624,52 +655,44 @@ def _props_tab(the_card: dict, legs: list[dict], mpicks: list[dict]) -> None:
         _excluded_expander(the_card)
         return
     st.subheader("Research card")
-    df = pd.DataFrame(legs)
-    df["Price"] = df.apply(lambda r: f"{r['price'] * 100:.0f}¢ / {r['max_price'] * 100:.0f}¢"
-                           if r["platform"] == "kalshi" and _f(r["price"]) is not None else "pick'em", axis=1)
-    df["Flags"] = df["flags"].apply(lambda f: ", ".join(f))
-    df["Venue"] = df["platform"].map({"kalshi": "Kalshi", "sleeper": "Sleeper"}).fillna(df["platform"])
-    for col in ("team", "opp", "p_raw", "edge"):
-        if col not in df.columns:                    # cards written before 2026-11-24
-            df[col] = None
-    df["Inj"] = df["injury"].apply(lambda i: f"{i['code']} ({i['source']})" if isinstance(i, dict) else "") \
-        if "injury" in df.columns else ""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import board_view
+    projections = board_view.fair_projections(slate_today().isoformat())
+    df = board_view.board_frame(legs, projections)
 
-    c1, c2, c3 = st.columns([2, 2, 3])
-    games = sorted(df["game"].unique())
-    pick_games = c1.multiselect("Games", games, placeholder="All games")
-    pick_stats = c2.multiselect("Stat", sorted(df["stat"].unique()), placeholder="All stats")
-    pick_venue = c3.segmented_control("Venue", ["All", "Kalshi", "Sleeper"], default="All")
+    c1, c2, c3, c4 = st.columns([2, 2, 2, 3])
+    pick_games = c1.multiselect("Games", sorted(df["Game"].dropna().unique()), placeholder="All games")
+    pick_players = c2.multiselect("Players", sorted(df["Player"].dropna().unique()), placeholder="All players")
+    pick_stats = c3.multiselect("Stat", sorted({m.split()[0] for m in df["Market"].dropna()}), placeholder="All stats")
+    pick_venue = c4.segmented_control("Venue", ["All", "Kalshi", "Sleeper"], default="All")
     if pick_games:
-        df = df[df["game"].isin(pick_games)]
+        df = df[df["Game"].isin(pick_games)]
+    if pick_players:
+        df = df[df["Player"].isin(pick_players)]
     if pick_stats:
-        df = df[df["stat"].isin(pick_stats)]
+        df = df[df["Market"].str.split().str[0].isin(pick_stats)]
     if pick_venue and pick_venue != "All":
         df = df[df["Venue"] == pick_venue]
 
-    st.dataframe(
-        df[["tip_pt", "game", "player", "team", "opp", "stat", "side", "line", "p_raw", "p", "edge", "Price",
-            "Venue", "Inj", "Flags"]],
-        hide_index=True, width="stretch", height=min(38 + 35 * len(df), 720),
-        column_config={
-            "tip_pt": st.column_config.TextColumn("Tip", width=52),
-            "game": st.column_config.TextColumn("Game", width=78),
-            "player": st.column_config.TextColumn("Player", width=150),
-            "team": st.column_config.TextColumn("Team", width=48),
-            "opp": st.column_config.TextColumn("Opp", width=48),
-            "Inj": st.column_config.TextColumn("Inj", width=70, help="Listed but not excluded (e.g. Probable)"),
-            "stat": st.column_config.TextColumn("Stat", width=48),
-            "side": st.column_config.TextColumn("Side", width=58),
-            "line": st.column_config.TextColumn("Line", width=48),
-            "p_raw": st.column_config.NumberColumn("P raw", format="%.2f", width=60,
-                                                   help="The card formula before calibration"),
-            "p": st.column_config.ProgressColumn("P calibrated", format="%.2f", min_value=0.5, max_value=1.0,
-                                                 width=110, help="What the card rules use (Calibration page)"),
-            "edge": st.column_config.NumberColumn("Edge", format="%+.2f", width=60,
-                                                  help="Calibrated p - Kalshi ask, or - no-vig P for the side"),
-            "Price": st.column_config.TextColumn("Price / max", width=92),
-            "Venue": st.column_config.TextColumn("Venue", width=70),
-        })
+    st.dataframe(df, hide_index=True, width="stretch", height=min(38 + 35 * len(df), 720), column_config={
+        "Player": st.column_config.TextColumn(width=140),
+        "Projection": st.column_config.NumberColumn(format="%.1f", help="ML model projection from the fair board "
+                                                    "(only props with a fresh sportsbook line; blank otherwise)"),
+        "P raw": st.column_config.NumberColumn(format="%.2f", help="The card formula before calibration"),
+        "P calibrated": st.column_config.ProgressColumn(format="%.2f", min_value=0.5, max_value=1.0,
+                                                        help="What the card rules use (Calibration page)"),
+        "Edge": st.column_config.NumberColumn(format="%+.2f",
+                                              help="Calibrated p - Kalshi ask, or - no-vig P for the side"),
+        "MIN L10": st.column_config.NumberColumn(format="%.1f"),
+        "L10 values": st.column_config.TextColumn(width=150, help="Newest first"),
+    })
+    st.download_button("Download board (CSV)", df.to_csv(index=False).encode(), file_name=f"board_{slate_today()}.csv",
+                       mime="text/csv")
+    if projections and df["Projection"].isna().any():
+        st.caption(f"Projection shown for {int(df['Projection'].notna().sum())} of {len(df)} legs: the ML model "
+                   "only projects props that have a fresh sportsbook line (fair board).")
+    elif not projections:
+        st.caption("Projection blank: no fair board today (the DK-via-ESPN feed passed no fresh lines).")
     s = the_card.get("stats", {})
     st.caption(f"{the_card.get('shown', len(legs))} shown, {the_card.get('cut', 0)} cut by stat priority/p. "
                f"Hidden: {s.get('excluded_injured', 0)} injured (OUT/D/Q/GTD), {s.get('started', 0)} started, "
@@ -678,6 +701,30 @@ def _props_tab(the_card: dict, legs: list[dict], mpicks: list[dict]) -> None:
                f"{the_card.get('calibration') or 'not calibrated (card predates Phase 2)'}. "
                "Kalshi price = ask / most to pay (calibrated p - 5c).")
     _excluded_expander(the_card)
+    _ladders(the_card)
+
+
+def _ladders(the_card: dict) -> None:
+    """Every Kalshi threshold for each player/market on the slate (Phase 4d), with ask and calibrated p."""
+    ladders = (the_card or {}).get("kalshi_ladders")
+    if ladders is None:
+        st.caption("Kalshi ladders: this card predates them (2026-11-25); press Refresh.")
+        return
+    import board_view
+    df = board_view.ladder_frame(ladders)
+    with st.expander(f"Kalshi ladders: every threshold ({len(df)} strikes, {len(ladders)} player-markets)"):
+        if df.empty:
+            st.caption("No Kalshi strikes for tonight's eligible players.")
+            return
+        who = st.multiselect("Player", sorted(df["Player"].unique()), placeholder="All players", key="ladder_players")
+        if who:
+            df = df[df["Player"].isin(who)]
+        st.dataframe(df, hide_index=True, width="stretch", height=min(38 + 35 * len(df), 640), column_config={
+            c: st.column_config.NumberColumn(format="%.2f") for c in
+            ("YES ask", "NO ask", "Mid", "P raw (YES)", "P cal (YES)")} | {
+            c: st.column_config.NumberColumn(format="%+.2f") for c in ("Edge YES", "Edge NO")})
+        st.caption("P cal blank = no calibration artifact (fail closed). Edge = calibrated p of that side - its ask. "
+                   "The card's rules additionally need raw p > ask, edge >= 5c, ask <= 85c and p >= .68.")
 
 
 def describe_card_blend() -> str:

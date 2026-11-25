@@ -10,7 +10,7 @@ from prop_worker import config, replay
 from prop_worker.jobs import pick_snapshots
 from test_replay import PICK, TIP, D, slate  # noqa: F401  (fixture)
 
-SQL = Path(__file__).resolve().parents[2] / "sql" / "011_kalshi_pick_snapshots.sql"
+SQL = Path(__file__).resolve().parents[1] / "migrations" / "011_kalshi_pick_snapshots.sql"
 AFTER = TIP + timedelta(hours=1)
 
 
@@ -19,16 +19,22 @@ def _apply(pg):
     pg.commit()
 
 
-def test_off_by_default_is_a_green_noop(pg):
-    assert config.PICK_SNAPSHOTS_ENABLED is False
+def test_on_by_default():
+    assert config.PICK_SNAPSHOTS_ENABLED is True
+
+
+def test_disabled_is_a_green_noop(pg, monkeypatch):
+    monkeypatch.setattr(config, "PICK_SNAPSHOTS_ENABLED", False)
     out = run(pg, None, "pick_snapshots", pick_snapshots.run, now=AFTER)
     assert out.status == "green" and out.rows_in == 0
 
 
 def test_on_without_table_is_red_and_names_the_migration(pg, monkeypatch):
     monkeypatch.setattr(config, "PICK_SNAPSHOTS_ENABLED", True)
+    pg.execute("drop table kalshi_pick_snapshots")          # the test DB gets it from migrations/011
+    pg.commit()
     out = run(pg, None, "pick_snapshots", pick_snapshots.run, now=AFTER)
-    assert out.status == "red" and "sql/011_kalshi_pick_snapshots.sql" in out.red_reasons[0]
+    assert out.status == "red" and "migrations/011_kalshi_pick_snapshots.sql" in out.red_reasons[0]
 
 
 def test_archives_pick_time_prices_once_and_replay_uses_them_after_prune(slate, pg, monkeypatch):  # noqa: F811

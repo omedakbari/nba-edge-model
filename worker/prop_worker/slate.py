@@ -442,6 +442,7 @@ def main(argv=None, conn=None, log_conn=None) -> int:
             rows, stats = card.build_rows(props, before=d, season_start=date.fromisoformat(info["season_start"]),
                                           h2h_since=date.fromisoformat(info["h2h_since"]), now=live, cal=cal)
             excluded = stats.pop("excluded")
+            ladders = stats.pop("ladders")
             from .jobs.injuries import is_two_way
             excluded += [{"player": u["name"], "player_id": None, "team": u["team"], "game": "", "stat": "",
                           "venue": "",  "line": None,
@@ -460,7 +461,8 @@ def main(argv=None, conn=None, log_conn=None) -> int:
                 Path(args.out).write_text(text + "\n")
                 Path(args.out).with_suffix(".json").write_text(json.dumps(
                     card.to_dict(shown, cut, slate=d.isoformat(), stats=stats, excluded=excluded,
-                                 injury=info["injury"], calibration=cal.label()), default=str, indent=1) + "\n")
+                                 injury=info["injury"], calibration=cal.label(), ladders=ladders),
+                    default=str, indent=1) + "\n")
             if cal.missing:
                 warn(f"card: calibration artifact missing ({cal.path}); Kalshi legs withheld "
                      f"({stats.get('kalshi_withheld', 0)} strikes), Sleeper p is raw", step="Prop card")

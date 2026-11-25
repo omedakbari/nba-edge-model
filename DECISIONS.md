@@ -152,3 +152,23 @@ min_L10 ≥ 20 is scored and every drop is counted (test asserts in = scored + c
 **D19. Worker health: intraday jobs aren't stale overnight.** injuries, kalshi, propline and schedule are
 checked for staleness only from 13:00 ET (posting opens at 12:00) to midnight. A 5-hour gap at 2 AM PT was a
 false yellow.
+
+**D15 update (2026-11-25).** Migration 011 applied to Supabase by the user (`worker/migrations/011_kalshi_pick_snapshots.sql`,
+identical to `sql/011`). `PICK_SNAPSHOTS_ENABLED` now defaults ON (`NBA_PICK_SNAPSHOTS=0` disables). Scheduled nightly
+runs check out the default branch, so the job starts after the merge to main. Its first run archives every slate in
+the last 3 days whose intraday quotes prune hasn't compacted yet. `sql/012_model_artifacts.sql` stays unapplied.
+
+## Phase 4: dashboard (2026-11-25)
+
+**D20. Projection column is partial.** It's the ML projection from the fair board (`data/fair/<date>.json`),
+which only covers props with a fresh DK-via-ESPN line, so it's usually blank and the page says so. A projection
+for every card leg needs the six models run for every slate player, independent of book lines (follow-up).
+
+**D21. Health panel = 9 tiles** (`dashboard/health_view.py`): Game logs (boxscores + validate + local DB),
+Rosters, Injuries (+ card STALE → red), DK (ESPN), Kalshi, PropLine/Sleeper, Grading (catch-up lag),
+Calibration (missing → red) and Daily run (exit 0 / 3 / other). Each shows its last success; problems are
+spelled out under the grid. Worker job data is cached 5 min.
+
+**D22. Player Lookup reads the local `data/nba_edge.db`** (refreshed by the daily run; the as-of date is
+shown) for the season log, plus today's card JSON for props, ladders and injury status. The old 2024-25 view
+sits behind the "2024-25 test set" toggle.

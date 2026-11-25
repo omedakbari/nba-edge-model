@@ -314,6 +314,13 @@ def _render_card_calibration():
     calibration_view.render(st)
 
 
+def _player_lookup_legacy() -> bool:
+    """Title + the toggle; True = show the old 2024-25 test-set view."""
+    st.title("Player Lookup")
+    return st.toggle("2024-25 test set", value=False,
+                     help="The old view: L10 averages and std from the 2024-25 features (in-sample for current models)")
+
+
 page = st.sidebar.radio(
     "Navigate",
     ["Today", "Game Props", "Overview", "Backtest Results", "Calibration", "Player Lookup"],
@@ -703,8 +710,16 @@ elif page == "Calibration":
 # ---------------------------------------------------------------------------
 # PAGE: PLAYER LOOKUP
 # ---------------------------------------------------------------------------
+elif page == "Player Lookup" and not _player_lookup_legacy():
+    # Current season (dashboard/player_view.py). _player_lookup_legacy() draws the title and the toggle.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import player_view
+    from src.utils.slate import slate_today
+    player_view.render(st, slate_today().isoformat())
+
 elif page == "Player Lookup":
-    st.title("Player Lookup")
+    # Legacy view behind the "2024-25 test set" toggle (2024-25 is IN-SAMPLE for the current models).
+    st.caption("2024-25 test set: the current models were trained on it, so these are in-sample numbers.")
 
     df = load_features()
     player_names = load_player_names()

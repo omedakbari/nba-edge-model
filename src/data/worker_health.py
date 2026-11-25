@@ -72,7 +72,14 @@ def job_status(conn=None, now: datetime | None = None) -> dict:
             """select distinct on (job) job, status, started_at, rows_in, rows_out, red_reasons, warnings, error
                from job_runs where sport = 'nba' and started_at > now() - make_interval(days => %s)
                order by job, started_at desc""", (LOOKBACK_DAYS,)).fetchall()
-        return {'ok': True, 'error': None, 'jobs': summarize(rows, now)}
+        last_green = dict(conn.execute(
+            """select job, max(started_at) from job_runs where sport = 'nba' and status = 'green'
+               and started_at > now() - make_interval(days => 7) group by job""").fetchall())
+        jobs = summarize(rows, now)
+        for j in jobs:
+            t = last_green.get(j['job'])
+            j['last_green'] = t.isoformat() if t else None
+        return {'ok': True, 'error': None, 'jobs': jobs}
     except Exception as exc:  # noqa: BLE001 — health must degrade to "unknown", never crash the page
         msg = f'{type(exc).__name__}'
         try:
