@@ -211,7 +211,8 @@ def grade_pick(actual: float | None, line: float, direction: str) -> tuple[str, 
 
 # ── Main grading flow ──────────────────────────────────────────────────────────
 
-def grade_date(date_str: str, overwrite: bool = False, market: bool = False) -> None:
+def grade_date(date_str: str, overwrite: bool = False, market: bool = False, save: bool = True) -> None:
+    """save=False (--no-save, run_daily --dry-run): grade and print, then roll back every DB change."""
     from datetime import datetime as _dt
     try:
         _dt.strptime(date_str, "%Y-%m-%d")
@@ -275,7 +276,8 @@ def grade_date(date_str: str, overwrite: bool = False, market: bool = False) -> 
                 conn.execute(
                     "DELETE FROM pick_results WHERE pick_date = ?", (date_str,)
                 )
-                conn.commit()
+                if save:
+                    conn.commit()
                 print(f"  Note: cleared {total_existing} void-only rows for {date_str} "
                       f"— re-grading with current DB.")
             elif total_existing >= len(picks):
@@ -382,7 +384,11 @@ def grade_date(date_str: str, overwrite: bool = False, market: bool = False) -> 
             print(f"  DB error for {pick['player_name']} {stat_key}: {e}")
             skipped += 1
 
-    conn.commit()
+    if save:
+        conn.commit()
+    else:
+        conn.rollback()
+        print("  Dry run: grades computed, nothing written.")
 
     # Summary
     hits   = sum(1 for p in picks if _lookup_result(actuals, p) == 'hit')
@@ -658,6 +664,7 @@ def main() -> None:
     parser.add_argument('--report',    action='store_true',
                         help='Show calibration report across all graded dates')
     parser.add_argument('--market', action='store_true', help='Grade saved market-price candidates')
+    parser.add_argument('--no-save', action='store_true', help='Grade and print only; write nothing (dry run)')
     parser.add_argument('--from',     dest='from_date', help='Report start date YYYY-MM-DD')
     parser.add_argument('--to',       dest='to_date',   help='Report end date YYYY-MM-DD')
     args = parser.parse_args()
@@ -671,7 +678,7 @@ def main() -> None:
         sys.exit(1)
 
     print(f"\n  Grading picks for {args.date}...")
-    grade_date(args.date, overwrite=args.overwrite, market=args.market)
+    grade_date(args.date, overwrite=args.overwrite, market=args.market, save=not args.no_save)
 
 
 if __name__ == "__main__":

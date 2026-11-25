@@ -13,6 +13,13 @@ from prop_worker.util import WARN_ENV
 from test_slate import D, SEEN, TIP, game, injury, kalshi, logs, pid
 
 
+@pytest.fixture(autouse=True)
+def raw_calibration(monkeypatch):
+    """These tests are about exclusions; pin calibration to identity so a fitted artifact can't change them."""
+    from prop_worker.calibration import Calibrator
+    monkeypatch.setattr(Calibrator, "load", classmethod(lambda cls, path=None: cls(None)))
+
+
 @pytest.fixture
 def nov24(pg):
     seed_players(pg, [(1, "Cade Cunningham", "DET"), (2, "Jalen Duren", "DET"), (3, "Isaiah Joe", "DET"),

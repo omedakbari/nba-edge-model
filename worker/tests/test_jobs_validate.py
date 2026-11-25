@@ -81,6 +81,23 @@ def test_minutes_within_one_is_fine_beyond_is_red():
     assert "minutes ESPN 30 vs PropLine 31.5" in validate.compare(espn, dict(other, min=31.5), "PropLine")[0]
 
 
+@pytest.mark.parametrize("m_espn,m_other,ok", [
+    (None, 0.15, True),      # AJ Green (MIL) 2026-11-23: ESPN DNP, PropLine 0.15 min
+    (None, 0.0, True), (0, None, True), (0.5, None, True),
+    (None, 0.99, True), (None, 1.0, False), (None, 4.0, False),
+])
+def test_dnp_in_one_source_and_under_one_minute_in_the_other_is_a_match(m_espn, m_other, ok):
+    espn = {"name": "AJ Green", "team": "MIL", "min": m_espn, **{c: 0 for c in validate.EXACT}}
+    other = {"min": m_other, **{c: 0.0 for c in validate.EXACT}}
+    assert (validate.compare(espn, other, "PropLine") == []) is ok
+
+
+def test_both_minutes_missing_is_still_a_mismatch():
+    espn = {"name": "X", "team": "MIL", "min": None, **{c: 0 for c in validate.EXACT}}
+    other = {"min": None, **{c: 0.0 for c in validate.EXACT}}
+    assert validate.compare(espn, other, "PropLine") == ["X (MIL): minutes ESPN None vs PropLine None"]
+
+
 def test_player_missing_from_second_source_is_red(pg):
     _loaded(pg)
     stats = load("propline/event_stats_641560.json")

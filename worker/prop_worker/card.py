@@ -9,16 +9,23 @@ Sleeper legs (one per player/stat that has a Sleeper line):
   line      Sleeper's line. Hit rates are taken AT that line. If it differs from the consensus line the
             leg is flagged "slp soft" (easier for the chosen side) or "slp hard" (harder).
   p_hist    (h10 + h15 + hszn + 1.5) / (n10 + n15 + nszn + 3)        for the over at the line
-  p_blend   0.35 * p_hist + 0.65 * nv       nv = no-vig P(over) at the consensus line
-            no nv -> 0.5 + (p_hist - 0.5) / 2, flagged "no market"
+  p_blend   W_HIST * p_hist + (1 - W_HIST) * nv     nv = no-vig P(over) at the consensus line
+            no nv -> 0.5 + (p_hist - 0.5) * NO_MARKET_SHRINK, flagged "no market"
+            (W_HIST, NO_MARKET_SHRINK: config/model.yaml card section)
   side      over if p_blend >= .5 else under;  p = max(p_blend, 1 - p_blend);  kept if p >= .62
             ("slp hard" legs only if p >= .68; the footer counts the ones this hides)
   Caveat: when Sleeper's line differs, nv is still the consensus line's number (no line-shift model).
 Kalshi strikes (line 3.5 = "4+"):
-  pk        0.35 * (h10_at_strike + .5) / (n10 + 1) + 0.65 * yes_mid
+  pk        W_HIST * (h10_at_strike + .5) / (n10 + 1) + (1 - W_HIST) * yes_mid
             yes_mid = (yes_ask + 1 - no_ask) / 2 (yes_ask alone if there is no NO ask)
   YES       p = pk,     price = yes_ask;   NO  p = 1 - pk, price = no_ask
   shown     if p - price >= .05, price <= .85 and p >= .68; max = p - .05 (don't pay more)
+Calibration (Phase 2, DECISIONS.md D9-D13): every p above is the RAW p. The rules below (Sleeper p >= .62,
+slp hard p >= .68, Kalshi edge >= 5c / p >= .68, max = p - 5c) are applied to the CALIBRATED p from
+prop_worker/calibration.py (Kalshi: logistic on market mid + history disagreement, fit on a no-lookahead
+replay; Sleeper: shrunk ledger offset). Kalshi sides are only considered where raw p > ask (the region the
+calibration was fit on). Rows carry p (calibrated), p_raw, and edge (calibrated p - Kalshi ask, or
+calibrated p - no-vig P for the Sleeper side; None without a market).
 Flags:
   on the line      3+ of the last 10 played games landed exactly on the integer where the bet loses by
                    one (under 3.5 / 4+ NO -> 4; over 3.5 / 4+ YES -> 3; whole lines -> the push value)
@@ -42,11 +49,15 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from . import config
 from . import injury_status as injury_rules
+from .calibration import Calibrator
 from .hitrates import GameLine, hit_rates, played, stat_value
 
 PT = ZoneInfo("America/Los_Angeles")
-W_HIST, W_MKT = 0.35, 0.65
+W_HIST = config.CARD_HIST_WEIGHT          # config/model.yaml
+W_MKT = 1 - W_HIST
+NO_MARKET_SHRINK = config.CARD_NO_MARKET_SHRINK
 SLEEPER_MIN_P = 0.62
 SLP_HARD_MIN_P = 0.68
 KALSHI_MIN_P = 0.68
@@ -70,7 +81,7 @@ def p_hist(h10: int, n10: int, h15: int, n15: int, hszn: int, nszn: int) -> floa
 def p_blend(ph: float, nv: float | None) -> tuple[float, bool]:
     """(blended P(over), has_market)."""
     if nv is None:
-        return 0.5 + (ph - 0.5) / 2, False
+        return 0.5 + (ph - 0.5) * NO_MARKET_SHRINK, False
     return W_HIST * ph + W_MKT * nv, True
 
 
@@ -97,6 +108,21 @@ def kalshi_pick(pk: float, yes_ask: float | None, no_ask: float | None) -> tuple
         if p - price >= KALSHI_MIN_EDGE - 1e-9 and price <= KALSHI_MAX_PRICE and p >= KALSHI_MIN_P:
             if best is None or p - price > best[1] - best[2]:
                 best = (side, p, price)
+    return best
+
+
+def kalshi_pick_calibrated(pk: float, yes_ask: float | None, no_ask: float | None, mid: float, stat: str,
+                           cal: Calibrator) -> tuple[str, float, float, float, float] | None:
+    """Like kalshi_pick, but the rules run on CALIBRATED p. Only sides with raw p > ask are considered
+    (the region the calibration was fit on). Returns (side, p_cal, price, p_raw, side_mid) or None."""
+    best = None
+    for side, p_raw, price, m in (("YES", pk, yes_ask, mid), ("NO", 1 - pk, no_ask, 1 - mid)):
+        if price is None or p_raw - price <= 0:
+            continue
+        p = cal("kalshi", stat, p_raw, m)
+        if p - price >= KALSHI_MIN_EDGE - 1e-9 and price <= KALSHI_MAX_PRICE and p >= KALSHI_MIN_P:
+            if best is None or p - price > best[1] - best[2]:
+                best = (side, p, price, p_raw, m)
     return best
 
 
@@ -138,6 +164,9 @@ class Row:
     team: str | None = None
     opp: str | None = None
     injury: dict | None = None
+    p_raw: float | None = None           # the formula's p before calibration (p is calibrated)
+    edge: float | None = None            # calibrated p - Kalshi ask, or - no-vig P for the side (Sleeper)
+    mid: float | None = None             # market mid / no-vig for the chosen side
 
     @property
     def priority(self) -> int:
@@ -149,10 +178,12 @@ def _game(p) -> str:
 
 
 def build_rows(props, *, before: date, season_start: date, h2h_since: date, now: datetime | None = None,
-               ) -> tuple[list[Row], dict]:
+               cal: Calibrator | None = None) -> tuple[list[Row], dict]:
     """props: slate.Prop list from slate.build (needs .games and .kalshi_all).
+    cal: calibration to apply (slate.main passes Calibrator.load()); None = identity (raw p).
 
     Returns (rows, stats); stats["excluded"] lists every hidden prop/quote with its reason."""
+    cal = cal if cal is not None else Calibrator(None)
     stats = {"excluded_injured": 0, "started": 0, "stale": 0, "slp_hard_hidden": 0, "team_mismatch": 0}
     excluded: list[dict] = []
     rows: list[Row] = []
@@ -200,7 +231,9 @@ def build_rows(props, *, before: date, season_start: date, h2h_since: date, now:
                 r = rates(line)
                 ph = p_hist(r["l10"].hits, r["l10"].n, r["l15"].hits, r["l15"].n, r["season"].hits, r["season"].n)
                 pb, has_mkt = p_blend(ph, p.no_vig_over)
-                side, prob = side_and_p(pb)
+                side, prob_raw = side_and_p(pb)
+                prob = cal("sleeper", p.stat, prob_raw)
+                nv_side = (p.no_vig_over if side == "over" else 1 - p.no_vig_over) if has_mkt else None
                 if prob >= SLEEPER_MIN_P - 1e-9 and r["l10"].n:
                     flags = []
                     if p.consensus is not None and line != p.consensus:
@@ -218,7 +251,9 @@ def build_rows(props, *, before: date, season_start: date, h2h_since: date, now:
                                             f"consensus {p.consensus:g})", "Sleeper", line)
                         continue
                     rows.append(Row(p.tip, _game(p), p.name, p.stat, "sleeper", side, line, prob, flags=flags,
-                                    player_id=p.player_id, team=p.team, opp=p.opp, injury=p.injury))
+                                    player_id=p.player_id, team=p.team, opp=p.opp, injury=p.injury,
+                                    p_raw=prob_raw, edge=None if nv_side is None else prob - nv_side,
+                                    mid=nv_side))
 
         # Kalshi strikes
         for k in getattr(p, "kalshi_all", p.kalshi):
@@ -233,17 +268,18 @@ def build_rows(props, *, before: date, season_start: date, h2h_since: date, now:
             if not l10.n:
                 continue
             pk = p_kalshi(l10.hits, l10.n, mid)
-            pick = kalshi_pick(pk, k.get("yes_ask"), k.get("no_ask"))
+            pick = kalshi_pick_calibrated(pk, k.get("yes_ask"), k.get("no_ask"), mid, p.stat, cal)
             if pick is None:
                 continue
-            side, prob, price = pick
+            side, prob, price, prob_raw, side_mid = pick
             flags = []
             if abs((l10.hits + 0.5) / (l10.n + 1) - mid) > DISAGREE:
                 flags.append("market disagrees")
             if on_the_line(last10, k["line"], side):
                 flags.append("on the line")
             rows.append(Row(p.tip, _game(p), p.name, p.stat, "kalshi", side, float(k["line"]), prob, price,
-                            round(prob - KALSHI_MIN_EDGE, 2), flags, p.player_id, p.team, p.opp, p.injury))
+                            round(prob - KALSHI_MIN_EDGE, 2), flags, p.player_id, p.team, p.opp, p.injury,
+                            p_raw=prob_raw, edge=prob - price, mid=side_mid))
     stats["excluded"] = excluded
     return rows, stats
 
@@ -278,17 +314,20 @@ def _cents(v: float) -> str:
 
 
 def to_dict(rows: list[Row], cut: int, *, slate: str, stats: dict, excluded: list[dict] | None = None,
-            injury: dict | None = None) -> dict:
+            injury: dict | None = None, calibration: str | None = None) -> dict:
     """Same shortlist as render(), structured for the dashboard (data/cards/<date>.json)."""
     legs = [{"tip": r.tip.isoformat() if r.tip else None, "tip_pt": _tip(r.tip).strip(), "game": r.game,
              "player": r.player, "player_id": r.player_id, "team": r.team, "opp": r.opp,
              "stat": STAT_LABEL.get(r.stat, r.stat),
              "platform": r.platform, "side": r.side.upper() if r.platform == "sleeper" else r.side,
-             "line": _line(r), "p": round(r.p, 4), "price": r.price, "max_price": r.max_price,
+             "line": _line(r), "p": round(r.p, 4),
+             "p_raw": round(r.p_raw, 4) if r.p_raw is not None else None,
+             "edge": round(r.edge, 4) if r.edge is not None else None,
+             "mid": round(r.mid, 4) if r.mid is not None else None, "price": r.price, "max_price": r.max_price,
              "flags": list(r.flags), "injury": r.injury} for r in rows]
     return {"slate": slate, "research_only": True, "stake": 0, "shown": len(rows), "cut": cut,
             "stats": {k: v for k, v in stats.items() if k != "excluded"}, "legs": legs,
-            "excluded": list(excluded or []), "injury": injury}
+            "excluded": list(excluded or []), "injury": injury, "calibration": calibration}
 
 
 def _excluded_lines(excluded: list[dict], injury: dict | None) -> list[str]:
@@ -314,17 +353,20 @@ def _excluded_lines(excluded: list[dict], injury: dict | None) -> list[str]:
 
 
 def render(rows: list[Row], cut: int, *, slate: str, stats: dict, excluded: list[dict] | None = None,
-           injury: dict | None = None) -> str:
-    head = f"{'tip PT':<6} {'game':<7} {'player':<24} {'stat':<4} {'side':<5} {'line':>5} {'p':>4} {'price/max':>9}  flags"
+           injury: dict | None = None, calibration: str | None = None) -> str:
+    head = (f"{'tip PT':<6} {'game':<7} {'player':<24} {'stat':<4} {'side':<5} {'line':>5} {'p':>4} {'raw':>4} "
+            f"{'price/max':>9}  flags")
     out = [f"CARD {slate}  RESEARCH-ONLY (UNVALIDATED): hand-set formulas, not backtested, stake $0",
-           f"p_blend = .35 hist + .65 no-vig; Sleeper p >= {SLEEPER_MIN_P:.2f}; Kalshi edge >= 5c, price <= 85c, "
-           f"p >= {KALSHI_MIN_P:.2f}",
+           f"p_blend = {W_HIST:.2f} hist + {W_MKT:.2f} no-vig; rules on CALIBRATED p: Sleeper p >= {SLEEPER_MIN_P:.2f}; "
+           f"Kalshi edge >= 5c, price <= 85c, p >= {KALSHI_MIN_P:.2f}",
+           f"p = {calibration or 'UNCALIBRATED (raw)'}; raw = the formula before calibration",
            head, "-" * len(head)]
     for r in rows:
         price = "slp" if r.platform == "sleeper" else f"{_cents(r.price)}/{_cents(r.max_price)}"
         side = r.side.upper() if r.platform == "sleeper" else r.side
         out.append(f"{_tip(r.tip):<6} {r.game:<7} {r.player[:24]:<24} {STAT_LABEL.get(r.stat, r.stat):<4} "
-                   f"{side:<5} {_line(r):>5} {r.p:>4.2f} {price:>9}  {', '.join(r.flags)}".rstrip())
+                   f"{side:<5} {_line(r):>5} {r.p:>4.2f} {(r.p_raw if r.p_raw is not None else r.p):>4.2f} "
+                   f"{price:>9}  {', '.join(r.flags)}".rstrip())
     if not rows:
         out.append("(nothing clears the thresholds)")
     out.append(f"{len(rows)} shown" + (f", {cut} cut by stat priority/p" if cut else "") +

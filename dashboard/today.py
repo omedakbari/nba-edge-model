@@ -99,7 +99,8 @@ def run_state() -> dict | None:
     return {**meta, "log": log, "running": running, "exit": exit_code, "text": text}
 
 
-def start_run() -> bool:
+def start_run(dry_run: bool = False) -> bool:
+    """dry_run: scripts/run_daily.py --dry-run (no ledger/Supabase writes, today's files untouched)."""
     state = run_state()
     if state and state["running"]:
         return False
@@ -110,7 +111,8 @@ def start_run() -> bool:
     with open(log, "w") as fh:
         # The shell appends the exit code so a reloaded page can still read the result.
         proc = subprocess.Popen(
-            ["/bin/sh", "-c", f'"$0" -u scripts/run_daily.py; echo "{EXIT_MARK} $?"', sys.executable],
+            ["/bin/sh", "-c", f'"$0" -u scripts/run_daily.py{" --dry-run" if dry_run else ""}; echo "{EXIT_MARK} $?"',
+             sys.executable],
             cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
             env=env, start_new_session=True,
         )
@@ -536,6 +538,9 @@ def render() -> None:
                        "job is red. Details below and in **Run log**.")
         elif state["exit"] not in (0, None):
             st.error(f"Last run exited with code {state['exit']}. See **Run log** below.")
+        if "DRY RUN:" in state["text"]:
+            st.caption("Showing a **dry run** (no ledger/Supabase writes; today's card and picks files untouched). "
+                       "The board and Props tab below are from the last real run.")
         if steps:
             st.markdown(f'<div class="steps">{step_chips(steps)}</div>', unsafe_allow_html=True)
             warned = [(label, why) for s, _, label, why in steps if s == "WARN"]
@@ -616,7 +621,7 @@ def _props_tab(the_card: dict, legs: list[dict], mpicks: list[dict]) -> None:
                            if r["platform"] == "kalshi" and _f(r["price"]) is not None else "pick'em", axis=1)
     df["Flags"] = df["flags"].apply(lambda f: ", ".join(f))
     df["Venue"] = df["platform"].map({"kalshi": "Kalshi", "sleeper": "Sleeper"}).fillna(df["platform"])
-    for col in ("team", "opp"):
+    for col in ("team", "opp", "p_raw", "edge"):
         if col not in df.columns:                    # cards written before 2026-11-24
             df[col] = None
     df["Inj"] = df["injury"].apply(lambda i: f"{i['code']} ({i['source']})" if isinstance(i, dict) else "") \
@@ -635,8 +640,8 @@ def _props_tab(the_card: dict, legs: list[dict], mpicks: list[dict]) -> None:
         df = df[df["Venue"] == pick_venue]
 
     st.dataframe(
-        df[["tip_pt", "game", "player", "team", "opp", "stat", "side", "line", "p", "Price", "Venue", "Inj",
-            "Flags"]],
+        df[["tip_pt", "game", "player", "team", "opp", "stat", "side", "line", "p_raw", "p", "edge", "Price",
+            "Venue", "Inj", "Flags"]],
         hide_index=True, width="stretch", height=min(38 + 35 * len(df), 720),
         column_config={
             "tip_pt": st.column_config.TextColumn("Tip", width=52),
@@ -648,7 +653,12 @@ def _props_tab(the_card: dict, legs: list[dict], mpicks: list[dict]) -> None:
             "stat": st.column_config.TextColumn("Stat", width=48),
             "side": st.column_config.TextColumn("Side", width=58),
             "line": st.column_config.TextColumn("Line", width=48),
-            "p": st.column_config.ProgressColumn("p (blend)", format="%.2f", min_value=0.5, max_value=1.0, width=110),
+            "p_raw": st.column_config.NumberColumn("P raw", format="%.2f", width=60,
+                                                   help="The card formula before calibration"),
+            "p": st.column_config.ProgressColumn("P calibrated", format="%.2f", min_value=0.5, max_value=1.0,
+                                                 width=110, help="What the card rules use (Calibration page)"),
+            "edge": st.column_config.NumberColumn("Edge", format="%+.2f", width=60,
+                                                  help="Calibrated p - Kalshi ask, or - no-vig P for the side"),
             "Price": st.column_config.TextColumn("Price / max", width=92),
             "Venue": st.column_config.TextColumn("Venue", width=70),
         })
@@ -656,8 +666,16 @@ def _props_tab(the_card: dict, legs: list[dict], mpicks: list[dict]) -> None:
     st.caption(f"{the_card.get('shown', len(legs))} shown, {the_card.get('cut', 0)} cut by stat priority/p. "
                f"Hidden: {s.get('excluded_injured', 0)} injured (OUT/D/Q/GTD), {s.get('started', 0)} started, "
                f"{s.get('stale', 0)} stale quotes, {s.get('team_mismatch', 0)} team mismatch — named below. "
-               "p = .35 hist + .65 no-vig. Kalshi price = ask / most to pay. Hand-set formulas, not backtested.")
+               f"P raw: {describe_card_blend()}. P calibrated: "
+               f"{the_card.get('calibration') or 'not calibrated (card predates Phase 2)'}. "
+               "Kalshi price = ask / most to pay (calibrated p - 5c).")
     _excluded_expander(the_card)
+
+
+def describe_card_blend() -> str:
+    from config.model_config import WEIGHTS
+    h = WEIGHTS["card"]["hist_weight"]
+    return f"{h:.2f} hit-rate history + {1 - h:.2f} market"
 
 
 def _injury_banner(the_card: dict) -> None:

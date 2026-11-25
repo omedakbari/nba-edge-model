@@ -1,6 +1,7 @@
 """Worker configuration. Everything comes from env vars so GitHub Actions and the Mac share one code path."""
 
 import os
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 try:  # .env is optional; Actions injects secrets as env vars
@@ -83,3 +84,20 @@ FUTURE_TS_TOLERANCE_S = 120        # provider_ts this far past fetched_at counts
 
 def in_ci() -> bool:
     return os.getenv("GITHUB_ACTIONS") == "true" or os.getenv("CI") == "true"
+
+
+# Blend weights: the repo-wide config/model.yaml (one source of truth with the main package's
+# config/model_config.py). The worker only needs the card section.
+MODEL_YAML = Path(__file__).resolve().parents[2] / "config" / "model.yaml"
+
+
+def _card_weights() -> tuple[float, float]:
+    import yaml
+    card = (yaml.safe_load(MODEL_YAML.read_text()) or {}).get("card") or {}
+    h, shrink = float(card["hist_weight"]), float(card["no_market_shrink"])
+    if not (0 <= h <= 1 and 0 <= shrink <= 1):
+        raise ValueError(f"{MODEL_YAML}: card weights must be in [0, 1]")
+    return h, shrink
+
+
+CARD_HIST_WEIGHT, CARD_NO_MARKET_SHRINK = _card_weights()

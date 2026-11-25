@@ -13,7 +13,7 @@ Design:
     Margins are home-court-neutralized before averaging.
   - Per-team HCA: historical home-road split from last 3 seasons. DEN, MIL, OKC
     significantly above 2.5pt league average; WAS, SAC, GSW below.
-  - Combined: 0.65 * SRS + 0.35 * L10 form. Current-season strength is
+  - Combined: season_weight * SRS + (1 - season_weight) * L10 form (config/model.yaml). Current-season strength is
     shrunk toward prior-season NET_RTG (regressed 20% toward average), with
     a 20-game prior to avoid opening-week one-game outliers.
 
@@ -52,8 +52,9 @@ PLAYOFF_HCA     = 3.0   # HCA in playoffs (flat — less historical data per tea
 PACE_BASELINE   = 100.0 # per-100-poss → per-game conversion denominator
 REST_BONUS      = 0.75  # pts per extra rest day vs opponent (capped at 2 days diff)
 B2B_PENALTY     = 2.3   # pts deducted for a team on back-to-back
-SEASON_WEIGHT   = 0.65  # blend: SRS (full-season) share
-FORM_WEIGHT     = 0.35  # blend: recent L10 share
+from config.model_config import WEIGHTS as _W
+SEASON_WEIGHT   = _W['team_ratings']['season_weight']  # blend: SRS (full-season) share
+FORM_WEIGHT     = 1 - SEASON_WEIGHT                     # blend: recent L10 share
 L10_MIN_GAMES   = 5     # minimum games for L10 form to carry weight
 SPREAD_STD      = 11.0  # historical NBA spread std-dev (points) — for P(cover) calc
 

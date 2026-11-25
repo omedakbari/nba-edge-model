@@ -435,10 +435,12 @@ def main(argv=None, conn=None, log_conn=None) -> int:
             from pathlib import Path
 
             from . import card
+            from .calibration import Calibrator
+            cal = Calibrator.load()
             live = now if d == slate_date(now) else None
             props, info = build(read_only(c), d, side="over", now=live)
             rows, stats = card.build_rows(props, before=d, season_start=date.fromisoformat(info["season_start"]),
-                                          h2h_since=date.fromisoformat(info["h2h_since"]), now=live)
+                                          h2h_since=date.fromisoformat(info["h2h_since"]), now=live, cal=cal)
             excluded = stats.pop("excluded")
             excluded += [{"player": u["name"], "player_id": None, "team": u["team"], "game": "", "stat": "",
                           "venue": "", "line": None, "reason": "injury name not matched",
@@ -447,14 +449,14 @@ def main(argv=None, conn=None, log_conn=None) -> int:
                          for u in info["injury"]["unmatched"]]
             shown, cut = card.shortlist(rows)
             text = card.render(shown, cut, slate=d.isoformat(), stats=stats, excluded=excluded,
-                               injury=info["injury"])
+                               injury=info["injury"], calibration=cal.label())
             print(text)
             if args.out:
                 Path(args.out).parent.mkdir(parents=True, exist_ok=True)
                 Path(args.out).write_text(text + "\n")
                 Path(args.out).with_suffix(".json").write_text(json.dumps(
                     card.to_dict(shown, cut, slate=d.isoformat(), stats=stats, excluded=excluded,
-                                 injury=info["injury"]), default=str, indent=1) + "\n")
+                                 injury=info["injury"], calibration=cal.label()), default=str, indent=1) + "\n")
             for why in card_warnings(info, rows, stats):
                 warn(why, step="Prop card")
             if args.log:

@@ -234,10 +234,20 @@ def cmd_daily(_args):
     print(f"  DAILY  |  grade {yesterday}  →  picks {today}  |  {_label(phase)}")
     print(f"{'='*64}")
 
-    run(['scripts/log_pick_results.py', '--date', yesterday, '--market'], 'Market props — yesterday')
-    run(['scripts/log_team_results.py',  '--date', yesterday], 'Team picks — yesterday')
+    # NBA_DRY_RUN=1 (scripts/run_daily.py --dry-run): grade without writing, skip the data refresh, and
+    # build boards without --save, so no picks/results files or DB rows change.
+    dry = os.getenv('NBA_DRY_RUN') == '1'
+    save = [] if dry else ['--save']
+    no_save = ['--no-save'] if dry else []
+    if dry:
+        print('  DRY RUN: grading is not written, data refresh is skipped, boards are not saved.')
 
-    if refreshed_today(season):
+    run(['scripts/log_pick_results.py', '--date', yesterday, '--market'] + no_save, 'Market props — yesterday')
+    run(['scripts/log_team_results.py',  '--date', yesterday] + no_save, 'Team picks — yesterday')
+
+    if dry:
+        print(f"\n  Dry run — data refresh skipped")
+    elif refreshed_today(season):
         print(f"\n  Data already refreshed today — skipping")
     else:
         refresh_flags = ['--playoffs'] if phase in ('playoffs', 'play-in') else []
@@ -247,11 +257,11 @@ def cmd_daily(_args):
             return rc
 
     run(
-        ['scripts/find_bets.py'] + flags + ['--season', season, '--save'],
+        ['scripts/find_bets.py'] + flags + ['--season', season] + save,
         'Player props — market prices and EV'
     )
     run(
-        ['scripts/generate_todays_team_picks.py'] + flags + ['--season', season, '--save'],
+        ['scripts/generate_todays_team_picks.py'] + flags + ['--season', season] + save,
         'Team spread / ML picks'
     )
 

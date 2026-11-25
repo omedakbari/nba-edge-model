@@ -65,13 +65,15 @@ SAFE_FLOOR_HIGH_VAR = 0.62
 # data/diagnostics/blend_audit.csv) — this single value is a pooled compromise,
 # not independently optimal for every stat. Re-derive by re-running
 # phase1_calibration_audit.py whenever the season/models change meaningfully.
-BLEND_L10_WEIGHT = 0.40
+# The value lives in config/model.yaml (props_model.l10_weight) with every other blend weight.
+from config.model_config import WEIGHTS as _W  # noqa: E402  (config/model.yaml)
+BLEND_L10_WEIGHT = _W['props_model']['l10_weight']
 
 # Opening-season priors: recent history may cross the offseason. These are
 # conservative defaults, not independently backtested calibration parameters.
 MIN_PROP_HISTORY_GAMES = 10
 PROP_HISTORY_DAYS = 365
-PROP_PRIOR_SIGNAL_WEIGHT = 0.5
+PROP_PRIOR_SIGNAL_WEIGHT = _W['prop_prior']['signal_weight']
 TEAM_PRIOR_GAMES = 20.0
 TEAM_PRIOR_RETENTION = 0.8
 

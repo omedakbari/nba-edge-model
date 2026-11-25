@@ -16,7 +16,8 @@ Rows: whatever game_logs source holds that night (ESPN, or nba_edge_db where the
 ESPN), played rows only, chosen with a seed derived from the date so a re-run checks the same players.
 Against nba_edge_db only ESPN rows are sampled (comparing nba_edge.db with itself proves nothing).
 Compared: pts reb ast fg3m fg3a fgm fga ftm fta oreb dreb stl blk tov pf exactly; minutes within 1
-(ESPN reports whole minutes); plus/minus too against nba_edge_db.
+(ESPN reports whole minutes); plus/minus too against nba_edge_db. Minutes missing in one source and under
+1.0 in the other count as a DNP match (dnp_match), not a mismatch.
 Severity (per date):
   YELLOW  every mismatch is blk, stl or tov off by exactly 1, and there are at most 2 of them.
           Logged as a warning; the run stays green and the job exits 0.
@@ -51,6 +52,7 @@ PROPLINE_STATS = {"points": "pts", "rebounds": "reb", "assists": "ast", "threes"
                   "defensive_rebounds": "dreb", "steals": "stl", "blocks": "blk", "turnovers": "tov",
                   "personal_fouls": "pf", "minutes": "min"}
 MINUTES_TOLERANCE = 1.0
+DNP_MINUTES = 1.0         # None in one source vs < 1.0 in the other = DNP in both
 YELLOW_STATS = ("blk", "stl", "tov")     # a single one of these off by 1 is scorer noise, not a broken feed
 MAX_MISMATCHES_YELLOW = 2                # more than this on one date is red whatever the stats
 RECHECK_COLUMNS = frozenset(EXACT) | {"min"}
@@ -102,12 +104,23 @@ def diffs(espn: dict, other: dict | None, label: str, with_plus_minus: bool = Fa
         elif int(a) != int(round(float(b))):
             out.append(_mm(f"{who}: {c} ESPN {a} vs {label} {b}", c, a, b, abs(int(a) - int(round(float(b))))))
     m_e, m_o = espn.get("min"), other.get("min")
+    if dnp_match(m_e, m_o):
+        return out
     if m_o is None or m_e is None:
         out.append(_mm(f"{who}: minutes ESPN {m_e} vs {label} {m_o}", "min", m_e, m_o))
     elif abs(float(m_e) - float(m_o)) > MINUTES_TOLERANCE:
         out.append(_mm(f"{who}: minutes ESPN {m_e} vs {label} {m_o} (> {MINUTES_TOLERANCE:g})", "min", m_e, m_o,
                        abs(float(m_e) - float(m_o))))
     return out
+
+
+def dnp_match(m_espn, m_other) -> bool:
+    """One source has no minutes (DNP) and the other has under DNP_MINUTES (e.g. ESPN None vs PropLine 0.15,
+    AJ Green 2026-11-23): both say the player didn't really play. Not a mismatch."""
+    if (m_espn is None) == (m_other is None):
+        return False
+    m = m_other if m_espn is None else m_espn
+    return 0 <= float(m) < DNP_MINUTES
 
 
 def _mm(text, stat=None, espn=None, other=None, diff=None) -> dict:

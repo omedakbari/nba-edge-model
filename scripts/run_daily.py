@@ -3,6 +3,10 @@
 Transport failures are explicit failures, never an empty-slate success. This
 runner never trains models or promotes research artifacts.
 
+--dry-run: no ledger or Supabase writes, today's card / brief / picks files are not overwritten,
+grading is computed but not written, the data refresh is skipped. The card goes to data/runs/dry-<stamp>/.
+Append-only archives (live / quote snapshots, fair-board and stack revisions) are still written.
+
 Exit codes: 0 = every step OK; 3 = every step ran but at least one WARNED (got input, produced nothing;
 or a worker job is red); anything else = a step failed. Each step prints a status line
 "  OK|WARN|FAILED (exit n) — <label>[ :: reasons]" (src/utils/step_status.py) that the dashboard parses.
@@ -21,10 +25,16 @@ from src.utils.step_status import WARN_ENV, WARN_EXIT, read_warnings, status_lin
 
 
 def main(argv=None):
-    argparse.ArgumentParser(description=__doc__.splitlines()[0],
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0],
         epilog='Archives live evidence, runs `nba.py daily`, market diagnostics, the card, and the brief. '
-               'Takes no options; use nba.py subcommands for anything else.').parse_args(argv or [])
+               'Use nba.py subcommands for anything else.')
+    ap.add_argument('--dry-run', action='store_true',
+                    help='no ledger/Supabase writes; do not overwrite today\'s card, brief or picks files')
+    args = ap.parse_args(argv or [])
     day=slate_today().isoformat()
+    if args.dry_run:
+        print('DRY RUN: no ledger/Supabase writes; today\'s card, brief and picks files are left untouched.',
+              flush=True)
     report,path=collect(day,ROOT/'data/live_snapshots')
     print(f'Live evidence: {path}',flush=True)
     if not report['live_api_ready']:
@@ -37,17 +47,27 @@ def main(argv=None):
     fd, warn_path = tempfile.mkstemp(prefix='nba_run_', suffix='.jsonl')
     os.close(fd)
     os.environ[WARN_ENV] = warn_path            # every child step appends its warnings here
+    if args.dry_run:
+        os.environ['NBA_DRY_RUN'] = '1'
     try:
         result = subprocess.run([sys.executable,'-u',str(ROOT/'nba.py'),'daily'],cwd=ROOT).returncode
         if result:
             return result
-        diag = subprocess.run([sys.executable, str(ROOT/'scripts/report_market_diagnostics.py')],cwd=ROOT).returncode
-        rc = card(day, warn_path) or diag
-        brief(day)
+        if args.dry_run:
+            print('\nDry run: market diagnostics report skipped', flush=True)
+            diag = 0
+        else:
+            diag = subprocess.run([sys.executable, str(ROOT/'scripts/report_market_diagnostics.py')],cwd=ROOT).returncode
+        rc = card(day, warn_path, dry_run=args.dry_run) or diag
+        if args.dry_run:
+            print('\nDry run: brief skipped (it would overwrite today\'s brief)', flush=True)
+        else:
+            brief(day)
         health_warnings = worker_health()
         return finish(rc, read_warnings(warn_path) + health_warnings)
     finally:
         os.environ.pop(WARN_ENV, None)
+        os.environ.pop('NBA_DRY_RUN', None)
         try:
             os.unlink(warn_path)
         except OSError:
@@ -91,13 +111,20 @@ def brief(day):
     return rc
 
 
-def card(day, warn_path=None):
+def card(day, warn_path=None, dry_run=False):
     """Final step: the research-only shortlist from the worker's PropLine/Sleeper/Kalshi data (Supabase).
-    Every printed leg is logged in the bets ledger (source=card, placed=false) and graded nightly."""
-    out = ROOT/'data/cards'/f'{day}.txt'
+    Every printed leg is logged in the bets ledger (source=card, placed=false) and graded nightly.
+    dry_run: no --log (no ledger write) and the card goes to data/runs/dry-<stamp>/, not data/cards/."""
+    if dry_run:
+        from datetime import datetime, timezone
+        out = ROOT/'data/runs'/f"dry-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}"/f'{day}.txt'
+        log = []
+    else:
+        out = ROOT/'data/cards'/f'{day}.txt'
+        log = ['--log']
     before = len(read_warnings(warn_path))
     print(f'\n── card (research-only) ──', flush=True)
-    rc = subprocess.run([sys.executable, '-m', 'prop_worker.slate', '--card', '--date', day, '--out', str(out), '--log'],
+    rc = subprocess.run([sys.executable, '-m', 'prop_worker.slate', '--card', '--date', day, '--out', str(out)] + log,
                         cwd=ROOT/'worker').returncode
     print(f'Card: {out}' if rc == 0 else f'Card failed (exit {rc}); nothing written', flush=True)
     print(status_line('Prop card', rc, read_warnings(warn_path)[before:]), flush=True)

@@ -306,6 +306,13 @@ st.set_page_config(
 )
 
 st.sidebar.title("NBA Edge Model")
+def _render_card_calibration():
+    """Card calibration section (dashboard/calibration_view.py)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import calibration_view
+    calibration_view.render(st)
+
+
 page = st.sidebar.radio(
     "Navigate",
     ["Today", "Game Props", "Overview", "Backtest Results", "Calibration", "Player Lookup"],
@@ -492,11 +499,14 @@ elif page == "Overview":
 
     # Methodology
     st.subheader("Methodology")
-    st.markdown("""
+    from config.model_config import WEIGHTS as _MW, describe as _describe_blends
+    _l10 = _MW['props_model']['l10_weight']
+    st.markdown(f"""
 1. **Data pipeline** — 5+ seasons of player game logs from the NBA API into SQLite
 2. **Feature engineering** — Rolling windows (L5/L10/L20), hit-rate frequencies, pace/matchup context, rest and travel flags (~125 features)
 3. **Model training** — HistGradientBoostingRegressor per stat, temporal train/test split (train 2019-23, test 2024-25)
-4. **Probability calibration** — 65% L10-baseline / 35% model blend, P(over) via Gaussian CDF with player rolling std
+4. **Probability** — {_l10:.0%} L10-baseline / {1 - _l10:.0%} model blend (config/model.yaml), P(over) via Gaussian CDF with player rolling std
+6. **Blend weights in use** — {_describe_blends()}
 5. **Backtest** — Held-out 2024-25 season validates calibration at P ≥ 65% and P ≥ 70% tiers
     """)
 
@@ -607,6 +617,9 @@ elif page == "Backtest Results":
 # ---------------------------------------------------------------------------
 elif page == "Calibration":
     st.title("Model Calibration")
+    _render_card_calibration()
+    st.divider()
+    st.header("ML regression models (2024-25 test set)")
     st.markdown(
         "A well-calibrated model means: when it predicts 70% probability, "
         "the event actually happens ~70% of the time."

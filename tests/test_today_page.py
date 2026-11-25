@@ -1,5 +1,6 @@
 """Today dashboard page: log parsing and game-card derivation (no Streamlit server needed)."""
 from pathlib import Path
+import pandas as pd
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -103,3 +104,25 @@ def test_html_is_escaped():
         {'name': '<b>x</b>', 'ppg': 1, 'mpg': 1}], 'reason': '"q"'}}, 'before_guard': {}})
     out = T.game_card(a, T.game_view(a))
     assert '<script>' not in out and '<b>x</b>' not in out
+
+
+def test_calibration_view_frames():
+    import calibration_view as V
+    art = {'report': {'kalshi_test': [{'venue': 'kalshi', 'subset': 'card selected (raw rules)', 'stat': 'all',
+                                       'raw': {'overall': {'n': 106, 'hit': .67, 'pred': .756, 'brier': .2323, 'logloss': .66},
+                                               'buckets': [{'lo': .7, 'hi': .75, 'n': 40, 'pred': .72, 'hit': .6,
+                                                            'brier': .24, 'logloss': .67}]},
+                                       'calibrated': {'overall': {'n': 106, 'hit': .67, 'pred': .635, 'brier': .2238,
+                                                                  'logloss': .64}, 'buckets': []},
+                                       'market_mid_brier': .2241, 'pnl_per_contract_after_fee': -.036,
+                                       'clears_card_rules_raw': 106, 'clears_card_rules_calibrated': 0}],
+                      'ledger': [{'venue': 'kalshi', 'subset': 'graded card ledger (live; no stored mid, raw only)',
+                                  'stat': 'all', 'raw': {'overall': {'n': 124, 'hit': .702, 'pred': .771,
+                                                                     'brier': .2143, 'logloss': .6}, 'buckets': []},
+                                  'calibrated': None}]}}
+    df = V.summary_frame(art)
+    assert list(df['n']) == [106, 124] and df.loc[0, 'cal p'] == .635 and pd.isna(df.loc[1, 'cal p'])
+    assert df.loc[0, 'pass rules cal'] == 0
+    b = V.bucket_frame(art['report']['kalshi_test'][0])
+    assert list(b['p']) == ['raw'] and b.loc[0, 'bucket'] == '0.70-0.75'
+    assert V.load(Path('/nonexistent.json')) is None

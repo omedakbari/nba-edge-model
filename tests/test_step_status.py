@@ -127,3 +127,54 @@ def test_worker_health_never_raises():
             raise RuntimeError('boom')
     out = job_status(Broken())
     assert out['ok'] is False and out['jobs'] == [] and 'RuntimeError' in out['error']
+
+
+def test_daily_dry_run_saves_nothing_and_normal_daily_saves(monkeypatch):
+    calls = []
+    monkeypatch.setattr(nba, 'detect_phase', lambda season: 'regular')
+    monkeypatch.setattr(nba, 'refreshed_today', lambda season: False)
+    monkeypatch.setattr(nba, 'run', lambda cmd, *a: calls.append(cmd) or 0)
+    monkeypatch.setenv('NBA_DRY_RUN', '1')
+    nba.cmd_daily(None)
+    scripts = [c[0] for c in calls]
+    assert 'scripts/update_data.py' not in scripts                       # refresh skipped
+    assert not any('--save' in c for c in calls)                          # no picks files
+    assert all('--no-save' in c for c in calls if c[0].startswith('scripts/log_'))
+    calls.clear()
+    monkeypatch.delenv('NBA_DRY_RUN')
+    nba.cmd_daily(None)
+    saved = {c[0] for c in calls if '--save' in c}
+    assert saved == {'scripts/find_bets.py', 'scripts/generate_todays_team_picks.py'}
+    assert not any('--no-save' in c for c in calls)
+
+
+def test_nba_picks_still_saves_team_picks(monkeypatch):
+    import argparse
+    calls = []
+    monkeypatch.setattr(nba, 'detect_phase', lambda season: 'regular')
+    monkeypatch.setattr(nba, 'refreshed_today', lambda season: True)
+    monkeypatch.setattr(nba, 'run', lambda cmd, *a: calls.append(cmd) or 0)
+    args = argparse.Namespace(quick=True, team_only=True, props_only=False, pickem=False, lines=None,
+                              lines_file=None, template=None)
+    nba.cmd_picks(args)
+    team = [c for c in calls if c[0] == 'scripts/generate_todays_team_picks.py']
+    assert team and '--save' in team[0]
+
+
+def test_pick_grader_no_save_writes_nothing(tmp_path, monkeypatch):
+    import json as _json
+    import sqlite3
+    import log_pick_results as L
+    db = tmp_path / 'db.sqlite'
+    monkeypatch.setattr(L, 'DB_PATH', db)
+    monkeypatch.setattr(L, 'PICKS_DIR', tmp_path / 'picks')
+    market = tmp_path / 'market_picks'
+    market.mkdir()
+    pick = dict(player_id=1, player_name='A', team='X', opp='Y', stat='PTS', stat_key='pts', direction='OVER',
+                line=10.5, model_pred=12, prob=0.6, card='', n_legs=1, line_source='', injury_flag=0)
+    (market / '2026-11-20.json').write_text(_json.dumps({'picks': [pick], 'season': '2026-27'}))
+    monkeypatch.setattr(L, 'fetch_actuals_from_db', lambda *a, **k: {1: {'played': True, 'pts': 15}})
+    L.grade_date('2026-11-20', market=True, save=False)
+    assert sqlite3.connect(db).execute('select count(*) from pick_results').fetchone()[0] == 0
+    L.grade_date('2026-11-20', market=True, save=True)
+    assert sqlite3.connect(db).execute('select count(*) from pick_results').fetchone()[0] == 1
