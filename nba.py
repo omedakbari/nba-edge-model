@@ -25,6 +25,7 @@ Shell setup (one-time — already added to ~/.zshrc):
 """
 
 import argparse
+import os
 import sqlite3
 import subprocess
 import sys
@@ -78,14 +79,32 @@ def run(script_args: list[str], label: str = '') -> int:
         print(f"\n{'─'*64}")
         print(f"  {label}")
         print(f"{'─'*64}")
+    import tempfile
+    from src.utils.step_status import WARN_ENV, read_warnings, warn
     cmd = [sys.executable] + [str(a) for a in script_args]
+    name = label or str(script_args[0])
+    fd, warn_path = tempfile.mkstemp(prefix='nba_step_', suffix='.jsonl')
+    os.close(fd)
     try:
-        rc = subprocess.run(cmd, cwd=str(ROOT)).returncode
-    except OSError as exc:
-        STEP_RESULTS.append((label or str(script_args[0]), 1))
-        print(f'  Could not start step: {exc}')
-        raise SystemExit(1) from exc
-    STEP_RESULTS.append((label or str(script_args[0]), rc))
+        try:
+            rc = subprocess.run(cmd, cwd=str(ROOT), env={**os.environ, WARN_ENV: warn_path}).returncode
+        except OSError as exc:
+            STEP_RESULTS.append((name, 1, []))
+            print(f'  Could not start step: {exc}')
+            raise SystemExit(1) from exc
+        warns = read_warnings(warn_path)
+    finally:
+        try:
+            os.unlink(warn_path)
+        except OSError:
+            pass
+    STEP_RESULTS.append((name, rc, warns))
+    # Pass each warning up to run_daily (if it set its own $NBA_WARN_FILE), labelled with this step.
+    if os.getenv(WARN_ENV):
+        import contextlib, io
+        with contextlib.redirect_stdout(io.StringIO()):     # already printed by the step itself
+            for w in warns:
+                warn(w['reason'], step=name)
     if rc:
         raise SystemExit(rc)
     return rc
@@ -406,11 +425,14 @@ def main():
         print(f'  Command failed: {type(exc).__name__}: {exc}')
         return 1
     finally:
+        from src.utils.step_status import status_line
         print('\n  STEP STATUS SUMMARY')
-        for label, code in STEP_RESULTS:
-            print(f"  {'OK' if code == 0 else 'FAILED'} (exit {code}) — {label}")
-        if any(code for _, code in STEP_RESULTS):
+        for label, code, warns in STEP_RESULTS:
+            print(status_line(label, code, warns))
+        if any(code for _, code, _ in STEP_RESULTS):
             print('  Workflow incomplete; remaining steps were not run.')
+        elif any(w for _, _, w in STEP_RESULTS):
+            print('  Workflow complete WITH WARNINGS: a step got input but produced no output.')
 
 
 if __name__ == '__main__':

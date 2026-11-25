@@ -244,6 +244,8 @@ def grade_date(game_date: str) -> list[dict] | None:
     picks_path = PICKS_DIR / f"{game_date}.json"
     if not picks_path.exists():
         print(f"  No picks file found for {game_date}: {picks_path}")
+        from src.utils.step_status import warn
+        warn(f"no team picks file for {game_date} (daily not run that day, or no games)")
         return None
 
     picks, skipped, used = pretip_picks(PICKS_DIR, game_date)
@@ -259,6 +261,8 @@ def grade_date(game_date: str) -> list[dict] | None:
     scores = fetch_final_scores(game_date)
     if not scores:
         print(f"  ⚠️  No final scores available for {game_date}. Games may not have finished yet.")
+        from src.utils.step_status import warn
+        warn(f"grading {game_date}: {len(picks)} team picks, 0 final scores")
         return None
 
     today = slate_today().isoformat()

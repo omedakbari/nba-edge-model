@@ -496,6 +496,7 @@ def print_game_block(a: dict) -> None:
     # Recommendation
     tier = a['tier']
     ou_tier = a.get('ou_tier', 'NONE')
+    guard_before = (a.get('injury_blind') or {}).get('before_guard') or {}
     if tier in ('STRONG', 'LEAN'):
         picks = []
         if a['spread_pick_team']:
@@ -514,6 +515,8 @@ def print_game_block(a: dict) -> None:
         if picks:
             tier_marker = '★ STRONG' if tier == 'STRONG' else '● LEAN'
             print(f"\n  {tier_marker}  {'  |  '.join(picks)}")
+    elif tier == 'MONITOR' and guard_before.get('tier') in ('STRONG', 'LEAN'):
+        print(f"\n  ○ MONITOR  (gap {a['sp_edge']:+.1f} — {guard_before['tier']} downgraded: INJURY_BLIND)")
     elif tier == 'MONITOR':
         print(f"\n  ○ MONITOR  (gap {a['sp_edge']:+.1f} — not yet threshold)")
     else:
@@ -537,6 +540,9 @@ def print_game_block(a: dict) -> None:
         if ou_tier in ('STRONG', 'LEAN'):
             ou_marker = '★ STRONG' if ou_tier == 'STRONG' else '● LEAN'
             print(f"  {ou_marker}  O/U {direction}: model {mt:.1f} vs line {mk:.1f}  (edge {edge:+.1f})")
+        elif guard_before.get('ou_tier') in ('STRONG', 'LEAN'):
+            print(f"  ○ O/U MONITOR  (model {mt:.1f} vs line {mk:.1f}, edge {edge:+.1f} — "
+                  f"{guard_before['ou_tier']} downgraded: INJURY_BLIND)")
         else:
             print(f"  — O/U PASS  (model {mt:.1f} vs line {mk:.1f}, edge {edge:+.1f}, below {MIN_OU_EDGE}pt threshold)")
 

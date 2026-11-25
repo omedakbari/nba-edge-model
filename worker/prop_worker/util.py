@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
@@ -63,3 +65,20 @@ def kalshi_event_code(game_date: date, away: str, home: str) -> str:
     """date(2026, 11, 10), 'MIA', 'UTA' -> '26NOV10MIAUTA' (Kalshi's event-ticker suffix)."""
     month = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
     return f"{game_date:%y}{month[game_date.month - 1]}{game_date:%d}{away}{home}"
+
+
+WARN_ENV = "NBA_WARN_FILE"     # same protocol as src/utils/step_status.py in the main package
+
+
+def warn(reason: str, step: str = "") -> None:
+    """A step that got input but produced no output: print it and, inside run_daily, record it so the
+    run ends as WARN instead of OK. Never raises."""
+    print(f"  WARN: {reason}", flush=True)
+    path = os.getenv(WARN_ENV)
+    if not path:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"step": step, "reason": reason}) + "\n")
+    except OSError:
+        pass

@@ -144,16 +144,28 @@ def test_injured_hidden_by_default_and_dropped_off_report_counts_as_not_listed(b
     assert "Miles McBride" in {p.name for p in shown}
 
 
-def test_espn_status_used_only_when_not_on_the_official_report(board, pg):
-    injury(pg, board["jt"], "Jayson Tatum", "BOS", "Day-To-Day", source="espn")
+def test_stricter_status_wins_across_official_and_espn(board, pg):
+    """2026-11-24 rule change: the stricter of the official report and ESPN wins (was: official always)."""
+    injury(pg, board["jt"], "Jayson Tatum", "BOS", "Day-To-Day", source="espn")       # not on the official report
     injury(pg, board["jb"], "Jalen Brunson", "NYK", "Out", source="espn")              # official says Probable
     pg.commit()
     props, _ = slate.build(pg, D)
     by = _by(props)
-    assert by[("Jayson Tatum", "pts")].injury["code"] == "GTD" and by[("Jayson Tatum", "pts")].injury["source"] == "espn"
-    assert by[("Jalen Brunson", "pts")].injury["code"] == "P"
+    tatum, brunson = by[("Jayson Tatum", "pts")].injury, by[("Jalen Brunson", "pts")].injury
+    assert tatum["code"] == "GTD" and tatum["source"] == "espn"
+    assert brunson["code"] == "OUT" and brunson["source"] == "espn"
+    assert brunson["sources"]["official"]["code"] == "P"                                # both sources kept
+    assert brunson["as_of"] == SEEN.isoformat()
     shown, dropped = slate.select(props)
-    assert "Jayson Tatum" not in {p.name for p in shown} and dropped["injured"] == 2
+    assert {"Jayson Tatum", "Jalen Brunson"}.isdisjoint({p.name for p in shown}) and dropped["injured"] == 3
+
+
+def test_unknown_status_fails_closed(board, pg):
+    injury(pg, board["br"], "Jaylen Brown", "BOS", "Reconditioning")                    # newest report, odd word
+    pg.commit()
+    p = _by(slate.build(pg, D)[0])[("Jaylen Brown", "reb")]
+    assert p.injury["code"] == "UNK"
+    assert "Jaylen Brown" not in {x.name for x in slate.select(slate.build(pg, D)[0])[0]}
 
 
 def test_filters_and_sort(board, pg):

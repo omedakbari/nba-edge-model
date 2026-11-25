@@ -81,3 +81,6 @@ data/role_evidence/
 data/*.db-shm
 data/*.db-wal
 *.bak
+
+# dashboard-launched daily runs (logs + pointer)
+data/runs/

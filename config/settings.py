@@ -81,6 +81,11 @@ APPEARANCE_RESEARCH_BUNDLE = Path(os.getenv('NBA_APPEARANCE_RESEARCH_BUNDLE', st
     DATA_DIR / 'audits/2026-10-25/followup/2026-10-25T215941.947988_0000/appearance_v2_research.pkl')))
 
 # Shadow diagnostics only; these never change the existing approval/quote gates.
+# Sportsbook quote freshness (src/betting/quote_quality.py). Strict on purpose: a stale price must never
+# become a "fair" probability. A quote is rejected if its provider timestamp is older than
+# QUOTE_MAX_AGE_SECONDS at capture, or more than QUOTE_MAX_FUTURE_SKEW_SECONDS ahead of capture.
+QUOTE_MAX_AGE_SECONDS = float(os.getenv('NBA_QUOTE_MAX_AGE_SECONDS', '900'))
+QUOTE_MAX_FUTURE_SKEW_SECONDS = float(os.getenv('NBA_QUOTE_MAX_FUTURE_SKEW_SECONDS', '0'))
 SHADOW_CAPTURE_MINUTES = float(os.getenv('NBA_SHADOW_CAPTURE_MINUTES', '5'))
 SHADOW_FUTURE_TOLERANCE_SECONDS = float(os.getenv('NBA_SHADOW_FUTURE_TOLERANCE_SECONDS', '60'))
 

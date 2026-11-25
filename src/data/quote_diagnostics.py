@@ -59,3 +59,20 @@ def print_quote_coverage(coverage):
         print(f"  Quote source {book}: offered={counts['offered_sides']} sides; "
               f"timestamp rejected: {reasons}; timestamp pass={timestamp_pass}; "
               f"selected pairs={counts['selected_consensus_pairs']}")
+
+
+BOOK_SHORT = {'Draft Kings': 'DK', 'DraftKings': 'DK', 'draftkings': 'DK'}
+REASON_SHORT = {'stale provider timestamp': 'stale', 'future provider timestamp': 'future-skew',
+                'missing/invalid provider timestamp': 'invalid', 'missing timezone': 'no-timezone'}
+
+
+def feed_summary(coverage, source='ESPN'):
+    """{book: 'DK via ESPN: 0/506 passed (406 stale, 100 future-skew)'} for a live capture."""
+    out = {}
+    for book, counts in coverage['books'].items():
+        why = ', '.join(f"{n} {REASON_SHORT.get(r, r)}" for r, n in
+                        sorted(counts['timestamp_rejections'].items(), key=lambda kv: -kv[1]))
+        passed = counts['timestamp_pass_sides']
+        out[book] = (f"{BOOK_SHORT.get(book, book)} via {source}: {passed}/{counts['offered_sides']} passed"
+                     + (f" ({why})" if why else ''))
+    return out

@@ -225,6 +225,8 @@ def grade_date(date_str: str, overwrite: bool = False, market: bool = False) -> 
         print(f"  No picks file found: {picks_path}")
         script = 'find_bets.py' if market else 'generate_todays_picks.py'
         print(f"  Run first: python scripts/{script} --date {date_str} --save")
+        from src.utils.step_status import warn
+        warn(f"no {'market ' if market else ''}picks file for {date_str} (daily not run that day, or no games)")
         return
 
     try:
@@ -392,6 +394,8 @@ def grade_date(date_str: str, overwrite: bool = False, market: bool = False) -> 
 
     print(f"\n  ── {date_str} Results ──────────────────────────────────────")
     print(f"  Picks graded: {graded}  |  Skipped: {skipped}")
+    from src.utils.step_status import warn_if_empty
+    warn_if_empty(len(picks), graded, f"grading {date_str} (saved picks -> graded)")
     print(f"  Hit: {hits}  |  Miss: {misses}  |  Void/DNP: {voids}  |  Pending: {pending}")
     if gradeable:
         print(f"  Hit rate: {hit_rate:.1%}  ({hits}/{gradeable})")

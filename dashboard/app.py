@@ -308,14 +308,25 @@ st.set_page_config(
 st.sidebar.title("NBA Edge Model")
 page = st.sidebar.radio(
     "Navigate",
-    ["Game Props", "Overview", "Backtest Results", "Calibration", "Player Lookup"],
+    ["Today", "Game Props", "Overview", "Backtest Results", "Calibration", "Player Lookup"],
 )
+
+
+# ---------------------------------------------------------------------------
+# PAGE: TODAY (one-click refresh + tonight's board) — dashboard/today.py
+# ---------------------------------------------------------------------------
+if page == "Today":
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import importlib
+    import today
+    importlib.reload(today)   # pick up edits to today.py without restarting streamlit
+    today.render()
 
 
 # ---------------------------------------------------------------------------
 # PAGE: GAME PROPS
 # ---------------------------------------------------------------------------
-if page == "Game Props":
+elif page == "Game Props":
     st.title("Game Props")
     st.markdown(
         "Spread / moneyline / total picks vs. live DraftKings lines, via the "
@@ -344,6 +355,16 @@ if page == "Game Props":
             "`python scripts/log_team_results.py` the next day to grade them."
         )
     else:
+        # NBA season label from game date: Aug-Dec -> that year's season, Jan-Jul -> prior year's.
+        gd = pd.to_datetime(results_df['game_date'])
+        start = gd.dt.year - (gd.dt.month < 8).astype(int)
+        results_df = results_df.assign(
+            season=start.astype(str) + '-' + ((start + 1) % 100).astype(str).str.zfill(2))
+        seasons = sorted(results_df['season'].unique(), reverse=True)
+        season = st.selectbox("Season", seasons + ["All seasons"], index=0,
+                              help="Records mix model versions across seasons; the current season is the default.")
+        if season != "All seasons":
+            results_df = results_df[results_df['season'] == season]
         graded = results_df[results_df['spread_result'].notna()]
 
         def _record(sub, col):
@@ -385,8 +406,16 @@ if page == "Game Props":
             'game_date', 'home', 'away', 'tier', 'spread_result', 'ml_result',
             'ou_result', 'spread_clv', 'total_clv',
         ] if c in graded.columns]
+        decided = ('WIN', 'LOSS', 'PUSH')
+        has_pick = graded['spread_result'].isin(decided)
+        for col in ('ml_result', 'ou_result'):
+            if col in graded.columns:
+                has_pick |= graded[col].isin(decided)
+        picks_only = graded[has_pick]
+        if picks_only.empty:
+            st.caption("No graded spread/ML/O-U picks in this season yet.")
         st.dataframe(
-            graded[display_cols].sort_values('game_date', ascending=False).head(30),
+            picks_only[display_cols].sort_values('game_date', ascending=False).head(30),
             width="stretch", hide_index=True,
         )
 
@@ -396,7 +425,11 @@ if page == "Game Props":
   with this feature; LEAN/STRONG thresholds are hand-set, not yet empirically
   calibrated against real market data.
 - Totals (O/U) model is a formula (ORTG/DRTG/pace blend), not a trained model.
-- No injury/lineup-news awareness — always verify injury reports before betting.
+- Injury awareness is a guard, not a model input: games where Out/Doubtful players
+  include a top-2 scorer, at least 20% of team points, or at least 60 mpg are flagged INJURY_BLIND and
+  STRONG/LEAN is downgraded to MONITOR. Ratings themselves don't adjust for absences,
+  and Questionable/GTD players aren't counted — always verify injury reports before betting.
+- Win-loss records are small samples; closing-line value is the better signal of edge.
     """)
 
 

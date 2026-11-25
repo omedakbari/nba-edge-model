@@ -213,3 +213,15 @@ def test_slp_hard_legs_need_p_068_and_the_footer_counts_them():
     assert [r for r in rows_for(soft)[0] if r.platform == "sleeper"]
     text = card.render([], 0, slate=str(D), stats=stats)
     assert "1 slp hard < 0.68" in text
+
+
+def test_to_dict_matches_render_for_dashboard():
+    p = prop([2, 3, 2, 1, 3, 2, 5, 3, 2, 3], kalshi=[(3.5, 0.40, 0.62)])
+    rows, _ = rows_for(p)
+    stats = {"excluded_injured": 1, "started": 0, "stale": 0}
+    d = card.to_dict(rows, 3, slate=str(D), stats=stats)
+    assert d["research_only"] and d["stake"] == 0 and d["cut"] == 3 and d["stats"] == stats
+    (k,) = [leg for leg in d["legs"] if leg["platform"] == "kalshi"]
+    assert (k["side"], k["line"], k["price"]) == ("NO", "4+", 0.62)
+    import json
+    json.dumps(d, default=str)          # serializable as written by slate --card --out

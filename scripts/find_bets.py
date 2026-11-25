@@ -183,6 +183,8 @@ def build_fair_board(target_date: str, season: str, is_playoffs: bool = False,
     board = eligible_board(board, target_date, season)
     revision_path(FAIR_DIR / f'{target_date}.json').write_text(json.dumps(board, indent=1, default=float))
     print(f"  Fair board: {len(board)} props; unsupported calibrations omitted.")
+    from src.utils.step_status import warn_if_empty
+    warn_if_empty(len(book), len(board), 'fair board (book prop lines -> eligible props)')
     return board
 
 

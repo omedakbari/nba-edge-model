@@ -61,6 +61,7 @@ SCHEDULE_DAYS = range(-1, 6)       # yesterday .. 5 days ahead (Kalshi lists gam
 BOXSCORE_LOOKBACK_DAYS = 3
 INJURY_PDF_MAX_AGE_SLOTS = 8       # the NBA posts every 15 min; > 2 h without one is red
 SLATE_ROLLOVER_HOURS = 6           # 00:30 ET still belongs to the previous night's slate
+INJURY_MAX_AGE_H = float(os.getenv("NBA_INJURY_MAX_AGE_H", "3"))   # card: newest injury data older -> STALE
 
 # Red-run rules (docs/BUILD_PLAN.md, trust layer item 4)
 RED_MIN_DURATION_S = 2.0
