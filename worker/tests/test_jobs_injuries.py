@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from conftest import FIXTURES
 from jobkit import NOW, Net, Resp, load, run, scoreboards, seed_players
 from prop_worker import config
@@ -174,3 +176,22 @@ def test_no_volume_check_nov14_midnight_case(pg):
     assert out.rows_out / 9 < config.RED_TRAILING_FRACTION * 32.8   # would have tripped the old rule
     assert out.status == "green", out.red_reasons
     assert out.volume is None
+
+
+@pytest.mark.parametrize("reason,two_way", [
+    ("G League - Two-Way", True), ("Management G League - Two-Way", True), ("G League - On Assignment", True),
+    ("Injury/Illness - Left Knee", False), (None, False), ("", False),
+])
+def test_two_way_reasons(reason, two_way):
+    assert injuries.is_two_way(reason) is two_way
+
+
+def test_two_way_unmapped_rows_dont_warn_but_are_listed(pg):
+    _setup(pg)
+    out = run(pg, _net(), "injuries", injuries.run)
+    rows = pg.execute("select reason from injuries where player_id is null").fetchall()
+    non_two_way = sum(not injuries.is_two_way(r[0]) for r in rows)
+    assert out.meta["unresolved_players"] == non_two_way
+    assert bool(non_two_way) == any("without a player_id" in w for w in out.warnings)
+    two_way_names = out.meta["two_way_not_in_roster"]
+    assert all(" (" in n and n.endswith(")") for n in two_way_names)

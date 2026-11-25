@@ -9,23 +9,35 @@ Sleeper legs (one per player/stat that has a Sleeper line):
   line      Sleeper's line. Hit rates are taken AT that line. If it differs from the consensus line the
             leg is flagged "slp soft" (easier for the chosen side) or "slp hard" (harder).
   p_hist    (h10 + h15 + hszn + 1.5) / (n10 + n15 + nszn + 3)        for the over at the line
-  p_blend   0.35 * p_hist + 0.65 * nv       nv = no-vig P(over) at the consensus line
-            no nv -> 0.5 + (p_hist - 0.5) / 2, flagged "no market"
+  p_blend   W_HIST * p_hist + (1 - W_HIST) * nv     nv = no-vig P(over) at the consensus line
+            no nv -> 0.5 + (p_hist - 0.5) * NO_MARKET_SHRINK, flagged "no market"
+            (W_HIST, NO_MARKET_SHRINK: config/model.yaml card section)
   side      over if p_blend >= .5 else under;  p = max(p_blend, 1 - p_blend);  kept if p >= .62
             ("slp hard" legs only if p >= .68; the footer counts the ones this hides)
   Caveat: when Sleeper's line differs, nv is still the consensus line's number (no line-shift model).
 Kalshi strikes (line 3.5 = "4+"):
-  pk        0.35 * (h10_at_strike + .5) / (n10 + 1) + 0.65 * yes_mid
+  pk        W_HIST * (h10_at_strike + .5) / (n10 + 1) + (1 - W_HIST) * yes_mid
             yes_mid = (yes_ask + 1 - no_ask) / 2 (yes_ask alone if there is no NO ask)
   YES       p = pk,     price = yes_ask;   NO  p = 1 - pk, price = no_ask
   shown     if p - price >= .05, price <= .85 and p >= .68; max = p - .05 (don't pay more)
+Calibration (Phase 2, DECISIONS.md D9-D13): every p above is the RAW p. The rules below (Sleeper p >= .62,
+slp hard p >= .68, Kalshi edge >= 5c / p >= .68, max = p - 5c) are applied to the CALIBRATED p from
+prop_worker/calibration.py (Kalshi: logistic on market mid + history disagreement, fit on a no-lookahead
+replay; Sleeper: shrunk ledger offset). Kalshi sides are only considered where raw p > ask (the region the
+calibration was fit on). Rows carry p (calibrated), p_raw, and edge (calibrated p - Kalshi ask, or
+calibrated p - no-vig P for the Sleeper side; None without a market).
 Flags:
   on the line      3+ of the last 10 played games landed exactly on the integer where the bet loses by
                    one (under 3.5 / 4+ NO -> 4; over 3.5 / 4+ YES -> 3; whole lines -> the push value)
   market disagrees |p_hist - nv| > .25 (Kalshi: |L10 rate - yes_mid| > .25)
   no market        no consensus no-vig price
-Excluded: players listed OUT / D / Q / GTD (official report, else ESPN), games already started,
-quotes not seen within STALE_MIN of the slate's newest quote (pulled lines).
+Excluded (every one is listed by name with its reason in the card's "excluded" section):
+  injury         OUT / D / Q / GTD / unknown status; the stricter of the official report and ESPN
+                 (prop_worker/injury_status.py), with the source and timestamp that set it
+  team mismatch  the roster team isn't one of the two teams in the prop's game (slate.resolve_team)
+  started        the game has tipped
+  stale quote    not seen within STALE_MIN of the slate's newest quote (pulled lines), with its age
+  slp hard       a Sleeper leg harder than consensus with p < SLP_HARD_MIN_P
 Sorted by tip time, then p. Stat priority REB/AST > PRA/RA > PTS/3PM decides what is cut when the
 card would pass MAX_ROWS.
 """
@@ -37,10 +49,15 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from .hitrates import GameLine, hit_rates, played, stat_value
+from . import config
+from . import injury_status as injury_rules
+from .calibration import Calibrator
+from .hitrates import GameLine, _rate, hit_rates, played, stat_value
 
 PT = ZoneInfo("America/Los_Angeles")
-W_HIST, W_MKT = 0.35, 0.65
+W_HIST = config.CARD_HIST_WEIGHT          # config/model.yaml
+W_MKT = 1 - W_HIST
+NO_MARKET_SHRINK = config.CARD_NO_MARKET_SHRINK
 SLEEPER_MIN_P = 0.62
 SLP_HARD_MIN_P = 0.68
 KALSHI_MIN_P = 0.68
@@ -50,7 +67,7 @@ DISAGREE = 0.25
 ON_LINE_MIN = 3
 STALE_MIN = 45
 MAX_ROWS = 50            # + header/footer stays under 60 lines
-EXCLUDED = {"OUT", "D", "Q", "GTD"}
+EXCLUDED = injury_rules.EXCLUDED
 PRIORITY = {"reb": 0, "ast": 0, "pra": 1, "ra": 1, "pts": 2, "fg3m": 2}
 STAT_LABEL = {"pts": "PTS", "reb": "REB", "ast": "AST", "fg3m": "3PM", "pra": "PRA", "ra": "RA"}
 
@@ -64,7 +81,7 @@ def p_hist(h10: int, n10: int, h15: int, n15: int, hszn: int, nszn: int) -> floa
 def p_blend(ph: float, nv: float | None) -> tuple[float, bool]:
     """(blended P(over), has_market)."""
     if nv is None:
-        return 0.5 + (ph - 0.5) / 2, False
+        return 0.5 + (ph - 0.5) * NO_MARKET_SHRINK, False
     return W_HIST * ph + W_MKT * nv, True
 
 
@@ -92,6 +109,40 @@ def kalshi_pick(pk: float, yes_ask: float | None, no_ask: float | None) -> tuple
             if best is None or p - price > best[1] - best[2]:
                 best = (side, p, price)
     return best
+
+
+def kalshi_pick_calibrated(pk: float, yes_ask: float | None, no_ask: float | None, mid: float, stat: str,
+                           cal: Calibrator) -> tuple[str, float, float, float, float] | None:
+    """Like kalshi_pick, but the rules run on CALIBRATED p. Only sides with raw p > ask are considered
+    (the region the calibration was fit on). Returns (side, p_cal, price, p_raw, side_mid) or None."""
+    best = None
+    for side, p_raw, price, m in (("YES", pk, yes_ask, mid), ("NO", 1 - pk, no_ask, 1 - mid)):
+        if price is None or p_raw - price <= 0:
+            continue
+        p = cal("kalshi", stat, p_raw, m)
+        if p - price >= KALSHI_MIN_EDGE - 1e-9 and price <= KALSHI_MAX_PRICE and p >= KALSHI_MIN_P:
+            if best is None or p - price > best[1] - best[2]:
+                best = (side, p, price, p_raw, m)
+    return best
+
+
+def leg_stats(games: list[GameLine], stat: str, line: float, side: str, *, before: date, season_start: date,
+              opp: str | None, h2h_since: date) -> dict:
+    """The board's per-leg context, at the leg's own line and side ('over'/'under'; Kalshi YES = over the
+    strike's .5 line, NO = under): L5 / L10 / L20 / season / H2H as 'hits/n', the last 10 values (newest
+    first) and the average minutes over those 10 games."""
+    past = sorted((g for g in games if played(g) and g.game_date < before), key=lambda g: g.game_date, reverse=True)
+
+    def xn(gs):
+        r = _rate(gs, stat, line, side)
+        return f"{r.hits}/{r.n}" if r.n else ""
+    l10 = past[:10]
+    mins = [g.minutes for g in l10 if g.minutes is not None]
+    return {"l5": xn(past[:5]), "l10": xn(l10), "l20": xn(past[:20]),
+            "season": xn([g for g in past if g.game_date >= season_start]),
+            "h2h": xn([g for g in past if opp and g.opp == opp and g.game_date >= h2h_since]),
+            "l10_values": [stat_value(g, stat) for g in l10],
+            "min_l10": round(sum(mins) / len(mins), 1) if mins else None}
 
 
 def hinge(line: float, side: str) -> int:
@@ -129,6 +180,13 @@ class Row:
     max_price: float | None = None
     flags: list[str] = field(default_factory=list)
     player_id: int | None = None
+    team: str | None = None
+    opp: str | None = None
+    injury: dict | None = None
+    ctx: dict | None = None              # leg_stats(): hit rates at THIS line/side, L10 values, MIN L10
+    p_raw: float | None = None           # the formula's p before calibration (p is calibrated)
+    edge: float | None = None            # calibrated p - Kalshi ask, or - no-vig P for the side (Sleeper)
+    mid: float | None = None             # market mid / no-vig for the chosen side
 
     @property
     def priority(self) -> int:
@@ -140,19 +198,44 @@ def _game(p) -> str:
 
 
 def build_rows(props, *, before: date, season_start: date, h2h_since: date, now: datetime | None = None,
-               ) -> tuple[list[Row], dict]:
-    """props: slate.Prop list from slate.build (needs .games and .kalshi_all)."""
-    stats = {"excluded_injured": 0, "started": 0, "stale": 0, "slp_hard_hidden": 0}
+               cal: Calibrator | None = None) -> tuple[list[Row], dict]:
+    """props: slate.Prop list from slate.build (needs .games and .kalshi_all).
+    cal: calibration to apply (slate.main passes Calibrator.load()); None = Calibrator.identity() (raw p,
+         tests/research). A MISSING artifact (cal.missing) fails closed: no Kalshi legs at all.
+
+    Returns (rows, stats); stats["excluded"] lists every hidden prop/quote with its reason."""
+    cal = cal if cal is not None else Calibrator.identity()
+    stats = {"excluded_injured": 0, "started": 0, "stale": 0, "slp_hard_hidden": 0, "team_mismatch": 0}
+    if cal.missing:
+        stats["kalshi_withheld"] = 0
+    excluded: list[dict] = []
+    rows: list[Row] = []
+    ladders: list[dict] = []
     seen_all = [b["seen"] for p in props for b in p.books.values() if b.get("seen")]
     seen_all += [k["seen"] for p in props for k in getattr(p, "kalshi_all", p.kalshi) if k.get("seen")]
-    fresh_after = max(seen_all) - timedelta(minutes=STALE_MIN) if seen_all else None
-    rows: list[Row] = []
+    newest_seen = max(seen_all) if seen_all else None
+    fresh_after = newest_seen - timedelta(minutes=STALE_MIN) if seen_all else None
+
+    def drop(p, reason, detail, venue="", line=None):
+        excluded.append({"player": p.name, "player_id": p.player_id, "team": p.team, "game": _game(p),
+                         "stat": STAT_LABEL.get(p.stat, p.stat), "venue": venue, "line": line,
+                         "reason": reason, "detail": detail})
+
+    def age(seen) -> str:
+        return f"quote {round((newest_seen - seen).total_seconds() / 60)} min older than newest"
+
     for p in props:
+        if getattr(p, "mismatch", None):
+            stats["team_mismatch"] += 1
+            drop(p, "team mismatch", p.mismatch)
+            continue
         if p.injury and p.injury.get("code") in EXCLUDED:
             stats["excluded_injured"] += 1
+            drop(p, "injury", injury_rules.label(p.injury))
             continue
         if now is not None and p.tip is not None and p.tip <= now:
             stats["started"] += 1
+            drop(p, "started", f"tipped {p.tip.astimezone(PT):%-I:%M %p} PT")
             continue
         games = getattr(p, "games", [])
         last10 = last_values(games, p.stat, before)
@@ -166,12 +249,15 @@ def build_rows(props, *, before: date, season_start: date, h2h_since: date, now:
         if slp and slp.get("line") is not None:
             if fresh_after is not None and slp.get("seen") and slp["seen"] < fresh_after:
                 stats["stale"] += 1
+                drop(p, "stale quote", age(slp["seen"]), "Sleeper", slp.get("line"))
             else:
                 line = float(slp["line"])
                 r = rates(line)
                 ph = p_hist(r["l10"].hits, r["l10"].n, r["l15"].hits, r["l15"].n, r["season"].hits, r["season"].n)
                 pb, has_mkt = p_blend(ph, p.no_vig_over)
-                side, prob = side_and_p(pb)
+                side, prob_raw = side_and_p(pb)
+                prob = cal("sleeper", p.stat, prob_raw)
+                nv_side = (p.no_vig_over if side == "over" else 1 - p.no_vig_over) if has_mkt else None
                 if prob >= SLEEPER_MIN_P - 1e-9 and r["l10"].n:
                     flags = []
                     if p.consensus is not None and line != p.consensus:
@@ -185,14 +271,29 @@ def build_rows(props, *, before: date, season_start: date, h2h_since: date, now:
                         flags.append("on the line")
                     if "slp hard" in flags and prob < SLP_HARD_MIN_P - 1e-9:
                         stats["slp_hard_hidden"] += 1
+                        drop(p, "slp hard", f"{side} p {prob:.2f} < {SLP_HARD_MIN_P:.2f} (line harder than "
+                                            f"consensus {p.consensus:g})", "Sleeper", line)
                         continue
                     rows.append(Row(p.tip, _game(p), p.name, p.stat, "sleeper", side, line, prob, flags=flags,
-                                    player_id=p.player_id))
+                                    player_id=p.player_id, team=p.team, opp=p.opp, injury=p.injury,
+                                    ctx=leg_stats(games, p.stat, line, side, before=before, season_start=season_start,
+                                                  opp=p.opp, h2h_since=h2h_since),
+                                    p_raw=prob_raw, edge=None if nv_side is None else prob - nv_side,
+                                    mid=nv_side))
 
-        # Kalshi strikes
+        # Full Kalshi ladder for the board (every strike, not just the shown legs)
+        strikes = getattr(p, "kalshi_all", p.kalshi)
+        if strikes:
+            ladders.append(ladder(p, strikes, rates, cal, fresh_after))
+
+        # Kalshi strikes (none without a calibration artifact: fail closed)
+        if cal.missing:
+            stats["kalshi_withheld"] += len(getattr(p, "kalshi_all", p.kalshi))
+            continue
         for k in getattr(p, "kalshi_all", p.kalshi):
             if fresh_after is not None and k.get("seen") and k["seen"] < fresh_after:
                 stats["stale"] += 1
+                drop(p, "stale quote", age(k["seen"]), "Kalshi", f"{_strike(k['line'])}+")
                 continue
             mid = yes_mid(k.get("yes_ask"), k.get("no_ask"))
             if mid is None:
@@ -201,18 +302,44 @@ def build_rows(props, *, before: date, season_start: date, h2h_since: date, now:
             if not l10.n:
                 continue
             pk = p_kalshi(l10.hits, l10.n, mid)
-            pick = kalshi_pick(pk, k.get("yes_ask"), k.get("no_ask"))
+            pick = kalshi_pick_calibrated(pk, k.get("yes_ask"), k.get("no_ask"), mid, p.stat, cal)
             if pick is None:
                 continue
-            side, prob, price = pick
+            side, prob, price, prob_raw, side_mid = pick
             flags = []
             if abs((l10.hits + 0.5) / (l10.n + 1) - mid) > DISAGREE:
                 flags.append("market disagrees")
             if on_the_line(last10, k["line"], side):
                 flags.append("on the line")
             rows.append(Row(p.tip, _game(p), p.name, p.stat, "kalshi", side, float(k["line"]), prob, price,
-                            round(prob - KALSHI_MIN_EDGE, 2), flags, p.player_id))
+                            round(prob - KALSHI_MIN_EDGE, 2), flags, p.player_id, p.team, p.opp, p.injury,
+                            p_raw=prob_raw, edge=prob - price, mid=side_mid,
+                            ctx=leg_stats(games, p.stat, float(k["line"]), "over" if side == "YES" else "under",
+                                          before=before, season_start=season_start, opp=p.opp, h2h_since=h2h_since)))
+    stats["excluded"] = excluded
+    stats["ladders"] = ladders
     return rows, stats
+
+
+def ladder(p, strikes: list[dict], rates, cal: Calibrator, fresh_after) -> dict:
+    """Every Kalshi strike for one player/stat: asks, mid, L10 at the strike, raw and calibrated P(YES).
+    Calibrated p is None when the artifact is missing (fail closed) or there's no mid."""
+    out = []
+    for k in sorted(strikes, key=lambda k: k["line"]):
+        mid = yes_mid(k.get("yes_ask"), k.get("no_ask"))
+        l10 = rates(k["line"])["l10"]
+        pk = p_kalshi(l10.hits, l10.n, mid) if (mid is not None and l10.n) else None
+        p_cal = None if (pk is None or cal.missing) else round(cal("kalshi", p.stat, pk, mid), 4)
+        out.append({"strike": _strike(k["line"]), "yes_ask": k.get("yes_ask"), "no_ask": k.get("no_ask"),
+                    "mid": round(mid, 4) if mid is not None else None, "l10": f"{l10.hits}/{l10.n}" if l10.n else "",
+                    "p_raw_yes": round(pk, 4) if pk is not None else None, "p_cal_yes": p_cal,
+                    "stale": bool(fresh_after is not None and k.get("seen") and k["seen"] < fresh_after)})
+    return {"player": p.name, "player_id": p.player_id, "team": p.team, "opp": p.opp, "game": _game(p),
+            "tip": p.tip.isoformat() if p.tip else None, "stat": STAT_LABEL.get(p.stat, p.stat), "strikes": out}
+
+
+def _strike(line: float) -> int:
+    return math.ceil(line) if not float(line).is_integer() else int(line)
 
 
 def shortlist(rows: list[Row], max_rows: int = MAX_ROWS) -> tuple[list[Row], int]:
@@ -240,22 +367,71 @@ def _cents(v: float) -> str:
     return f"{round(v * 100):d}c"
 
 
-def render(rows: list[Row], cut: int, *, slate: str, stats: dict) -> str:
-    head = f"{'tip PT':<6} {'game':<7} {'player':<22} {'stat':<4} {'side':<5} {'line':>5} {'p':>4} {'price/max':>9}  flags"
+def to_dict(rows: list[Row], cut: int, *, slate: str, stats: dict, excluded: list[dict] | None = None,
+            injury: dict | None = None, calibration: str | None = None, ladders: list[dict] | None = None) -> dict:
+    """Same shortlist as render(), structured for the dashboard (data/cards/<date>.json)."""
+    legs = [{"tip": r.tip.isoformat() if r.tip else None, "tip_pt": _tip(r.tip).strip(), "game": r.game,
+             "player": r.player, "player_id": r.player_id, "team": r.team, "opp": r.opp,
+             "stat": STAT_LABEL.get(r.stat, r.stat),
+             "platform": r.platform, "side": r.side.upper() if r.platform == "sleeper" else r.side,
+             "line": _line(r), "p": round(r.p, 4),
+             "p_raw": round(r.p_raw, 4) if r.p_raw is not None else None,
+             "edge": round(r.edge, 4) if r.edge is not None else None,
+             "mid": round(r.mid, 4) if r.mid is not None else None, "price": r.price, "max_price": r.max_price,
+             "flags": list(r.flags), "injury": r.injury,
+             "market": f"{STAT_LABEL.get(r.stat, r.stat)} {_line(r)}" if r.platform == "kalshi"
+             else f"{STAT_LABEL.get(r.stat, r.stat)} {r.side} {r.line:g}",
+             **({k: v for k, v in (r.ctx or {}).items()})} for r in rows]
+    return {"slate": slate, "research_only": True, "stake": 0, "shown": len(rows), "cut": cut,
+            "stats": {k: v for k, v in stats.items() if k not in ("excluded", "ladders")}, "legs": legs,
+            "kalshi_ladders": list(ladders or []),
+            "excluded": list(excluded or []), "injury": injury, "calibration": calibration}
+
+
+def _excluded_lines(excluded: list[dict], injury: dict | None) -> list[str]:
+    """Compact, named exclusions for the text card (one line per player for injuries / mismatches)."""
+    out = []
+    if injury:
+        stale = "  STALE" if injury.get("stale") else ""
+        out.append(f"injury data: official {injury.get('official_as_of') or 'none'}, "
+                   f"ESPN {injury.get('espn_as_of') or 'none'}{stale}")
+    per: dict[tuple, dict] = {}
+    for e in excluded:
+        if e["reason"] in ("injury", "team mismatch", "injury name not matched"):
+            per.setdefault((e["reason"], e["player"]), e)
+    for (reason, player), e in sorted(per.items()):
+        out.append(f"excluded {reason}: {player} — {e['detail']}")
+    other = [e for e in excluded if e["reason"] in ("stale quote", "slp hard")]   # 'started': footer count only
+    if other:
+        out.append("excluded quotes: " + "; ".join(
+            f"{e['player']} {e['stat']} {e['venue']} {e['line'] if e['line'] is not None else ''} "
+            f"({e['reason']}: {e['detail']})".replace("  ", " ") for e in other[:12]) +
+            (f"; +{len(other) - 12} more (dashboard)" if len(other) > 12 else ""))
+    return out
+
+
+def render(rows: list[Row], cut: int, *, slate: str, stats: dict, excluded: list[dict] | None = None,
+           injury: dict | None = None, calibration: str | None = None) -> str:
+    head = (f"{'tip PT':<6} {'game':<7} {'player':<24} {'stat':<4} {'side':<5} {'line':>5} {'p':>4} {'raw':>4} "
+            f"{'price/max':>9}  flags")
     out = [f"CARD {slate}  RESEARCH-ONLY (UNVALIDATED): hand-set formulas, not backtested, stake $0",
-           f"p_blend = .35 hist + .65 no-vig; Sleeper p >= {SLEEPER_MIN_P:.2f}; Kalshi edge >= 5c, price <= 85c, "
-           f"p >= {KALSHI_MIN_P:.2f}",
+           f"p_blend = {W_HIST:.2f} hist + {W_MKT:.2f} no-vig; rules on CALIBRATED p: Sleeper p >= {SLEEPER_MIN_P:.2f}; "
+           f"Kalshi edge >= 5c, price <= 85c, p >= {KALSHI_MIN_P:.2f}",
+           f"p = {calibration or 'UNCALIBRATED (raw)'}; raw = the formula before calibration",
            head, "-" * len(head)]
     for r in rows:
         price = "slp" if r.platform == "sleeper" else f"{_cents(r.price)}/{_cents(r.max_price)}"
         side = r.side.upper() if r.platform == "sleeper" else r.side
-        out.append(f"{_tip(r.tip):<6} {r.game:<7} {r.player[:22]:<22} {STAT_LABEL.get(r.stat, r.stat):<4} "
-                   f"{side:<5} {_line(r):>5} {r.p:>4.2f} {price:>9}  {', '.join(r.flags)}".rstrip())
+        out.append(f"{_tip(r.tip):<6} {r.game:<7} {r.player[:24]:<24} {STAT_LABEL.get(r.stat, r.stat):<4} "
+                   f"{side:<5} {_line(r):>5} {r.p:>4.2f} {(r.p_raw if r.p_raw is not None else r.p):>4.2f} "
+                   f"{price:>9}  {', '.join(r.flags)}".rstrip())
     if not rows:
         out.append("(nothing clears the thresholds)")
     out.append(f"{len(rows)} shown" + (f", {cut} cut by stat priority/p" if cut else "") +
                f"; hidden: {stats['excluded_injured']} injured (OUT/D/Q/GTD), {stats['started']} started, "
-               f"{stats['stale']} stale quotes, {stats.get('slp_hard_hidden', 0)} slp hard < {SLP_HARD_MIN_P:.2f}")
+               f"{stats['stale']} stale quotes, {stats.get('slp_hard_hidden', 0)} slp hard < {SLP_HARD_MIN_P:.2f}, "
+               f"{stats.get('team_mismatch', 0)} team mismatch")
     out.append("price/max: Kalshi ask / most to pay (p - 5c). slp = Sleeper pick'em leg. "
                "slp soft/hard: Sleeper line easier/harder than consensus for this side.")
+    out += _excluded_lines(list(excluded or []), injury)
     return "\n".join(out)

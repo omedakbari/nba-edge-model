@@ -25,6 +25,7 @@ Shell setup (one-time — already added to ~/.zshrc):
 """
 
 import argparse
+import os
 import sqlite3
 import subprocess
 import sys
@@ -78,14 +79,32 @@ def run(script_args: list[str], label: str = '') -> int:
         print(f"\n{'─'*64}")
         print(f"  {label}")
         print(f"{'─'*64}")
+    import tempfile
+    from src.utils.step_status import WARN_ENV, read_warnings, warn
     cmd = [sys.executable] + [str(a) for a in script_args]
+    name = label or str(script_args[0])
+    fd, warn_path = tempfile.mkstemp(prefix='nba_step_', suffix='.jsonl')
+    os.close(fd)
     try:
-        rc = subprocess.run(cmd, cwd=str(ROOT)).returncode
-    except OSError as exc:
-        STEP_RESULTS.append((label or str(script_args[0]), 1))
-        print(f'  Could not start step: {exc}')
-        raise SystemExit(1) from exc
-    STEP_RESULTS.append((label or str(script_args[0]), rc))
+        try:
+            rc = subprocess.run(cmd, cwd=str(ROOT), env={**os.environ, WARN_ENV: warn_path}).returncode
+        except OSError as exc:
+            STEP_RESULTS.append((name, 1, []))
+            print(f'  Could not start step: {exc}')
+            raise SystemExit(1) from exc
+        warns = read_warnings(warn_path)
+    finally:
+        try:
+            os.unlink(warn_path)
+        except OSError:
+            pass
+    STEP_RESULTS.append((name, rc, warns))
+    # Pass each warning up to run_daily (if it set its own $NBA_WARN_FILE), labelled with this step.
+    if os.getenv(WARN_ENV):
+        import contextlib, io
+        with contextlib.redirect_stdout(io.StringIO()):     # already printed by the step itself
+            for w in warns:
+                warn(w['reason'], step=name)
     if rc:
         raise SystemExit(rc)
     return rc
@@ -215,10 +234,21 @@ def cmd_daily(_args):
     print(f"  DAILY  |  grade {yesterday}  →  picks {today}  |  {_label(phase)}")
     print(f"{'='*64}")
 
-    run(['scripts/log_pick_results.py', '--date', yesterday, '--market'], 'Market props — yesterday')
-    run(['scripts/log_team_results.py',  '--date', yesterday], 'Team picks — yesterday')
+    # NBA_DRY_RUN=1 (scripts/run_daily.py --dry-run): grade without writing, skip the data refresh, and
+    # build boards without --save, so no picks/results files or DB rows change.
+    dry = os.getenv('NBA_DRY_RUN') == '1'
+    save = [] if dry else ['--save']
+    no_save = ['--no-save'] if dry else []
+    if dry:
+        print('  DRY RUN: grading is not written, data refresh is skipped, boards are not saved.')
 
-    if refreshed_today(season):
+    # Catch-up grading: every ungraded date since the last success, not just yesterday (src/utils/grading.py).
+    run(['scripts/log_pick_results.py', '--market', '--catch-up'] + no_save, 'Market props — grading')
+    run(['scripts/log_team_results.py', '--catch-up'] + no_save, 'Team picks — grading')
+
+    if dry:
+        print(f"\n  Dry run — data refresh skipped")
+    elif refreshed_today(season):
         print(f"\n  Data already refreshed today — skipping")
     else:
         refresh_flags = ['--playoffs'] if phase in ('playoffs', 'play-in') else []
@@ -228,11 +258,11 @@ def cmd_daily(_args):
             return rc
 
     run(
-        ['scripts/find_bets.py'] + flags + ['--season', season, '--save'],
+        ['scripts/find_bets.py'] + flags + ['--season', season] + save,
         'Player props — market prices and EV'
     )
     run(
-        ['scripts/generate_todays_team_picks.py'] + flags + ['--season', season, '--save'],
+        ['scripts/generate_todays_team_picks.py'] + flags + ['--season', season] + save,
         'Team spread / ML picks'
     )
 
@@ -406,11 +436,14 @@ def main():
         print(f'  Command failed: {type(exc).__name__}: {exc}')
         return 1
     finally:
+        from src.utils.step_status import status_line
         print('\n  STEP STATUS SUMMARY')
-        for label, code in STEP_RESULTS:
-            print(f"  {'OK' if code == 0 else 'FAILED'} (exit {code}) — {label}")
-        if any(code for _, code in STEP_RESULTS):
+        for label, code, warns in STEP_RESULTS:
+            print(status_line(label, code, warns))
+        if any(code for _, code, _ in STEP_RESULTS):
             print('  Workflow incomplete; remaining steps were not run.')
+        elif any(w for _, _, w in STEP_RESULTS):
+            print('  Workflow complete WITH WARNINGS: a step got input but produced no output.')
 
 
 if __name__ == '__main__':

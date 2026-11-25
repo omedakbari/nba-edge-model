@@ -178,8 +178,10 @@ def no_vig_consensus(rows: list[tuple], use_current: bool, *, captured_at=None, 
             issue = timestamp_issue(_u, captured_at)
             if issue:
                 if rejected is not None:
+                    from src.betting.quote_quality import rejection_detail
                     rejected.append(dict(event_id=_eid, athlete_id=aid, stat=stat, book=prov,
                                          side=side, updated_at=_u, reason=issue,
+                                         detail=rejection_detail(_u, captured_at),
                                          timestamp_evidence=timestamp_evidence(_u, captured_at)))
                 continue
         # Never silently pair a current side with the other side's opening quote.
@@ -274,6 +276,13 @@ def fetch_book_props(target_date: str, workers: int = 2) -> dict:
         for group in shadow['by_book_stat']:
             print(f"    {group['book']} {group['stat']}: current={group['current_eligible_sides']} / shadow={group['shadow_eligible_sides']} sides; future anomalies={group['future_anomaly_sides']}")
     print_quote_coverage(coverage)
+    if live_date:
+        from src.data.quote_diagnostics import feed_summary
+        from src.utils.step_status import warn
+        for book, line in feed_summary(coverage).items():
+            print(f'  {line}')
+            if coverage['books'][book]['offered_sides'] and not coverage['books'][book]['timestamp_pass_sides']:
+                warn(f'{line}: 0 sportsbook lines from this feed')
     # Keep raw quotes for later as-of investigations. This is an append-only
     # snapshot, not a historical claim about when a quote first became available.
     from config.settings import PROJECT_ROOT

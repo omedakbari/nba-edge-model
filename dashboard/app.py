@@ -39,8 +39,9 @@ BLEND_WEIGHT = BLEND_L10_WEIGHT  # unified value — see config/settings.py
 TEAM_PICKS_DIR = PROJECT_ROOT / "data" / "team_picks"
 TEAM_RESULTS_LOG = TEAM_PICKS_DIR / "results_log.csv"
 
-STAT_LABELS = {"pts": "Points", "reb": "Rebounds", "ast": "Assists"}
-CALIBRATED_STATS = ["pts", "reb", "ast"]
+STAT_LABELS = {"pts": "Points", "reb": "Rebounds", "ast": "Assists", "fg3m": "3-pointers made",
+               "pra": "Pts+Reb+Ast", "reb_ast": "Reb+Ast"}
+CALIBRATED_STATS = ["pts", "reb", "ast", "fg3m", "pra", "reb_ast"]
 
 
 # ---------------------------------------------------------------------------
@@ -306,16 +307,41 @@ st.set_page_config(
 )
 
 st.sidebar.title("NBA Edge Model")
+def _render_card_calibration():
+    """Card calibration section (dashboard/calibration_view.py)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import calibration_view
+    calibration_view.render(st)
+
+
+def _player_lookup_legacy() -> bool:
+    """Title + the toggle; True = show the old 2024-25 test-set view."""
+    st.title("Player Lookup")
+    return st.toggle("2024-25 test set", value=False,
+                     help="The old view: L10 averages and std from the 2024-25 features (in-sample for current models)")
+
+
 page = st.sidebar.radio(
     "Navigate",
-    ["Game Props", "Overview", "Backtest Results", "Calibration", "Player Lookup"],
+    ["Today", "Game Props", "Overview", "Backtest Results", "Calibration", "Player Lookup"],
 )
+
+
+# ---------------------------------------------------------------------------
+# PAGE: TODAY (one-click refresh + tonight's board) — dashboard/today.py
+# ---------------------------------------------------------------------------
+if page == "Today":
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import importlib
+    import today
+    importlib.reload(today)   # pick up edits to today.py without restarting streamlit
+    today.render()
 
 
 # ---------------------------------------------------------------------------
 # PAGE: GAME PROPS
 # ---------------------------------------------------------------------------
-if page == "Game Props":
+elif page == "Game Props":
     st.title("Game Props")
     st.markdown(
         "Spread / moneyline / total picks vs. live DraftKings lines, via the "
@@ -344,6 +370,16 @@ if page == "Game Props":
             "`python scripts/log_team_results.py` the next day to grade them."
         )
     else:
+        # NBA season label from game date: Aug-Dec -> that year's season, Jan-Jul -> prior year's.
+        gd = pd.to_datetime(results_df['game_date'])
+        start = gd.dt.year - (gd.dt.month < 8).astype(int)
+        results_df = results_df.assign(
+            season=start.astype(str) + '-' + ((start + 1) % 100).astype(str).str.zfill(2))
+        seasons = sorted(results_df['season'].unique(), reverse=True)
+        season = st.selectbox("Season", seasons + ["All seasons"], index=0,
+                              help="Records mix model versions across seasons; the current season is the default.")
+        if season != "All seasons":
+            results_df = results_df[results_df['season'] == season]
         graded = results_df[results_df['spread_result'].notna()]
 
         def _record(sub, col):
@@ -385,8 +421,16 @@ if page == "Game Props":
             'game_date', 'home', 'away', 'tier', 'spread_result', 'ml_result',
             'ou_result', 'spread_clv', 'total_clv',
         ] if c in graded.columns]
+        decided = ('WIN', 'LOSS', 'PUSH')
+        has_pick = graded['spread_result'].isin(decided)
+        for col in ('ml_result', 'ou_result'):
+            if col in graded.columns:
+                has_pick |= graded[col].isin(decided)
+        picks_only = graded[has_pick]
+        if picks_only.empty:
+            st.caption("No graded spread/ML/O-U picks in this season yet.")
         st.dataframe(
-            graded[display_cols].sort_values('game_date', ascending=False).head(30),
+            picks_only[display_cols].sort_values('game_date', ascending=False).head(30),
             width="stretch", hide_index=True,
         )
 
@@ -396,7 +440,11 @@ if page == "Game Props":
   with this feature; LEAN/STRONG thresholds are hand-set, not yet empirically
   calibrated against real market data.
 - Totals (O/U) model is a formula (ORTG/DRTG/pace blend), not a trained model.
-- No injury/lineup-news awareness — always verify injury reports before betting.
+- Injury awareness is a guard, not a model input: games where Out/Doubtful players
+  include a top-2 scorer, at least 20% of team points, or at least 60 mpg are flagged INJURY_BLIND and
+  STRONG/LEAN is downgraded to MONITOR. Ratings themselves don't adjust for absences,
+  and Questionable/GTD players aren't counted — always verify injury reports before betting.
+- Win-loss records are small samples; closing-line value is the better signal of edge.
     """)
 
 
@@ -459,11 +507,14 @@ elif page == "Overview":
 
     # Methodology
     st.subheader("Methodology")
-    st.markdown("""
+    from config.model_config import WEIGHTS as _MW, describe as _describe_blends
+    _l10 = _MW['props_model']['l10_weight']
+    st.markdown(f"""
 1. **Data pipeline** — 5+ seasons of player game logs from the NBA API into SQLite
 2. **Feature engineering** — Rolling windows (L5/L10/L20), hit-rate frequencies, pace/matchup context, rest and travel flags (~125 features)
 3. **Model training** — HistGradientBoostingRegressor per stat, temporal train/test split (train 2019-23, test 2024-25)
-4. **Probability calibration** — 65% L10-baseline / 35% model blend, P(over) via Gaussian CDF with player rolling std
+4. **Probability** — {_l10:.0%} L10-baseline / {1 - _l10:.0%} model blend (config/model.yaml), P(over) via Gaussian CDF with player rolling std
+6. **Blend weights in use** — {_describe_blends()}
 5. **Backtest** — Held-out 2024-25 season validates calibration at P ≥ 65% and P ≥ 70% tiers
     """)
 
@@ -472,7 +523,14 @@ elif page == "Overview":
 # PAGE: BACKTEST RESULTS
 # ---------------------------------------------------------------------------
 elif page == "Backtest Results":
-    st.title("Backtest Results — 2024-25 Season")
+    st.title("Backtest Results")
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import backtest_view
+    backtest_view.render(st)
+    st.divider()
+    st.header("Legacy: 2024-25 at L10 lines (IN-SAMPLE for the current models)")
+    st.caption("The current models were refit on 2019-20 → 2025-26, so 2024-25 is training data, and the L10 "
+               "average is not a real market line. Kept for comparison only.")
 
     all_results = {}
     errors = {}
@@ -574,6 +632,13 @@ elif page == "Backtest Results":
 # ---------------------------------------------------------------------------
 elif page == "Calibration":
     st.title("Model Calibration")
+    _render_card_calibration()
+    st.divider()
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import backtest_view
+    backtest_view.render(st, buckets=True)
+    st.divider()
+    st.header("Legacy: ML models on 2024-25 (IN-SAMPLE for the current models)")
     st.markdown(
         "A well-calibrated model means: when it predicts 70% probability, "
         "the event actually happens ~70% of the time."
@@ -645,8 +710,16 @@ elif page == "Calibration":
 # ---------------------------------------------------------------------------
 # PAGE: PLAYER LOOKUP
 # ---------------------------------------------------------------------------
+elif page == "Player Lookup" and not _player_lookup_legacy():
+    # Current season (dashboard/player_view.py). _player_lookup_legacy() draws the title and the toggle.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import player_view
+    from src.utils.slate import slate_today
+    player_view.render(st, slate_today().isoformat())
+
 elif page == "Player Lookup":
-    st.title("Player Lookup")
+    # Legacy view behind the "2024-25 test set" toggle (2024-25 is IN-SAMPLE for the current models).
+    st.caption("2024-25 test set: the current models were trained on it, so these are in-sample numbers.")
 
     df = load_features()
     player_names = load_player_names()

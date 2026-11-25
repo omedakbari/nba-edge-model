@@ -127,6 +127,18 @@ do update set price_cents = excluded.price_cents, p_at_placement = excluded.p_at
 returning id, (xmax = 0) as inserted"""
 
 
+def card_note(r) -> str | None:
+    """Flags plus, once the card is calibrated, the raw p and the side's market mid ('p_raw=0.8443, mid=0.7100'):
+    p_at_placement is the CALIBRATED p the rules used; src/models/calibration.load_ledger reads these back so
+    the ledger can still be scored on the raw formula. No schema change needed."""
+    parts = list(getattr(r, "flags", []) or [])
+    if getattr(r, "p_raw", None) is not None:
+        parts.append(f"p_raw={r.p_raw:.4f}")
+    if getattr(r, "mid", None) is not None:
+        parts.append(f"mid={r.mid:.4f}")
+    return ", ".join(parts) or None
+
+
 def log_card(conn, d: date, rows, now: datetime | None = None) -> dict:
     """Log the printed card legs (card.Row) as source=card, placed=false, and keep them current.
 
@@ -149,7 +161,7 @@ def log_card(conn, d: date, rows, now: datetime | None = None) -> dict:
             "sport": config.SPORT, "d": d, "platform": r.platform, "player_id": r.player_id, "stat": r.stat,
             "side": SIDES[r.side.lower()], "line": line,
             "price": round(r.price * 100, 1) if r.price is not None else None, "p": round(r.p, 4),
-            "note": ", ".join(r.flags) or None, "now": now, "tip": r.tip}).fetchone()
+            "note": card_note(r), "now": now, "tip": r.tip}).fetchone()
         if row is None:
             counts["frozen"] += 1
         else:

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 KEA_MARGIN = 0.03
 CSB_JOINT_MIN = 0.80
-MAX_QUOTE_AGE_SECONDS = 900
+from config.settings import QUOTE_MAX_AGE_SECONDS as MAX_QUOTE_AGE_SECONDS  # noqa: E402
 
 
 def approval(rec, p, decimal, *, min_ev=0.04, margin=KEA_MARGIN, now=None):

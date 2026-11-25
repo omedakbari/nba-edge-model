@@ -1,6 +1,7 @@
 """Worker configuration. Everything comes from env vars so GitHub Actions and the Mac share one code path."""
 
 import os
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 try:  # .env is optional; Actions injects secrets as env vars
@@ -61,6 +62,9 @@ SCHEDULE_DAYS = range(-1, 6)       # yesterday .. 5 days ahead (Kalshi lists gam
 BOXSCORE_LOOKBACK_DAYS = 3
 INJURY_PDF_MAX_AGE_SLOTS = 8       # the NBA posts every 15 min; > 2 h without one is red
 SLATE_ROLLOVER_HOURS = 6           # 00:30 ET still belongs to the previous night's slate
+INJURY_MAX_AGE_H = float(os.getenv("NBA_INJURY_MAX_AGE_H", "3"))   # card: newest injury data older -> STALE
+# Nightly pick_snapshots job (DECISIONS.md D15). ON since 2026-11-25 (migration 011 applied); NBA_PICK_SNAPSHOTS=0 disables.
+PICK_SNAPSHOTS_ENABLED = os.getenv("NBA_PICK_SNAPSHOTS", "1") == "1"
 
 # Red-run rules (docs/BUILD_PLAN.md, trust layer item 4)
 RED_MIN_DURATION_S = 2.0
@@ -82,3 +86,20 @@ FUTURE_TS_TOLERANCE_S = 120        # provider_ts this far past fetched_at counts
 
 def in_ci() -> bool:
     return os.getenv("GITHUB_ACTIONS") == "true" or os.getenv("CI") == "true"
+
+
+# Blend weights: the repo-wide config/model.yaml (one source of truth with the main package's
+# config/model_config.py). The worker only needs the card section.
+MODEL_YAML = Path(__file__).resolve().parents[2] / "config" / "model.yaml"
+
+
+def _card_weights() -> tuple[float, float]:
+    import yaml
+    card = (yaml.safe_load(MODEL_YAML.read_text()) or {}).get("card") or {}
+    h, shrink = float(card["hist_weight"]), float(card["no_market_shrink"])
+    if not (0 <= h <= 1 and 0 <= shrink <= 1):
+        raise ValueError(f"{MODEL_YAML}: card weights must be in [0, 1]")
+    return h, shrink
+
+
+CARD_HIST_WEIGHT, CARD_NO_MARKET_SHRINK = _card_weights()

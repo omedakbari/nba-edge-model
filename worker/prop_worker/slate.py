@@ -34,19 +34,18 @@ import json
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from . import config
+from . import injury_status as injury_rules
 from .db import connect
 from .hitrates import CONSENSUS_BOOKS, STATS, GameLine, consensus_line, hit_rates, no_vig_over
 from .masking import redact
-from .names import season_start
-from .util import slate_date, utcnow
+from .names import normalize_name, season_start
+from .util import slate_date, utcnow, warn
 
 SLEEPER = "sleeper"
-EXCLUDED = {"OUT", "D", "Q", "GTD"}
-STATUS_CODE = {"out": "OUT", "doubtful": "D", "questionable": "Q", "day-to-day": "GTD", "probable": "P",
-               "available": "AVL"}
+EXCLUDED = injury_rules.EXCLUDED
 CURRENT_TOLERANCE = timedelta(minutes=5)   # rows refreshed by the newest report run are "current"
 KALSHI_NEAR = 3
 
@@ -72,6 +71,8 @@ class Prop:
     kalshi_all: list = field(default_factory=list)   # every strike (kalshi keeps the 3 nearest), for --card
     games: list = field(default_factory=list)        # GameLine history used for hit rates, for --card
     matchup: str = ""                                # 'AWAY@HOME'
+    mismatch: str | None = None                      # why the player's team isn't in this game (excluded)
+    team_note: str | None = None                     # e.g. team taken from the game log (no roster team)
 
 
 # ── reading ─────────────────────────────────────────────────────────────────
@@ -133,33 +134,77 @@ def game_logs(conn, ids: list[int], since: date, before: date) -> dict[int, list
     return out
 
 
-def injury_status(conn, ids: list[int], d: date) -> dict[int, dict]:
-    """Official report for date d where the player is on the newest report; else ESPN's current row."""
-    out: dict[int, dict] = {}
-    for source, date_cond in (("nba_pdf", "game_date = %(d)s"), ("espn", "true")):
-        newest = conn.execute(f"""select max(last_seen_at) from injuries
-                                  where sport = %(s)s and source = %(src)s and {date_cond}""",
-                              {"s": config.SPORT, "src": source, "d": d}).fetchone()[0]
-        if newest is None:
+def _utc(t: datetime | None) -> str | None:
+    return t.astimezone(timezone.utc).isoformat() if t is not None else None
+
+
+_SOURCES = (("official", "nba_pdf", "game_date = %(d)s"), ("espn", "espn", "true"))
+
+
+def injury_feed_times(conn, d: date) -> dict[str, datetime | None]:
+    """Newest row per source: the official report for date d, ESPN's current list."""
+    return {name: conn.execute(f"""select max(last_seen_at) from injuries
+                                   where sport = %(s)s and source = %(src)s and {cond}""",
+                               {"s": config.SPORT, "src": src, "d": d}).fetchone()[0]
+            for name, src, cond in _SOURCES}
+
+
+def injury_status(conn, ids: list[int], d: date, *, newest: dict | None = None) -> dict[int, dict]:
+    """Per player: the STRICTER of the official report for date d and ESPN's current list
+    (rules: prop_worker/injury_status.py). A row only counts if it is on that source's newest run."""
+    newest = newest if newest is not None else injury_feed_times(conn, d)
+    per: dict[int, dict[str, dict]] = defaultdict(dict)
+    for name, src, cond in _SOURCES:
+        if newest.get(name) is None:
             continue
         rows = conn.execute(
             f"""select distinct on (player_id) player_id, status, reason, last_seen_at
-                from injuries where sport = %(s)s and source = %(src)s and {date_cond}
+                from injuries where sport = %(s)s and source = %(src)s and {cond}
                   and player_id = any(%(ids)s)
                 order by player_id, fetched_at desc, id desc""",
-            {"s": config.SPORT, "src": source, "d": d, "ids": ids}).fetchall()
+            {"s": config.SPORT, "src": src, "d": d, "ids": ids}).fetchall()
         for pid, status, reason, seen in rows:
-            if pid in out or seen < newest - CURRENT_TOLERANCE:
-                continue                      # already have official, or dropped off the newest report
-            out[pid] = {"status": status, "code": STATUS_CODE.get((status or "").lower(), status),
-                        "reason": reason, "source": "official" if source == "nba_pdf" else "espn",
-                        "as_of": seen.isoformat()}
+            if seen < newest[name] - CURRENT_TOLERANCE:
+                continue                      # dropped off the newest report
+            per[pid][name] = {"status": status, "reason": reason, "as_of": _utc(seen)}
+    return {pid: injury_rules.combine(s.get("official"), s.get("espn")) for pid, s in per.items()}
+
+
+def unmatched_injuries(conn, d: date, teams: set[str], *, newest: dict | None = None) -> list[dict]:
+    """Current injury rows on tonight's teams whose name never mapped to a player_id."""
+    newest = newest if newest is not None else injury_feed_times(conn, d)
+    out = []
+    for name, src, cond in _SOURCES:
+        if newest.get(name) is None:
+            continue
+        for ext, team, status, reason, seen in conn.execute(
+                f"""select external_name, team_abbr, status, reason, last_seen_at from injuries
+                    where sport = %(s)s and source = %(src)s and {cond} and player_id is null
+                      and team_abbr = any(%(t)s) and last_seen_at >= %(cut)s""",
+                {"s": config.SPORT, "src": src, "d": d, "t": sorted(teams),
+                 "cut": newest[name] - CURRENT_TOLERANCE}):
+            out.append({"name": ext, "team": team, "source": name, "status": status, "reason": reason,
+                        "as_of": _utc(seen)})
     return out
 
 
 # ── assembling ──────────────────────────────────────────────────────────────
 
-def build(conn, d: date, *, side: str = "over") -> tuple[list[Prop], dict]:
+def resolve_team(roster_team: str | None, log_team: str | None, home: str, away: str
+                 ) -> tuple[str | None, str | None, str | None]:
+    """(team, mismatch reason, note). The roster ingest is authoritative; the newest game log is used only
+    when the roster has no team for the player. A team that isn't in this game is a mismatch (excluded)."""
+    teams = (home, away)
+    if roster_team in teams:
+        return roster_team, None, None
+    if roster_team is None and log_team in teams:
+        return log_team, None, "team from game log (no roster team)"
+    why = (f"team mismatch: roster {roster_team or '?'}, last game log {log_team or '?'}, "
+           f"game {away}@{home}")
+    return roster_team or log_team, why, None
+
+
+def build(conn, d: date, *, side: str = "over", now: datetime | None = None) -> tuple[list[Prop], dict]:
     games = games_on(conn, d)
     gids = list(games)
     props: dict[tuple[int, int, str], Prop] = {}
@@ -187,16 +232,17 @@ def build(conn, d: date, *, side: str = "over") -> tuple[list[Prop], dict]:
     start = season_start(d)
     h2h_since = date(start.year - 1, start.month, start.day)
     logs = game_logs(conn, ids, h2h_since, d) if ids else {}
-    injuries = injury_status(conn, ids, d) if ids else {}
+    feed = injury_feed_times(conn, d)
+    injuries = injury_status(conn, ids, d, newest=feed) if ids else {}
+    slate_teams = {t for g in games.values() for t in (g["home"], g["away"]) if t}
+    unmatched = unmatched_injuries(conn, d, slate_teams, newest=feed) if slate_teams else []
 
     for p in props.values():
-        name, team = who.get(p.player_id, (str(p.player_id), None))
+        name, roster_team = who.get(p.player_id, (str(p.player_id), None))
         recent = sorted(logs.get(p.player_id, []), key=lambda t: t[0].game_date, reverse=True)
-        if recent:
-            team = recent[0][1] if not team else team
         g = games[p.game_id]
-        if team not in (g["home"], g["away"]) and recent and recent[0][1] in (g["home"], g["away"]):
-            team = recent[0][1]
+        team, p.mismatch, p.team_note = resolve_team(roster_team, recent[0][1] if recent else None,
+                                                     g["home"], g["away"])
         p.name, p.team = name, team
         p.matchup = f"{g['away']}@{g['home']}"
         p.opp = g["away"] if team == g["home"] else g["home"] if team == g["away"] else None
@@ -228,19 +274,47 @@ def build(conn, d: date, *, side: str = "over") -> tuple[list[Prop], dict]:
             near = sorted(p.kalshi, key=lambda k: (abs(k["line"] - p.ref_line), k["line"]))[:KALSHI_NEAR]
             p.kalshi = sorted(near, key=lambda k: k["line"])
         p.injury = injuries.get(p.player_id)
+
+    # Report names that never mapped to a player_id: match them by normalised name + team (fail closed).
+    still_unmatched = []
+    by_name = defaultdict(list)
+    for p in props.values():
+        by_name[(normalize_name(p.name), p.team)].append(p)
+    for u in unmatched:
+        hits = by_name.get((normalize_name(u["name"]), u["team"]), [])
+        if not hits:
+            still_unmatched.append(u)
+            continue
+        row = {"status": u["status"], "reason": u["reason"], "as_of": u["as_of"]}
+        for p in hits:
+            add = injury_rules.combine(row if u["source"] == "official" else None,
+                                       row if u["source"] == "espn" else None)
+            add["matched_by"] = "name"
+            p.injury = injury_rules.stricter(p.injury, add)
+
+    newest = [t for t in feed.values() if t is not None]
+    as_of = max(newest) if newest else None
+    stale = bool(games) and now is not None and (
+        as_of is None or now - as_of > timedelta(hours=config.INJURY_MAX_AGE_H))
     info = {"date": d.isoformat(), "games": len(games), "side": side,
-            "props_total": len(props), "season_start": start.isoformat(), "h2h_since": h2h_since.isoformat()}
+            "props_total": len(props), "season_start": start.isoformat(), "h2h_since": h2h_since.isoformat(),
+            "injury": {"official_as_of": _utc(feed.get("official")), "espn_as_of": _utc(feed.get("espn")),
+                       "max_age_h": config.INJURY_MAX_AGE_H, "stale": stale,
+                       "unmatched": still_unmatched}}
     return list(props.values()), info
 
 
 def select(props: list[Prop], *, team: str | None = None, stat: str | None = None, min_hit: float | None = None,
            include_injured: bool = False) -> tuple[list[Prop], dict]:
-    dropped = {"injured": 0, "no_line": 0}
+    dropped = {"injured": 0, "no_line": 0, "team_mismatch": 0}
     out = []
     for p in props:
         if team and team.upper() not in (p.team, p.opp):
             continue
         if stat and p.stat != stat:
+            continue
+        if p.mismatch:
+            dropped["team_mismatch"] += 1
             continue
         if p.ref_line is None:
             dropped["no_line"] += 1
@@ -281,7 +355,8 @@ def render(props: list[Prop], info: dict, dropped: dict) -> str:
     head = (f"{'player':<24} {'tm':<3} {'vs':<3} {'stat':<4} {'ref':>5} {'src':<4} {'nv%':>4} {'slp':>5} "
             f"{'L5':>5} {'L10':>5} {'L15':>5} {'szn':>5} {'h2h':>5}  {'inj':<4} kalshi (line: yes/no c, L10)")
     lines = [f"slate {info['date']}: {info['games']} game(s), {len(props)} prop(s) shown "
-             f"({info['side']} hit rates; {dropped['injured']} injured hidden, {dropped['no_line']} without a line)",
+             f"({info['side']} hit rates; {dropped['injured']} injured hidden, {dropped['no_line']} without a line, "
+             f"{dropped.get('team_mismatch', 0)} team mismatch)",
              head, "-" * len(head)]
     for p in props:
         slp = p.books.get(SLEEPER, {}).get("line")
@@ -309,6 +384,24 @@ def to_json(props: list[Prop], info: dict, dropped: dict) -> str:
                                              for k in p.kalshi],
                 "rates": {k: v.as_dict() for k, v in p.rates.items()}, "injury": p.injury}
     return json.dumps({**info, "dropped": dropped, "props": [enc(p) for p in props]}, default=str, indent=1)
+
+
+def card_warnings(info: dict, rows: list, stats: dict) -> list[str]:
+    """Silent-failure checks for the card step: input > 0 but output 0, stale injuries, mismatches."""
+    out = []
+    if info["games"] and not info["props_total"]:
+        out.append(f"card: {info['games']} game(s) but 0 props in Supabase (PropLine/Kalshi ingest?)")
+    elif info["props_total"] and not rows:
+        out.append(f"card: {info['props_total']} props in, 0 legs out")
+    inj = info.get("injury") or {}
+    if inj.get("stale"):
+        out.append(f"card: injury data STALE (official {inj.get('official_as_of') or 'none'}, "
+                   f"ESPN {inj.get('espn_as_of') or 'none'}; max age {inj.get('max_age_h')} h)")
+    if stats.get("team_mismatch"):
+        out.append(f"card: {stats['team_mismatch']} prop(s) excluded for team mismatch")
+    # Unmatched injury names are listed in the card's Excluded section, not warned: most are two-way /
+    # G League players with no props, and a daily yellow nobody acts on would teach ignoring yellow.
+    return out
 
 
 def parse_min_hit(v: str) -> float:
@@ -342,16 +435,39 @@ def main(argv=None, conn=None, log_conn=None) -> int:
             from pathlib import Path
 
             from . import card
-            props, info = build(read_only(c), d, side="over")
+            from .calibration import Calibrator
+            cal = Calibrator.load()
+            live = now if d == slate_date(now) else None
+            props, info = build(read_only(c), d, side="over", now=live)
             rows, stats = card.build_rows(props, before=d, season_start=date.fromisoformat(info["season_start"]),
-                                          h2h_since=date.fromisoformat(info["h2h_since"]),
-                                          now=now if d == slate_date(now) else None)
+                                          h2h_since=date.fromisoformat(info["h2h_since"]), now=live, cal=cal)
+            excluded = stats.pop("excluded")
+            ladders = stats.pop("ladders")
+            from .jobs.injuries import is_two_way
+            excluded += [{"player": u["name"], "player_id": None, "team": u["team"], "game": "", "stat": "",
+                          "venue": "",  "line": None,
+                          "reason": "not in roster ingest — two-way" if is_two_way(u.get("reason"))
+                          else "injury name not matched",
+                          "detail": f"{u['status']} ({u['source']} as of {u['as_of']}; {u.get('reason') or ''})"
+                                    + ("" if is_two_way(u.get("reason")) else
+                                       " — name not in roster; any prop for this player is unprotected")}
+                         for u in info["injury"]["unmatched"]]
             shown, cut = card.shortlist(rows)
-            text = card.render(shown, cut, slate=d.isoformat(), stats=stats)
+            text = card.render(shown, cut, slate=d.isoformat(), stats=stats, excluded=excluded,
+                               injury=info["injury"], calibration=cal.label())
             print(text)
             if args.out:
                 Path(args.out).parent.mkdir(parents=True, exist_ok=True)
                 Path(args.out).write_text(text + "\n")
+                Path(args.out).with_suffix(".json").write_text(json.dumps(
+                    card.to_dict(shown, cut, slate=d.isoformat(), stats=stats, excluded=excluded,
+                                 injury=info["injury"], calibration=cal.label(), ladders=ladders),
+                    default=str, indent=1) + "\n")
+            if cal.missing:
+                warn(f"card: calibration artifact missing ({cal.path}); Kalshi legs withheld "
+                     f"({stats.get('kalshi_withheld', 0)} strikes), Sleeper p is raw", step="Prop card")
+            for why in card_warnings(info, rows, stats):
+                warn(why, step="Prop card")
             if args.log:
                 from .bets import log_card
                 if log_conn is not None:

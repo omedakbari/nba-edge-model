@@ -1,0 +1,28 @@
+# Every hand-set BLEND WEIGHT in the project, in one place (AUDIT_2026-11-24.md item 5).
+# Read by config/model_config.py (main package) and worker/prop_worker/config.py (worker).
+# Code must not hard-code these ratios; tests/test_model_config.py greps for stray literals.
+# Fitted artifacts (data/processed/models/market_blend.json, calibration maps) are NOT listed here:
+# they are learned from data and carry their own fit date and n.
+
+props_model:
+  # ML regression prediction: pred = (1 - l10_weight) * model + l10_weight * L10 average.
+  # Derived 2026-08-10: pooled Brier grid search over 112,422 picks (scripts/phase1_calibration_audit.py).
+  # 0.40 -> 0.24568 vs 0% 0.24709, 50% 0.24581, 65% 0.24643. Per-stat optima range 0.15 (PRA) - 0.65 (3PM).
+  l10_weight: 0.40
+
+card:
+  # Research card (worker/prop_worker/card.py), Sleeper legs and Kalshi strikes:
+  #   p_blend = hist_weight * p_hist + (1 - hist_weight) * market   (market = no-vig P(over) or Kalshi mid)
+  # Hand-set 2026-11-17, never fit. Phase 2 calibration maps the RESULT; it does not refit this weight.
+  hist_weight: 0.35
+  # No market price: p = 0.5 + (p_hist - 0.5) * no_market_shrink  (halfway to a coin flip).
+  no_market_shrink: 0.5
+
+team_ratings:
+  # Team strength = season_weight * SRS + (1 - season_weight) * L10 form (src/models/team_ratings.py).
+  season_weight: 0.65
+
+prop_prior:
+  # Opening-season prior: weight on the prior signal before a player's history fills
+  # (scripts/find_bets.py). Conservative default, not backtested.
+  signal_weight: 0.5

@@ -211,7 +211,8 @@ def grade_pick(actual: float | None, line: float, direction: str) -> tuple[str, 
 
 # ── Main grading flow ──────────────────────────────────────────────────────────
 
-def grade_date(date_str: str, overwrite: bool = False, market: bool = False) -> None:
+def grade_date(date_str: str, overwrite: bool = False, market: bool = False, save: bool = True) -> None:
+    """save=False (--no-save, run_daily --dry-run): grade and print, then roll back every DB change."""
     from datetime import datetime as _dt
     try:
         _dt.strptime(date_str, "%Y-%m-%d")
@@ -225,6 +226,8 @@ def grade_date(date_str: str, overwrite: bool = False, market: bool = False) -> 
         print(f"  No picks file found: {picks_path}")
         script = 'find_bets.py' if market else 'generate_todays_picks.py'
         print(f"  Run first: python scripts/{script} --date {date_str} --save")
+        from src.utils.step_status import warn
+        warn(f"no {'market ' if market else ''}picks file for {date_str} (daily not run that day, or no games)")
         return
 
     try:
@@ -273,7 +276,8 @@ def grade_date(date_str: str, overwrite: bool = False, market: bool = False) -> 
                 conn.execute(
                     "DELETE FROM pick_results WHERE pick_date = ?", (date_str,)
                 )
-                conn.commit()
+                if save:
+                    conn.commit()
                 print(f"  Note: cleared {total_existing} void-only rows for {date_str} "
                       f"— re-grading with current DB.")
             elif total_existing >= len(picks):
@@ -380,7 +384,11 @@ def grade_date(date_str: str, overwrite: bool = False, market: bool = False) -> 
             print(f"  DB error for {pick['player_name']} {stat_key}: {e}")
             skipped += 1
 
-    conn.commit()
+    if save:
+        conn.commit()
+    else:
+        conn.rollback()
+        print("  Dry run: grades computed, nothing written.")
 
     # Summary
     hits   = sum(1 for p in picks if _lookup_result(actuals, p) == 'hit')
@@ -392,6 +400,8 @@ def grade_date(date_str: str, overwrite: bool = False, market: bool = False) -> 
 
     print(f"\n  ── {date_str} Results ──────────────────────────────────────")
     print(f"  Picks graded: {graded}  |  Skipped: {skipped}")
+    from src.utils.step_status import warn_if_empty
+    warn_if_empty(len(picks), graded, f"grading {date_str} (saved picks -> graded)")
     print(f"  Hit: {hits}  |  Miss: {misses}  |  Void/DNP: {voids}  |  Pending: {pending}")
     if gradeable:
         print(f"  Hit rate: {hit_rate:.1%}  ({hits}/{gradeable})")
@@ -646,6 +656,27 @@ def run_report(from_date: str | None = None, to_date: str | None = None) -> None
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
+def catch_up(market: bool = True, save: bool = True, since: str | None = None) -> list[str]:
+    """Grade every ungraded saved-picks date after the last success (or from --since); warn on lag."""
+    from src.utils import grading
+    from src.utils.slate import slate_today
+    from src.utils.step_status import warn
+    folder = PICKS_DIR.parent / 'market_picks' if market else PICKS_DIR
+    today = slate_today().isoformat()
+    files = grading.pick_file_dates(folder)
+    graded = grading.market_graded_dates(DB_PATH, folder)
+    dates = grading.to_grade(files, graded, today, since)
+    print(f"  Catch-up: {len(dates)} ungraded date(s): {', '.join(dates) or 'none'}")
+    for d in dates:
+        print(f"\n  Grading picks for {d}...")
+        grade_date(d, market=market, save=save)
+    graded = grading.market_graded_dates(DB_PATH, folder) | (set(dates) if not save else set())
+    lag = grading.lag_warning('market props', files, graded, today, DB_PATH)
+    if lag:
+        warn(lag)
+    return dates
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Grade daily picks and report calibration")
     parser.add_argument('--date',      help='Date to grade: YYYY-MM-DD')
@@ -654,6 +685,10 @@ def main() -> None:
     parser.add_argument('--report',    action='store_true',
                         help='Show calibration report across all graded dates')
     parser.add_argument('--market', action='store_true', help='Grade saved market-price candidates')
+    parser.add_argument('--no-save', action='store_true', help='Grade and print only; write nothing (dry run)')
+    parser.add_argument('--catch-up', action='store_true',
+                        help='with --market: grade every ungraded date since the last success (src/utils/grading.py)')
+    parser.add_argument('--since', help='with --catch-up: start here (YYYY-MM-DD) instead of the last success')
     parser.add_argument('--from',     dest='from_date', help='Report start date YYYY-MM-DD')
     parser.add_argument('--to',       dest='to_date',   help='Report end date YYYY-MM-DD')
     args = parser.parse_args()
@@ -662,12 +697,16 @@ def main() -> None:
         run_report(args.from_date, args.to_date)
         return
 
+    if args.catch_up:
+        catch_up(market=args.market, save=not args.no_save, since=args.since)
+        return
+
     if not args.date:
         parser.print_help()
         sys.exit(1)
 
     print(f"\n  Grading picks for {args.date}...")
-    grade_date(args.date, overwrite=args.overwrite, market=args.market)
+    grade_date(args.date, overwrite=args.overwrite, market=args.market, save=not args.no_save)
 
 
 if __name__ == "__main__":
